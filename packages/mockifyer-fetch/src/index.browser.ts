@@ -5,7 +5,7 @@
 
 // Re-export only essential types and browser-safe utilities from core
 // DO NOT use `export * from '@sgedda/mockifyer-core'` - it pulls in Node-dependent modules
-export type {
+import type {
   MockifyerConfig,
   MockData,
   StoredRequest,
@@ -15,6 +15,17 @@ export type {
   DatabaseProvider,
   DatabaseProviderConfig,
 } from '@sgedda/mockifyer-core';
+
+export type {
+  MockifyerConfig,
+  MockData,
+  StoredRequest,
+  StoredResponse,
+  HTTPClient,
+  HTTPResponse,
+  DatabaseProvider,
+  DatabaseProviderConfig,
+};
 
 export {
   MemoryProvider,
@@ -32,11 +43,24 @@ export {
 } from './utils/dashboard-redis-health';
 
 // Import MockifyerClass and browser capabilities
-import { MockifyerClass, type MockifyerInstance } from './index';
+import { MockifyerClass } from './mockifyer-class';
 import { browserCapabilities } from './node-capabilities.browser';
 
-// Re-export the interface
-export type { MockifyerInstance };
+// MockifyerInstance interface
+export interface MockifyerInstance extends HTTPClient {
+  reloadMockData: (syncFromProject?: boolean) => Promise<void>;
+  clearStaleCacheEntries: () => number;
+  clearAllMocks: () => Promise<void>;
+  setClientId: (lane: string) => void;
+  getClientId: () => string | undefined;
+  setRecordMode: (enabled: boolean) => void;
+  isRecordMode: () => boolean;
+  setRecordResponses: (enabled: boolean) => void;
+  isRecordResponses: () => boolean;
+  enableMockifyer: () => void;
+  disableMockifyer: () => void;
+  isMockifyerEnabled: () => boolean;
+}
 
 /**
  * Setup Mockifyer for browser/web with in-memory provider.
@@ -64,7 +88,7 @@ export type { MockifyerInstance };
  * });
  * ```
  */
-export function setupMockifyer(config: import('@sgedda/mockifyer-core').MockifyerConfig): MockifyerInstance {
+export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
   // Validate browser-safe config
   if (config.databaseProvider && config.databaseProvider.type && config.databaseProvider.type !== 'memory') {
     throw new Error(

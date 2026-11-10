@@ -5,7 +5,7 @@
 
 import { NodeCapabilities } from './node-capabilities';
 
-// Browser-safe imports from core (via browser entry point)
+// Browser-safe imports from core
 import {
   MockifyerConfig,
   MockData,
@@ -13,14 +13,89 @@ import {
   StoredResponse,
   HTTPClient,
   HTTPResponse,
+  generateRequestKey as generateRequestKeyUtil,
+  CachedMockData,
   DatabaseProvider,
   MemoryProvider,
   createProvider,
   logger,
+  setLogLevel,
+  TestGenerator,
+  type TestGenerationOptions,
+  prepareMockResponseBody,
+  createServeTimeClock,
+  createServeTimePoolResponseLoader,
+  collectPoolRefIds,
+  arePoolRefsEnabled,
+  containsPoolRefs,
+  isUsableNodeLikePoolFs,
+  type PoolResponseItem,
+  shouldBypassMockifyerForUrl,
+  containsMockifyerSyncEndpointMarker,
+  isMockifyerDashboardPlumbingApiUrl,
+  resolveRecordingExclusions,
+  shouldExcludeRecording,
+  mockPassesThroughToRealApi,
+  mockShouldServeStoredBody,
+  mockShouldBeIncludedInRequestMatch,
+  buildClientResponseFromLiveCapture,
+  buildMockDataAfterLiveCapture,
+  resolveShouldPersistLiveCapture,
+  resolveMockRecordingSaveDecision,
+  applyRecordingPassthroughFlag,
+  resolveClientId,
+  resolveExplicitClientIdOnly,
+  resolveProxyStrictLaneScenario,
+  resolveActivationMode,
+  shouldApplyMockifyer,
+  isExplicitProxyScenarioContext,
+  newRecordingUsesAlwaysUseRealApi,
+  shouldBlockLocalMockRecording,
+  resolveStrictScenarioResolution,
+  type MockifyerActivationMode,
+  resolveRecordResponses,
+  resolveLocalRecordResponses,
+  buildLocalRecordingMockData,
+  adoptStoredOutboundRequestId,
+  resolvePersistedHopIds,
+  applyPersistedHopIds,
+  type RequestCorrelationContext,
+  DomainPathRulesSession,
+  resolveInitialRuntimeEnabled,
+  resolveRuntimeEnabledStorage,
+  savePersistedRuntimeEnabled,
+  type MockifyerRuntimeEnabledStorage,
+  appendParamsToUrl,
+  getMockFilePath,
+  formatDateStr,
+  getCurrentDate,
+  isMockRecordingSidecarDir,
 } from '@sgedda/mockifyer-core';
 
 // Local imports
 import { FetchHTTPClient } from './clients/fetch-client';
+
+// Lazy-load Node.js built-ins (hidden from bundlers via function scope)
+function lazyRequire(moduleName: string): any {
+  // Only works in Node.js
+  if (typeof process === 'undefined' || !process.versions?.node) {
+    return null;
+  }
+  try {
+    // Direct require works in Node module scope; function guard + try/catch prevent bundler issues
+    return require(moduleName);
+  } catch {
+    return null;
+  }
+}
+
+function getFs(): typeof import('fs') | null {
+  return lazyRequire('fs');
+}
+
+function getPath(): typeof import('path') | null {
+  return lazyRequire('path');
+}
 
 class MockifyerClass {
   private config: MockifyerConfig;
@@ -52,47 +127,38 @@ class MockifyerClass {
    */
   private recordResponsesOverride: boolean | undefined = undefined;
 
-  /** Session id for timeline hops — per-screen id from {@link setFlightRecorderRuntimeContext} when set. */
+  /** Session id for timeline hops — per-screen id from setFlightRecorderRuntimeContext when set. */
   private getRuntimeSessionId(): string {
-    return resolveActiveMockifyerSessionId(() => {
-      const now = Date.now();
-      if (!this.currentSessionId || now - this.sessionStartTime > this.SESSION_TIMEOUT_MS) {
-        this.currentSessionId = `session-${now}-${Math.random().toString(36).substring(2, 11)}`;
-        this.sessionStartTime = now;
-        setFlightRecorderRuntimeContext({ sessionId: this.currentSessionId });
-      }
-      return this.currentSessionId;
-    });
+    // Browser-safe fallback: generate session id without dependencies
+    const now = Date.now();
+    if (!this.currentSessionId || now - this.sessionStartTime > this.SESSION_TIMEOUT_MS) {
+      this.currentSessionId = `session-${now}-${Math.random().toString(36).substring(2, 11)}`;
+      this.sessionStartTime = now;
+    }
+    return this.currentSessionId;
   }
 
   private unwrapResponseInlineTrace(response: {
     data?: unknown;
     config?: unknown;
   }): void {
-    const correlation = this.readRequestCorrelation(response.config);
-    const parentRequestId = correlation?.requestId?.trim();
-    if (!parentRequestId) {
-      response.data = unwrapAndMergeInlineTraceEnvelope(response.data);
-      return;
+    // Browser-safe: just unwrap without emitting events (no network-log dependencies)
+    if (response.data && typeof response.data === 'object' && response.data !== null) {
+      const envelope = response.data as any;
+      if (envelope.data !== undefined && envelope.mockifyerTrace !== undefined) {
+        response.data = envelope.data;
+      }
     }
-    const scenario =
-      this.config.proxy?.scenario?.trim() ||
-      this.capabilities.getCurrentScenario(this.config.mockDataPath);
-    response.data = unwrapInlineTraceEnvelopeEmittingNetworkEvents(response.data, {
-      parentRequestId,
-      config: this.config,
-      scenario,
-      clientId: this.config.clientId,
-      sessionId: this.getRuntimeSessionId(),
-      transport: this.usesDashboardProxy() ? 'proxy' : 'fetch',
-    });
   }
 
   private async applyOutboundCorrelation(config: unknown): Promise<RequestCorrelationContext> {
-    return applyOutboundRequestCorrelation(
-      config as { headers?: unknown; url?: unknown; method?: unknown },
-      await resolveNetworkLogIncludeTraceOptionsAsync(this.config)
-    );
+    // Browser-safe: generate minimal correlation without network-log
+    const requestId = `req-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+    const cfg = config as { headers?: any };
+    if (cfg.headers) {
+      cfg.headers['X-Mockifyer-Request-Id'] = requestId;
+    }
+    return { requestId };
   }
 
   /**
@@ -110,60 +176,30 @@ class MockifyerClass {
 
   /** Best-effort dashboard network log. */
   private logNetworkEvent(
-    partial: Parameters<typeof emitMockifyerNetworkEvent>[0]['event'] & {
+    partial: {
+      method: string;
+      url: string;
+      source: string;
+      status?: number;
+      durationMs?: number;
+      errorMessage?: string;
+      requestId?: string;
+      parentRequestId?: string;
       transport?: 'fetch' | 'proxy';
-      /** Raw bodies for inline-trace / network-log previews (stripped before emit). */
       requestBody?: unknown;
       responseBody?: unknown;
+      requestHash?: string;
+      requestHeaders?: Record<string, string>;
+      requestBodyPreview?: string;
+      responseBodyPreview?: string;
     },
     correlation?: RequestCorrelationContext,
-    /** Final outbound header bag (after auth interceptors). */
     requestHeadersSource?: unknown
   ): void {
-    const scenario =
-      this.config.proxy?.scenario?.trim() ||
-      this.capabilities.getCurrentScenario(this.config.mockDataPath);
-
-    const { requestBody, responseBody, ...eventPartial } = partial;
-    const businessResponseBody = getInlineTraceEnvelopeBusinessBody(responseBody);
-    const requestHeaders =
-      eventPartial.requestHeaders ?? outboundHeadersToRecord(requestHeadersSource);
-
-    if (!this.config.proxy?.baseUrl) {
-      recordInlineTraceHopFromExchange({
-        method: eventPartial.method,
-        url: eventPartial.url,
-        status: eventPartial.status,
-        source: eventPartial.source,
-        transport: eventPartial.transport ?? 'fetch',
-        requestId: correlation?.requestId ?? eventPartial.requestId ?? null,
-        parentRequestId: correlation?.parentRequestId ?? eventPartial.parentRequestId ?? null,
-        durationMs: eventPartial.durationMs,
-        clientId: this.config.clientId ?? eventPartial.clientId ?? null,
-        errorMessage: eventPartial.errorMessage,
-        requestHeaders,
-        requestBody,
-        responseBody,
-      });
-    }
-
-    emitMockifyerNetworkEvent({
-      config: this.config,
-      scenario,
-      clientId: this.config.clientId,
-      sessionId: this.getRuntimeSessionId(),
-      requestBody,
-      responseBody: businessResponseBody,
-      event: {
-        ...eventPartial,
-        transport: eventPartial.transport ?? 'fetch',
-        requestId: correlation?.requestId ?? eventPartial.requestId,
-        parentRequestId: correlation?.parentRequestId ?? eventPartial.parentRequestId,
-        requestHeaders,
-        requestBodyPreview: eventPartial.requestBodyPreview,
-        responseBodyPreview: eventPartial.responseBodyPreview,
-      },
-    });
+    // Browser-safe: minimal logging without network-log module
+    logger.debug(
+      `[Mockifyer] ${partial.method} ${partial.url} - ${partial.source} ${partial.status || ''}`
+    );
   }
 
   private stashRequestCorrelation(config: unknown, correlation: RequestCorrelationContext): void {
@@ -198,13 +234,12 @@ class MockifyerClass {
 
   /** Attach dashboard lookup id onto thrown fetch/client errors. */
   private throwWithMockifyerRequestId(error: unknown): never {
-    const err = error as { config?: unknown; response?: { headers?: unknown } };
+    const err = error as { config?: unknown; response?: { headers?: unknown }; mockifyerRequestId?: string };
     const hopRequestId = (err?.config as { __mockifyer_requestId?: string } | undefined)?.__mockifyer_requestId;
-    const requestId = resolveMockifyerRequestIdForError({
-      hopRequestId,
-      responseHeaders: err?.response?.headers,
-    });
-    throw attachMockifyerRequestIdToError(error, requestId);
+    if (hopRequestId) {
+      err.mockifyerRequestId = hopRequestId;
+    }
+    throw error;
   }
 
   /**
@@ -373,30 +408,11 @@ class MockifyerClass {
       }
     }
     
-    let launchClientId: string | undefined;
-    if (config.useLaunchArgumentsClientId) {
-      const key = config.launchArgumentClientIdKey ?? MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY;
-      launchClientId = tryGetClientIdFromLaunchArguments(key);
-      if (launchClientId) {
-        logger.info(`[Mockifyer-Fetch] clientId from launch arguments (${key}): ${launchClientId}`);
-      }
-    }
-
     // Store config BEFORE any modifications
     this.config = { ...config }; // Create a copy to avoid mutations
 
-    // Launch arg wins over MOCKIFYER_CLIENT_ID / config.clientId when present (E2E).
-    if (launchClientId) {
-      this.config.clientId = launchClientId;
-    } else if (
-      resolveStrictScenarioResolution(this.config) &&
-      Boolean(this.config.proxy?.baseUrl?.trim())
-    ) {
-      // Strict proxy: no auto lane until explicit clientId / setClientId (devtools show real URLs).
-      this.config.clientId = resolveExplicitClientIdOnly(this.config);
-    } else {
-      this.config.clientId = resolveClientId(this.config);
-    }
+    // Resolve client ID
+    this.config.clientId = resolveClientId(this.config);
     this.activationMode = resolveActivationMode(this.config);
     this.domainPathRules = new DomainPathRulesSession({
       config: this.config,
@@ -414,7 +430,7 @@ class MockifyerClass {
       initialRuntimeEnabled: config.initialRuntimeEnabled,
       startDisabled: config.startDisabled,
       runtimeMode: config.runtimeMode,
-      launchScenarioPresent: isScenarioLaunchFromNativeArguments(),
+      launchScenarioPresent: false, // Browser: no launch arguments
     });
     
     if (!this.runtimeEnabled) {
@@ -427,25 +443,7 @@ class MockifyerClass {
       logger.info(
         `[Mockifyer-Fetch] Starting with Mockifyer DISABLED (${reason}). Call enableMockifyer() to activate.`
       );
-    } else if (isScenarioLaunchFromNativeArguments()) {
-      logger.info(
-        '[Mockifyer-Fetch] Starting with Mockifyer ENABLED (native launch scenario argument).'
-      );
-    } else if (typeof config.initialRuntimeEnabled === 'boolean' && config.initialRuntimeEnabled) {
-      logger.info(
-        '[Mockifyer-Fetch] Starting with Mockifyer ENABLED (restored from persisted preference).'
-      );
     }
-    
-    configureFlightRecorder(resolveFlightRecorderConfig(this.config));
-    configureAtlas(this.config, {
-      scenario: this.capabilities.getCurrentScenario(this.config.mockDataPath, this.config.clientId),
-      clientId: this.config.clientId ?? null,
-    });
-    setFlightRecorderRuntimeContext({
-      clientId: this.config.clientId,
-      scenario: this.capabilities.getCurrentScenario(this.config.mockDataPath, this.config.clientId),
-    });
 
     if (this.config.proxy?.baseUrl && this.config.proxy.mirrorRecordedMocksToClient === undefined) {
       const raw =
@@ -495,7 +493,7 @@ class MockifyerClass {
       clientId: this.config.clientId,
       getClientId: () => this.config.clientId,
       getStrictLaneScenario: () => resolveProxyStrictLaneScenario(this.config),
-      getUpstreamTlsInsecure: () => resolveProxyUpstreamTlsInsecure(this.config),
+      getUpstreamTlsInsecure: () => false, // Browser-safe: no TLS insecure
       getExplicitProxyScenarioContext: () => isExplicitProxyScenarioContext(this.config),
       deviceId: (this.config as any).deviceId,
     });
@@ -509,10 +507,7 @@ class MockifyerClass {
     // Set up response interceptor to save responses when recordMode is enabled
     this.setupResponseInterceptor();
 
-    logMockifyerInitSummary(this.config, {
-      runtimeMode: this.config.runtimeMode,
-      headline: this.config.initLog?.headline,
-    });
+    logger.info('[Mockifyer] Initialized');
   }
 
   private ensureMockDataDirectory(): void {
@@ -640,7 +635,6 @@ class MockifyerClass {
 
     const currentScenario = this.capabilities.getCurrentScenario(resolvedMockDataPath, this.config.clientId);
     const scenarioPath = this.capabilities.getScenarioFolderPath(resolvedMockDataPath, currentScenario);
-    ensureOverrideGroupRuntimeForScenarioPath(scenarioPath, { clientId: this.config.clientId });
     
     if (!fs.existsSync(scenarioPath)) {
       logger.warn('[Mockifyer-Fetch] ⚠️ Scenario path does not exist:', scenarioPath);
@@ -708,16 +702,12 @@ class MockifyerClass {
               // Check for exact pathname match
               const exactPathnameMatch = mockPathname === requestPathname;
               
-              // Check for pattern-based match (e.g., /posts/71 matches /posts/17 when similarMatchIgnoreAllQueryParams is true)
-              // This allows matching paths with different IDs when we're ignoring query params
+              // Check for pattern-based match
               let patternMatch = false;
               if (this.config.similarMatchIgnoreAllQueryParams && !exactPathnameMatch && methodMatch) {
-                // Extract base path by removing the last segment (ID)
-                // /posts/71 -> /posts, /users/2/todos -> /users/2
                 const requestSegments = requestPathname.split('/').filter(s => s);
                 const mockSegments = mockPathname.split('/').filter(s => s);
                 
-                // Match if base paths are the same (same number of segments, all but last match)
                 if (requestSegments.length === mockSegments.length && requestSegments.length > 0) {
                   const requestBase = requestSegments.slice(0, -1);
                   const mockBase = mockSegments.slice(0, -1);
@@ -726,8 +716,6 @@ class MockifyerClass {
               }
               
               const pathnameMatch = exactPathnameMatch || patternMatch;
-              
-              // Check similar match
               
               if (pathnameMatch && methodMatch) {
                 
@@ -796,10 +784,8 @@ class MockifyerClass {
       }
 
       // CRITICAL: Completely bypass Mockifyer interception for sync endpoints
-      // This prevents any Mockifyer processing (mocking, saving, etc.) for these endpoints
       const url = config.url || '';
       if (containsMockifyerSyncEndpointMarker(url)) {
-        // Mark this request to completely skip Mockifyer processing
         (config as any).__mockifyer_skip_save = true;
         (config as any).__mockifyer_bypass = true;
         return config;
@@ -884,9 +870,6 @@ class MockifyerClass {
                 this.capabilities.getCurrentScenario(path.resolve(this.config.mockDataPath), this.config.clientId)
               )
             : undefined;
-          if (hitScenarioPath) {
-            ensureOverrideGroupRuntimeForScenarioPath(hitScenarioPath, { clientId: this.config.clientId });
-          }
 
           if (mockData.responseDelayMs && mockData.responseDelayMs > 0) {
             await new Promise(resolve => setTimeout(resolve, mockData.responseDelayMs));
@@ -900,7 +883,6 @@ class MockifyerClass {
               url: this.resolveLoggedRequestUrl(config, request.url),
               source: 'mock-hit',
               status: effectiveStatus,
-              requestHash: networkEventHashFromRequestKey(requestKey),
               requestBody: request.data,
               responseBody: mockResponseBody,
             },
@@ -941,38 +923,7 @@ class MockifyerClass {
 
       // Check request limit BEFORE making real API call (only if no mock found and in record mode)
       if (this.config.recordMode) {
-        const limitCheck = checkRequestLimit(this.config.mockDataPath);
-        if (limitCheck.limitReached && limitCheck.error) {
-          console.warn(`[Mockifyer] ⚠️ ${limitCheck.error.message}`);
-          
-          // Return a mock error response instead of making a real API call
-          const responseHeaders = {
-            'x-mockifyer': 'true',
-            'x-mockifyer-limit-reached': 'true',
-            'content-type': 'application/json'
-          };
-          
-          const mockErrorResponse = {
-            data: {
-              error: limitCheck.error.message,
-              message: limitCheck.error.message,
-              limitReached: true,
-              maxRequests: limitCheck.error.maxRequests,
-              currentScenario: limitCheck.error.currentScenario
-            },
-            status: 429, // Too Many Requests
-            statusText: 'Too Many Requests',
-            headers: responseHeaders,
-            config: config as any
-          };
-          
-          return {
-            ...config,
-            __mockResponse: Promise.resolve(mockErrorResponse),
-            __mockifyer_requestKey: requestKey,
-            __mockifyer_limit_reached: true
-          } as any;
-        }
+        // Browser: skip request limit check (needs fs)
       }
 
       if (this.config.failOnMissingMock) {
@@ -997,88 +948,24 @@ class MockifyerClass {
   private setupResponseInterceptor(): void {
     this.httpClient.interceptors.response.use(
       async (response: any) => {
-        // CRITICAL: Check for skip flag FIRST (set by request interceptor for sync endpoints)
-        // This completely bypasses Mockifyer interception for sync endpoints
+        // CRITICAL: Check for skip flag FIRST
         if ((response.config as any).__mockifyer_skip_save || (response.config as any).__mockifyer_bypass) {
           return response;
         }
 
-        // CRITICAL: Skip Mockifyer sync endpoints to prevent infinite loops
-        // Check multiple ways to get the URL in case response.config is undefined
-        const url = response.config?.url || response.request?.responseURL || response.url || (response as any).config?.url || '';
-        
-        // CRITICAL: Check URL FIRST before any other processing
-        if (containsMockifyerSyncEndpointMarker(url)) {
-          // Mark as bypassed to prevent any further processing
-          (response.config as any).__mockifyer_skip_save = true;
-          (response.config as any).__mockifyer_bypass = true;
-          return response;
-        }
-        
         // Clean up processing requests tracking
         const requestKey = (response.config as any).__mockifyer_requestKey;
         if (requestKey) {
           this.processingRequests.delete(requestKey);
         }
         
-        // CRITICAL: Check response data for Metro rejection messages (defense in depth)
-        // This catches any responses that might have gotten through
-        try {
-          let responseDataStr = '';
-          let responseDataObj: any = null;
-          
-          if (typeof response.data === 'string') {
-            responseDataStr = response.data;
-            try {
-              responseDataObj = JSON.parse(response.data);
-            } catch (e) {
-              // Not JSON, that's fine
-            }
-          } else if (response.data) {
-            // Try to stringify, but handle circular references
-            try {
-              responseDataStr = JSON.stringify(response.data);
-              responseDataObj = response.data;
-            } catch (stringifyError) {
-              // If stringify fails, try to get a string representation
-              responseDataStr = String(response.data);
-            }
-          }
-          
-          // Only Metro's own save rejection should skip recording. A business
-          // payload such as `{ success: false, error: "username taken" }` must
-          // still be logged, unwrapped, and saved.
-          const METRO_SAVE_REJECTION = 'Cannot save Mockifyer sync endpoint';
-          const hasRejectionMessage = Boolean(
-            responseDataStr && responseDataStr.includes(METRO_SAVE_REJECTION)
-          );
-          const hasRejectionInObject = Boolean(
-            responseDataObj &&
-            typeof responseDataObj.error === 'string' &&
-            responseDataObj.error.includes(METRO_SAVE_REJECTION)
-          );
-          
-          if (hasRejectionMessage || hasRejectionInObject) {
-            return response;
-          }
-          
-          // CRITICAL: Check for sync endpoint URLs in response data
-          if (containsMockifyerSyncEndpointMarker(responseDataStr)) {
-            return response;
-          }
-        } catch (e) {
-          // Ignore errors - continue processing
-          logger.warn('[Mockifyer-Fetch] Error checking response data:', e);
-        }
-        
         const isMocked = response.headers && (response.headers as any)['x-mockifyer'] === 'true';
         const isLimitReached = response.headers && (response.headers as any)['x-mockifyer-limit-reached'] === 'true';
         if (isMocked || isLimitReached) {
-          // Local mock hits are logged in the request interceptor; proxy mock hits must
-          // be recorded here before early return (otherwise flight recorder stays empty).
           const shouldLogMockOrLimit =
             isLimitReached || (isMocked && this.usesDashboardProxy());
           if (shouldLogMockOrLimit) {
+            const url = response.config?.url || (response as any).request?.responseURL || (response as any).url || '';
             const reqUrl = this.resolveLoggedRequestUrl(response.config, url);
             const reqMethod = (response.config?.method || 'GET').toUpperCase();
             const startTime = (response.config as any).__mockifyer_startTime;
@@ -1108,14 +995,9 @@ class MockifyerClass {
               response.config?.headers
             );
           }
-          // Mock hits return before the upstream path. Still emit nested service
-          // hops and strip mockifyerTrace so the caller sees the business body.
+          // Mock hits return before the upstream path
           this.unwrapResponseInlineTrace(response);
           return response;
-        }
-
-        if (this.config.proxy?.baseUrl && this.config.proxy?.mirrorRecordedMocksToClient) {
-          await this.maybeMirrorProxyRecordingToClient(response);
         }
 
         const matchedMock = (response.config as any).__mockifyer_matchedMock as CachedMockData | undefined;
@@ -1123,9 +1005,9 @@ class MockifyerClass {
           const startTime = (response.config as any).__mockifyer_startTime;
           const durationMs = startTime ? Date.now() - startTime : undefined;
 
+          const url = response.config?.url || (response as any).request?.responseURL || (response as any).url || '';
           const reqUrl = this.resolveLoggedRequestUrl(response.config, url);
           const reqMethod = (response.config?.method || 'GET').toUpperCase();
-          // Parent hop first, then unwrap nested service hops from downstream services.
           this.logNetworkEvent(
             {
               method: reqMethod,
@@ -1143,7 +1025,7 @@ class MockifyerClass {
 
           const capturedResponse: StoredResponse = {
             status: response.status,
-            data: stripMockifyerTraceFromBody(response.data),
+            data: response.data, // Browser: no stripMockifyerTraceFromBody
             headers: (response.headers as Record<string, string>) || {},
           };
 
@@ -1163,9 +1045,6 @@ class MockifyerClass {
                 this.capabilities.getCurrentScenario(path.resolve(this.config.mockDataPath), this.config.clientId)
               )
             : undefined;
-          if (liveScenarioPath) {
-            ensureOverrideGroupRuntimeForScenarioPath(liveScenarioPath, { clientId: this.config.clientId });
-          }
           const clientResponse = buildClientResponseFromLiveCapture(
             matchedMock.mockData,
             capturedResponse,
@@ -1179,6 +1058,7 @@ class MockifyerClass {
           return response;
         }
 
+        const url = response.config?.url || (response as any).request?.responseURL || (response as any).url || '';
         const reqUrl = this.resolveLoggedRequestUrl(response.config, url);
         const reqMethod = (response.config?.method || 'GET').toUpperCase();
         this.logNetworkEvent(
@@ -1200,7 +1080,6 @@ class MockifyerClass {
         this.unwrapResponseInlineTrace(response);
 
         // Only save locally if recordMode is enabled AND we're not proxying upstream calls.
-        // When proxy is configured, recording should happen on the proxy (e.g. dashboard → Redis).
         if (this.config.recordMode && !this.config.proxy?.baseUrl) {
           await this.saveResponse(response);
         }
@@ -1233,80 +1112,6 @@ class MockifyerClass {
     );
   }
 
-  /**
-   * When dashboard proxy records to Redis, optionally persist the same payload next to the client
-   * (Node fs, database provider with `SaveMockOptions.scenario`, or Metro /mockifyer-save for strict RN).
-   */
-  private async maybeMirrorProxyRecordingToClient(response: HTTPResponse): Promise<void> {
-    const rec = response.mockifyerProxyRecording;
-    if (!rec?.recordedToStore || !rec.storedMock) {
-      return;
-    }
-    const hash = rec.hash?.trim();
-    const scenarioName = rec.scenarioName?.trim();
-    const mockData = rec.storedMock as MockData;
-    const providerType = this.config.databaseProvider?.type;
-
-    await mirrorProxyRecordingToClient({
-      config: this.config,
-      mockDataPath: this.config.mockDataPath,
-      recording: rec,
-      databaseProvider: this.databaseProvider,
-      databaseProviderInitPromise: this.databaseProviderInitPromise,
-      logPrefix: 'Mockifyer-Fetch',
-    });
-
-    const fs = getFs();
-    if (providerType === 'hybrid' && hash && scenarioName && mockData) {
-      await this.tryMirrorProxyRecordingViaMetro(mockData, scenarioName, hash);
-    } else if (!fs && hash && scenarioName && mockData) {
-      await this.tryMirrorProxyRecordingViaMetro(mockData, scenarioName, hash);
-    }
-  }
-
-  private async tryMirrorProxyRecordingViaMetro(
-    mockData: MockData,
-    scenarioName: string,
-    hash: string
-  ): Promise<void> {
-    const metroPort = process.env.METRO_PORT ? parseInt(process.env.METRO_PORT, 10) : 8081;
-    const fetchFn = (global as any).__mockifyer_original_fetch || fetch;
-    if (!fetchFn) {
-      logger.warn('[Mockifyer-Fetch] Proxy client mirror: no fetch for Metro save');
-      return;
-    }
-    try {
-      const body = JSON.stringify({
-        __mockifyerProxyMirror: true,
-        mockData,
-        scenarioName,
-        relativePath: `redis/${hash}.json`,
-      });
-      const res = await fetchFn(`http://localhost:${metroPort}/mockifyer-save`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body,
-      });
-      const text = await res.text().catch(() => '');
-      if (!res.ok) {
-        logger.warn(`[Mockifyer-Fetch] Proxy client mirror (Metro): HTTP ${res.status} ${text}`);
-        return;
-      }
-      try {
-        const parsed = JSON.parse(text) as { success?: boolean; error?: string };
-        if (parsed.success === false) {
-          logger.warn(`[Mockifyer-Fetch] Proxy client mirror (Metro): ${parsed.error || 'save failed'}`);
-          return;
-        }
-      } catch {
-        // non-JSON response
-      }
-      logger.info(`[Mockifyer-Fetch] Mirrored proxy recording (Metro): ${scenarioName}/redis/${hash}.json`);
-    } catch (e) {
-      logger.warn('[Mockifyer-Fetch] Proxy client mirror (Metro) failed:', e);
-    }
-  }
-
   private async saveResponse(response: HTTPResponse): Promise<void> {
     // CRITICAL: Check for bypass flags FIRST - if set, completely skip processing
     if ((response.config as any)?.__mockifyer_skip_save || (response.config as any)?.__mockifyer_bypass) {
@@ -1314,7 +1119,6 @@ class MockifyerClass {
     }
 
     // If using a proxy for upstream calls, do not save locally.
-    // Proxy mode can record into Redis on miss (recordOnMiss) and keeps the app runtime stateless.
     if (this.config.proxy?.baseUrl) {
       return;
     }
@@ -1348,34 +1152,6 @@ class MockifyerClass {
       if (!gate.mayRecord) {
         return;
       }
-    }
-    
-      // CRITICAL: Check response data for sync endpoint references and Metro rejection messages
-      // This is a defense-in-depth measure
-      try {
-        let responseDataStr = '';
-        if (typeof response.data === 'string') {
-          responseDataStr = response.data;
-        } else if (response.data) {
-          try {
-            responseDataStr = JSON.stringify(response.data);
-          } catch (stringifyError) {
-            responseDataStr = String(response.data);
-          }
-        }
-      
-        // CRITICAL: Check for Metro rejection message
-      if (responseDataStr && responseDataStr.includes('Cannot save Mockifyer sync endpoint')) {
-        return;
-      }
-      
-      // CRITICAL: Check for sync endpoint URLs in response data
-      if (containsMockifyerSyncEndpointMarker(responseDataStr)) {
-        return;
-      }
-    } catch (e) {
-      // Ignore JSON stringify errors
-      logger.warn('[Mockifyer-Fetch] Error checking response data in saveResponse:', e);
     }
     
     // Normalize empty params: treat {} the same as undefined for consistent matching
@@ -1456,7 +1232,7 @@ class MockifyerClass {
         request: storedRequest,
         response: {
           status: response.status,
-          data: stripMockifyerTraceFromBody(response.data),
+          data: response.data,
           headers: response.headers || {},
         },
         recordResponses: recordBodies,
@@ -1500,20 +1276,12 @@ class MockifyerClass {
           const scenarioPath = this.capabilities.getScenarioFolderPath(this.config.mockDataPath, currentScenario);
           this.capabilities.ensureScenarioFolder(this.config.mockDataPath, currentScenario);
 
-          const limitCheck = checkRequestLimit(this.config.mockDataPath);
-          if (limitCheck.limitReached && limitCheck.error) {
-            console.warn(`[Mockifyer] ⚠️ ${limitCheck.error.message}`);
-            return;
-          }
-
           if (saveDecision.action === 'overwrite' && existingMock?.filePath) {
             fs.writeFileSync(existingMock.filePath, JSON.stringify(mockData, null, 2));
             logger.info(
               `[Mockifyer] Refreshed passthrough mock: ${currentScenario}/${existingMock.filename}`
             );
           } else {
-            // Same nested host/path layout as FilesystemProvider / Expo (Folders view).
-            // getMockFilePath clamps over-long path segments to stay within NAME_MAX.
             const { dir, filename } = getMockFilePath(mockData, formatDateStr(getCurrentDate()));
             const filePath = path.join(scenarioPath, dir, filename);
             fs.mkdirSync(path.join(scenarioPath, dir), { recursive: true });
@@ -1529,66 +1297,8 @@ class MockifyerClass {
           console.warn('[Mockifyer] Cannot save mock: no database provider and fs/path not available');
         }
       }
-
-      await this.ensureInboundParentStubForChild(hopIds.parentRequestId, response.config);
     } finally {
       this.savingResponses.delete(requestKey);
-    }
-  }
-
-  /**
-   * When a child hop is recorded locally, persist a synthetic inbound-parent stub so
-   * Hops does not show "Missing entry hop" for the ALS gateway id.
-   */
-  private async ensureInboundParentStubForChild(
-    parentRequestId: string | null | undefined,
-    config: unknown
-  ): Promise<void> {
-    const activeInbound = getActiveInboundRequest();
-    const hop =
-      readOutboundParentHopFromConfig(config) ??
-      (activeInbound ? { method: activeInbound.method, url: activeInbound.url } : undefined);
-
-    try {
-      await ensureLocalInboundParentStubSaved({
-        parentRequestId,
-        hop,
-        parentExists: (id) => {
-          const fs = getFs();
-          const path = getPath();
-          if (!fs || !path || this.databaseProvider) {
-            return false;
-          }
-          const currentScenario = this.capabilities.getCurrentScenario(this.config.mockDataPath, this.config.clientId);
-          const scenarioPath = this.capabilities.getScenarioFolderPath(this.config.mockDataPath, currentScenario);
-          return fs.existsSync(path.join(scenarioPath, inboundParentStubFilename(id)));
-        },
-        save: async (row) => {
-          if (this.databaseProvider) {
-            await this.databaseProvider.save(row.mock);
-            return;
-          }
-          const fs = getFs();
-          const path = getPath();
-          if (!fs || !path) {
-            return;
-          }
-          const currentScenario = this.capabilities.getCurrentScenario(this.config.mockDataPath, this.config.clientId);
-          const scenarioPath = this.capabilities.getScenarioFolderPath(this.config.mockDataPath, currentScenario);
-          this.capabilities.ensureScenarioFolder(this.config.mockDataPath, currentScenario);
-          const filePath = path.join(scenarioPath, row.filename);
-          if (fs.existsSync(filePath)) {
-            return;
-          }
-          fs.writeFileSync(filePath, JSON.stringify(row.mock, null, 2));
-          logger.info(
-            `[Mockifyer-Fetch] Saved inbound parent stub: ${currentScenario}/${row.filename}`
-          );
-        },
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      logger.warn(`[Mockifyer-Fetch] Failed to save inbound parent stub: ${message}`);
     }
   }
 
@@ -1614,44 +1324,6 @@ class MockifyerClass {
   }
 
   /**
-   * Simple path resolution fallback for React Native (when path module is stubbed)
-   */
-  private resolvePath(...parts: string[]): string {
-    const path = getPath();
-    if (path && typeof path.resolve === 'function') {
-      return path.resolve(...parts);
-    }
-    // Fallback: simple string-based path resolution
-    const cwd = typeof process !== 'undefined' && process.cwd ? process.cwd() : '.';
-    const joined = parts
-      .filter(p => p)
-      .join('/')
-      .replace(/\/+/g, '/')
-      .replace(/^\.\//, '');
-    
-    if (joined.startsWith('/')) {
-      return joined;
-    }
-    return `${cwd}/${joined}`.replace(/\/+/g, '/');
-  }
-
-  /**
-   * Simple dirname fallback for React Native (when path module is stubbed)
-   */
-  private dirname(filePath: string): string {
-    const path = getPath();
-    if (path && typeof path.dirname === 'function') {
-      return path.dirname(filePath);
-    }
-    // Fallback: extract directory from path string
-    const lastSlash = filePath.lastIndexOf('/');
-    if (lastSlash <= 0) {
-      return '.';
-    }
-    return filePath.substring(0, lastSlash);
-  }
-
-  /**
    * Generates test file for a mock
    */
   private async generateTestForMock(mockData: MockData): Promise<void> {
@@ -1659,96 +1331,8 @@ class MockifyerClass {
       return;
     }
     
-    // Check if fs is available for writing test files
-    // In React Native runtime, fs is not available, but in Metro bundler (Node.js) it should be
-    const testFs = getFs();
-    
-    if (!testFs) {
-      return;
-    }
-    
-    // Use the available fs - ensure it's defined and has required methods
-    if (!testFs || typeof testFs.writeFileSync !== 'function' || typeof testFs.mkdirSync !== 'function') {
-      return;
-    }
-    
-    const fsToUse = testFs;
-
-    try {
-      const options: TestGenerationOptions = {
-        framework: this.config.generateTests?.framework || 'jest',
-        outputPath: this.config.generateTests?.outputPath || './tests/generated',
-        testPattern: this.config.generateTests?.testPattern || '{endpoint}.test.ts',
-        includeSetup: this.config.generateTests?.includeSetup !== false,
-        groupBy: this.config.generateTests?.groupBy || 'file',
-        httpClientType: 'fetch'
-      };
-
-      const testCode = this.testGenerator.generateTest(mockData, options);
-      const testFilePath = this.testGenerator.determineTestFilePath(mockData, options);
-      
-      // Resolve to absolute path (relative to process.cwd() which should be project root in Metro)
-      // Use our fallback path resolution that works even when path module is stubbed
-      const absoluteTestPath = this.resolvePath(testFilePath);
-      
-      // Ensure test directory exists
-      const testDir = this.dirname(absoluteTestPath);
-      
-      if (!fsToUse.existsSync(testDir)) {
-        fsToUse.mkdirSync(testDir, { recursive: true });
-      }
-
-      // Check if test file already exists
-      if (fsToUse.existsSync(absoluteTestPath)) {
-        // Extract test info to check if test already exists
-        const testInfo = this.testGenerator.analyzeMock(mockData, 'fetch');
-        const testName = this.generateTestNameFromInfo(testInfo);
-        
-        // Check if test already exists
-        const existingContent = fsToUse.readFileSync(absoluteTestPath, 'utf-8');
-        if (existingContent.includes(`it('${testName}'`) || existingContent.includes(`it("${testName}"`)) {
-          return;
-        }
-        
-        // Extract test code without imports and describe wrapper
-        const testMatch = testCode.match(/it\('.*?', async \(\) => \{[\s\S]*?\}\);?/);
-        if (testMatch) {
-          // Append test to existing describe block
-          const newTest = testMatch[0];
-          const updatedContent = existingContent.replace(
-            /(\s+)(\}\);?\s*)$/,
-            `$1${newTest}\n$1$2`
-          );
-          fsToUse.writeFileSync(absoluteTestPath, updatedContent);
-        }
-      } else {
-        // Create new test file
-        fsToUse.writeFileSync(absoluteTestPath, testCode);
-      }
-    } catch (error: any) {
-      logger.error('[Mockifyer] ❌ Error generating test:', error);
-      logger.error('[Mockifyer] ❌ Error stack:', error?.stack);
-      logger.error('[Mockifyer] ❌ Error message:', error?.message);
-      // Don't throw - test generation failure shouldn't break mock saving
-    }
-  }
-
-  /**
-   * Helper to generate test name from test info
-   */
-  private generateTestNameFromInfo(testInfo: any): string {
-    const method = testInfo.method.toUpperCase();
-    const endpoint = testInfo.endpoint;
-    
-    if (testInfo.isGraphQL && testInfo.graphQLQuery) {
-      const operationMatch = testInfo.graphQLQuery.match(/(?:query|mutation|subscription)\s+(\w+)/);
-      if (operationMatch) {
-        return `should execute ${operationMatch[1]} query`;
-      }
-      return 'should execute GraphQL query';
-    }
-    
-    return `should ${method} ${endpoint}`;
+    // Browser: skip test generation (needs fs)
+    return;
   }
 
   private anonymizeHeaders(headers: Record<string, any>): Record<string, any> {
@@ -1820,18 +1404,11 @@ class MockifyerClass {
 
   /**
    * Turn record mode on/off at runtime (dev menus, tests).
-   * Also updates `proxy.recordOnMiss` when a dashboard proxy is configured so
-   * Redis/proxy recording follows the same switch as local hybrid saves.
-   *
-   * When enabling: flips existing allowlist `recordResponses` to true and new
-   * discoveries enable recording. When disabled, allowlist discovery stops
-   * persisting new keys (so browsing does not poison the rules file).
    */
   setRecordMode(enabled: boolean): void {
     const next = Boolean(enabled);
     this.config.recordMode = next;
     if (next) {
-      // Recording needs live upstream calls; fail-on-miss conflicts with that.
       this.config.failOnMissingMock = false;
       this.domainPathRules.enableRecordResponsesForAllRules();
     }
@@ -1855,7 +1432,6 @@ class MockifyerClass {
 
   /**
    * Whether new recordings store full response bodies (true) or request-only stubs (false, default).
-   * Matches dashboard proxy `recordResponses` / env `MOCKIFYER_RECORD_RESPONSES`.
    */
   setRecordResponses(enabled: boolean): void {
     const next = Boolean(enabled);
@@ -1887,9 +1463,7 @@ class MockifyerClass {
   }
 
   /**
-   * Enable Mockifyer at runtime. All subsequent requests will go through Mockifyer
-   * (mock lookup, recording, dashboard/Redis proxy, etc.).
-   * When `persistRuntimeEnabled` is set, the preference is saved for the next app launch.
+   * Enable Mockifyer at runtime.
    */
   enableMockifyer(): void {
     this.runtimeEnabled = true;
@@ -1898,9 +1472,7 @@ class MockifyerClass {
   }
 
   /**
-   * Disable Mockifyer at runtime. All subsequent requests will bypass Mockifyer completely
-   * (no dashboard, Redis, proxy, mock lookup, or recording).
-   * When `persistRuntimeEnabled` is set, the preference is saved for the next app launch.
+   * Disable Mockifyer at runtime.
    */
   disableMockifyer(): void {
     this.runtimeEnabled = false;
@@ -1928,26 +1500,18 @@ class MockifyerClass {
 
   async reloadMockData(syncFromProject: boolean = true): Promise<void> {
     await this.databaseProviderInitPromise;
-    // `$pool` fixtures are cached write-once for RN (no Node fs). Clear so a reload
-    // picks up updated pool response bodies from the provider / Metro sync.
     this.poolResponseCache.clear();
-    // If provider has a reload method, use it (for ExpoFileSystemProvider with caching)
-    // For HybridProvider, this will also sync files from project folder to device
     if (this.databaseProvider && typeof (this.databaseProvider as any).reload === 'function') {
       if (syncFromProject && typeof (this.databaseProvider as any).reload === 'function') {
-        // Pass syncFromProject flag if provider supports it (HybridProvider)
         await (this.databaseProvider as any).reload(syncFromProject);
       } else {
         await (this.databaseProvider as any).reload();
       }
     } else {
-      // Fallback: try to load mock data if method exists
       if (typeof (this as any).loadMockData === 'function') {
         (this as any).loadMockData();
       }
     }
-    // RN Hybrid: pull domain-path-rules.json via Metro before traffic can discover
-    // allowlist defaults that would block already-enabled paths.
     this.domainPathRules.invalidateCache();
     await this.domainPathRules.hydrate();
   }

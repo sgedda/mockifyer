@@ -139,3 +139,203 @@ export function createProvider(
     `In browser builds, only 'memory' provider is supported.`
   );
 }
+
+// Browser-safe stubs for initialization functions (Node versions are in date.ts/scenario.ts)
+export function initializeDateManipulation(_config?: any): void {
+  // Browser: no-op (date manipulation requires fs access to scenario date configs)
+}
+
+export function initializeScenario(_config?: any): void {
+  // Browser: no-op (scenario initialization requires fs)
+}
+
+export function isScenarioLaunchFromNativeArguments(): boolean {
+  // Browser: no launch arguments
+  return false;
+}
+
+export function resolveMockifyerRequestIdForError(_context: any): string | undefined {
+  // Browser: simplified error handling
+  return undefined;
+}
+
+export function attachMockifyerRequestIdToError(error: any, _requestId?: string): any {
+  // Browser: simplified error handling
+  return error;
+}
+
+export function tryGetClientIdFromLaunchArguments(_key?: string): string | undefined {
+  // Browser: no launch arguments
+  return undefined;
+}
+
+export const MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY = 'mockifyer-client-id';
+
+// Browser stubs for network-log and correlation functions
+export async function resolveNetworkLogIncludeTraceOptionsAsync(_config: any): Promise<any> {
+  return { includeTrace: false };
+}
+
+export function resolveNetworkLogIncludeTraceOptions(_config: any): any {
+  return { includeTrace: false };
+}
+
+export function emitMockifyerNetworkEvent(_options: any): void {
+  // Browser: no-op (network events require fs/Redis)
+}
+
+export function networkEventHashFromRequestKey(_key: string): string {
+  return '';
+}
+
+export function recordInlineTraceHopFromExchange(_data: any): void {
+  // Browser: no-op
+}
+
+export function unwrapAndMergeInlineTraceEnvelope(data: any): any {
+  // Browser: pass through
+  return data;
+}
+
+export function unwrapInlineTraceEnvelopeEmittingNetworkEvents(data: any, _context?: any): any {
+  // Browser: pass through
+  return data;
+}
+
+export function getInlineTraceEnvelopeBusinessBody(data: any): any {
+  // Browser: pass through
+  return data;
+}
+
+export function stripMockifyerTraceFromBody(data: any): any {
+  // Browser: pass through
+  return data;
+}
+
+export function applyOutboundRequestCorrelation(config: any, _options?: any): any {
+  // Browser: minimal correlation
+  const requestId = `req-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+  if (config && typeof config === 'object' && config.headers) {
+    config.headers['X-Mockifyer-Request-Id'] = requestId;
+  }
+  return { requestId };
+}
+
+export function readOutboundParentHopFromConfig(_config: any): any {
+  return undefined;
+}
+
+export function getActiveInboundRequest(): any {
+  return undefined;
+}
+
+export function ensureLocalInboundParentStubSaved(_options: any): Promise<void> {
+  return Promise.resolve();
+}
+
+export function inboundParentStubFilename(_id: string): string {
+  return '';
+}
+
+export function installNodeInboundRequestCorrelationCapture(): void {
+  // Browser: no-op
+}
+
+export function resolveActiveMockifyerSessionId(fallback?: () => string): string {
+  return fallback ? fallback() : `session-${Date.now()}`;
+}
+
+export function ensureOverrideGroupRuntimeForScenarioPath(_path: string, _options?: any): void {
+  // Browser: no-op
+}
+
+export function checkRequestLimit(_path: string): { limitReached: boolean; error?: any } {
+  return { limitReached: false };
+}
+
+// Export adoptStoredOutboundRequestId - used in mockifyer-class
+export function adoptStoredOutboundRequestId(config: any, storedRequestId?: string): any {
+  if (!storedRequestId) return undefined;
+  const requestId = storedRequestId;
+  if (config && typeof config === 'object' && config.headers) {
+    config.headers['X-Mockifyer-Request-Id'] = requestId;
+  }
+  return { requestId };
+}
+
+// Browser stub for date manipulation (real version in date.ts)
+export function createServeTimeClock(_config?: any): {
+  now: () => Date;
+  effectiveRecordedAt: (mock: any) => Date;
+} {
+  return {
+    now: () => new Date(),
+    effectiveRecordedAt: (mock: any) => mock?.timestamp ? new Date(mock.timestamp) : new Date()
+  };
+}
+
+export function formatDateStr(date: Date): string {
+  return date.toISOString().replace(/[:.]/g, '-').replace('Z', '');
+}
+
+export function getCurrentDate(): Date {
+  return new Date();
+}
+
+export function scheduleRuntimeDateSyncFromConfig(_config?: any): void {
+  // Browser: no-op (date sync requires fs)
+}
+
+export function registerMockifyerInstance(_instance?: any): void {
+  // Browser: no-op (instance registry for Node inbound correlation)
+}
+
+export function logMockifyerInitSummary(_config?: any, _options?: any): void {
+  // Browser: minimal logging
+  console.log('[Mockifyer] Browser instance initialized');
+}
+
+export function configureFlightRecorder(_config?: any): void {
+  // Browser: no-op (flight recorder configuration)
+}
+
+export function configureAtlas(_config?: any, _context?: any): void {
+  // Browser: no-op (Atlas configuration)
+}
+
+export function setFlightRecorderRuntimeContext(_context?: any): void {
+  // Browser: no-op (runtime context)
+}
+
+// Browser-safe DomainPathRulesSession stub (real version requires fs)
+export class DomainPathRulesSession {
+  private options: any;
+  
+  constructor(options: any) {
+    this.options = options;
+  }
+  
+  discover(_url: string, _baseUrl?: string): void {
+    // Browser: no-op (requires fs)
+  }
+  
+  getTrafficGate(_url: string, _baseUrl?: string): { mayReplay: boolean; mayRecord: boolean; matchedDomainPath?: string } {
+    // Browser: allow all traffic since we can't read rules from fs
+    return { 
+      mayReplay: true, 
+      mayRecord: this.options?.getRecordMode?.() ?? false 
+    };
+  }
+  
+  enableRecordResponsesForAllRules(): void {
+    // Browser: no-op
+  }
+  
+  invalidateCache(): void {
+    // Browser: no-op
+  }
+  
+  async hydrate(): Promise<void> {
+    // Browser: no-op
+  }
+}
