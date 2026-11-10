@@ -49,6 +49,18 @@ import {
   resolveActivationMode,
   shouldApplyMockifyer,
   isScenarioLaunchFromNativeArguments,
+  getCurrentScenario,
+  unwrapAndMergeInlineTraceEnvelope,
+  unwrapInlineTraceEnvelopeEmittingNetworkEvents,
+  applyOutboundRequestCorrelation,
+  resolveNetworkLogIncludeTraceOptionsAsync,
+  emitMockifyerNetworkEvent,
+  stripMockifyerTraceFromBody,
+  resolveActiveMockifyerSessionId,
+  setFlightRecorderRuntimeContext,
+  getInlineTraceEnvelopeBusinessBody,
+  recordInlineTraceHopFromExchange,
+  outboundHeadersToRecord,
   isExplicitProxyScenarioContext,
   newRecordingUsesAlwaysUseRealApi,
   shouldBlockLocalMockRecording,
@@ -72,6 +84,8 @@ import {
   getCurrentDate,
   isMockRecordingSidecarDir,
 } from '@sgedda/mockifyer-core';
+
+import { mirrorProxyRecordingToClient } from './core-proxy';
 
 // Local imports
 import { FetchHTTPClient } from './clients/fetch-client';
@@ -128,38 +142,47 @@ export class MockifyerClass {
    */
   private recordResponsesOverride: boolean | undefined = undefined;
 
-  /** Session id for timeline hops — per-screen id from setFlightRecorderRuntimeContext when set. */
+  /** Session id for timeline hops — per-screen id from {@link setFlightRecorderRuntimeContext} when set. */
   private getRuntimeSessionId(): string {
-    // Browser-safe fallback: generate session id without dependencies
-    const now = Date.now();
-    if (!this.currentSessionId || now - this.sessionStartTime > this.SESSION_TIMEOUT_MS) {
-      this.currentSessionId = `session-${now}-${Math.random().toString(36).substring(2, 11)}`;
-      this.sessionStartTime = now;
-    }
-    return this.currentSessionId;
+    return resolveActiveMockifyerSessionId(() => {
+      const now = Date.now();
+      if (!this.currentSessionId || now - this.sessionStartTime > this.SESSION_TIMEOUT_MS) {
+        this.currentSessionId = `session-${now}-${Math.random().toString(36).substring(2, 11)}`;
+        this.sessionStartTime = now;
+        setFlightRecorderRuntimeContext({ sessionId: this.currentSessionId });
+      }
+      return this.currentSessionId;
+    });
   }
 
   private unwrapResponseInlineTrace(response: {
     data?: unknown;
     config?: unknown;
   }): void {
-    // Browser-safe: just unwrap without emitting events (no network-log dependencies)
-    if (response.data && typeof response.data === 'object' && response.data !== null) {
-      const envelope = response.data as any;
-      if (envelope.data !== undefined && envelope.mockifyerTrace !== undefined) {
-        response.data = envelope.data;
-      }
+    const correlation = this.readRequestCorrelation(response.config);
+    const parentRequestId = correlation?.requestId?.trim();
+    if (!parentRequestId) {
+      response.data = unwrapAndMergeInlineTraceEnvelope(response.data);
+      return;
     }
+    const scenario =
+      this.config.proxy?.scenario?.trim() ||
+      this.capabilities.getCurrentScenario(this.config.mockDataPath, this.config.clientId);
+    response.data = unwrapInlineTraceEnvelopeEmittingNetworkEvents(response.data, {
+      parentRequestId,
+      config: this.config,
+      scenario,
+      clientId: this.config.clientId,
+      sessionId: this.getRuntimeSessionId(),
+      transport: this.usesDashboardProxy() ? 'proxy' : 'fetch',
+    });
   }
 
   private async applyOutboundCorrelation(config: unknown): Promise<RequestCorrelationContext> {
-    // Browser-safe: generate minimal correlation without network-log
-    const requestId = `req-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
-    const cfg = config as { headers?: any };
-    if (cfg.headers) {
-      cfg.headers['X-Mockifyer-Request-Id'] = requestId;
-    }
-    return { requestId };
+    return applyOutboundRequestCorrelation(
+      config as { headers?: unknown; url?: unknown; method?: unknown },
+      await resolveNetworkLogIncludeTraceOptionsAsync(this.config)
+    );
   }
 
   /**
@@ -177,30 +200,60 @@ export class MockifyerClass {
 
   /** Best-effort dashboard network log. */
   private logNetworkEvent(
-    partial: {
-      method: string;
-      url: string;
-      source: string;
-      status?: number;
-      durationMs?: number;
-      errorMessage?: string;
-      requestId?: string;
-      parentRequestId?: string;
+    partial: Parameters<typeof emitMockifyerNetworkEvent>[0]['event'] & {
       transport?: 'fetch' | 'proxy';
+      /** Raw bodies for inline-trace / network-log previews (stripped before emit). */
       requestBody?: unknown;
       responseBody?: unknown;
-      requestHash?: string;
-      requestHeaders?: Record<string, string>;
-      requestBodyPreview?: string;
-      responseBodyPreview?: string;
     },
     correlation?: RequestCorrelationContext,
+    /** Final outbound header bag (after auth interceptors). */
     requestHeadersSource?: unknown
   ): void {
-    // Browser-safe: minimal logging without network-log module
-    logger.debug(
-      `[Mockifyer] ${partial.method} ${partial.url} - ${partial.source} ${partial.status || ''}`
-    );
+    const scenario =
+      this.config.proxy?.scenario?.trim() ||
+      this.capabilities.getCurrentScenario(this.config.mockDataPath, this.config.clientId);
+
+    const { requestBody, responseBody, ...eventPartial } = partial;
+    const businessResponseBody = getInlineTraceEnvelopeBusinessBody(responseBody);
+    const requestHeaders =
+      eventPartial.requestHeaders ?? outboundHeadersToRecord(requestHeadersSource);
+
+    if (!this.config.proxy?.baseUrl) {
+      recordInlineTraceHopFromExchange({
+        method: eventPartial.method,
+        url: eventPartial.url,
+        status: eventPartial.status,
+        source: eventPartial.source,
+        transport: eventPartial.transport ?? 'fetch',
+        requestId: correlation?.requestId ?? eventPartial.requestId ?? null,
+        parentRequestId: correlation?.parentRequestId ?? eventPartial.parentRequestId ?? null,
+        durationMs: eventPartial.durationMs,
+        clientId: this.config.clientId ?? eventPartial.clientId ?? null,
+        errorMessage: eventPartial.errorMessage,
+        requestHeaders,
+        requestBody,
+        responseBody,
+      });
+    }
+
+    emitMockifyerNetworkEvent({
+      config: this.config,
+      scenario,
+      clientId: this.config.clientId,
+      sessionId: this.getRuntimeSessionId(),
+      requestBody,
+      responseBody: businessResponseBody,
+      event: {
+        ...eventPartial,
+        transport: eventPartial.transport ?? 'fetch',
+        requestId: correlation?.requestId ?? eventPartial.requestId,
+        parentRequestId: correlation?.parentRequestId ?? eventPartial.parentRequestId,
+        requestHeaders,
+        requestBodyPreview: eventPartial.requestBodyPreview,
+        responseBodyPreview: eventPartial.responseBodyPreview,
+      },
+    });
   }
 
   private stashRequestCorrelation(config: unknown, correlation: RequestCorrelationContext): void {
@@ -413,7 +466,15 @@ export class MockifyerClass {
     this.config = { ...config }; // Create a copy to avoid mutations
 
     // Resolve client ID
-    this.config.clientId = resolveClientId(this.config);
+    // Strict proxy: no auto lane until explicit clientId / setClientId (devtools show real URLs).
+    if (
+      resolveStrictScenarioResolution(this.config) &&
+      Boolean(this.config.proxy?.baseUrl?.trim())
+    ) {
+      this.config.clientId = resolveExplicitClientIdOnly(this.config);
+    } else {
+      this.config.clientId = resolveClientId(this.config);
+    }
     this.activationMode = resolveActivationMode(this.config);
     this.domainPathRules = new DomainPathRulesSession({
       config: this.config,
@@ -1003,6 +1064,10 @@ export class MockifyerClass {
           return response;
         }
 
+        if (this.config.proxy?.baseUrl && this.config.proxy?.mirrorRecordedMocksToClient) {
+          await this.maybeMirrorProxyRecordingToClient(response);
+        }
+
         const matchedMock = (response.config as any).__mockifyer_matchedMock as CachedMockData | undefined;
         if (matchedMock) {
           const startTime = (response.config as any).__mockifyer_startTime;
@@ -1028,7 +1093,7 @@ export class MockifyerClass {
 
           const capturedResponse: StoredResponse = {
             status: response.status,
-            data: response.data, // Browser: no stripMockifyerTraceFromBody
+            data: stripMockifyerTraceFromBody(response.data),
             headers: (response.headers as Record<string, string>) || {},
           };
 
@@ -1113,6 +1178,76 @@ export class MockifyerClass {
         this.throwWithMockifyerRequestId(error);
       }
     );
+  }
+
+  private async maybeMirrorProxyRecordingToClient(response: HTTPResponse): Promise<void> {
+    const rec = response.mockifyerProxyRecording;
+    if (!rec?.recordedToStore || !rec.storedMock) {
+      return;
+    }
+    const hash = rec.hash?.trim();
+    const scenarioName = rec.scenarioName?.trim();
+    const mockData = rec.storedMock as MockData;
+    const providerType = this.config.databaseProvider?.type;
+
+    await mirrorProxyRecordingToClient({
+      config: this.config,
+      mockDataPath: this.config.mockDataPath,
+      recording: rec,
+      databaseProvider: this.databaseProvider,
+      databaseProviderInitPromise: this.databaseProviderInitPromise,
+      logPrefix: 'Mockifyer-Fetch',
+    });
+
+    const fs = getFs();
+    if (providerType === 'hybrid' && hash && scenarioName && mockData) {
+      await this.tryMirrorProxyRecordingViaMetro(mockData, scenarioName, hash);
+    } else if (!fs && hash && scenarioName && mockData) {
+      await this.tryMirrorProxyRecordingViaMetro(mockData, scenarioName, hash);
+    }
+  }
+
+  private async tryMirrorProxyRecordingViaMetro(
+    mockData: MockData,
+    scenarioName: string,
+    hash: string
+  ): Promise<void> {
+    const metroPort = process.env.METRO_PORT ? parseInt(process.env.METRO_PORT, 10) : 8081;
+    const fetchFn = (global as any).__mockifyer_original_fetch || fetch;
+    if (!fetchFn) {
+      logger.warn('[Mockifyer-Fetch] Proxy client mirror: no fetch for Metro save');
+      return;
+    }
+    try {
+      const body = JSON.stringify({
+        __mockifyerProxyMirror: true,
+        mockData,
+        scenarioName,
+        relativePath: `redis/${hash}.json`,
+      });
+      const res = await fetchFn(`http://localhost:${metroPort}/mockifyer-save`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      });
+      const text = await res.text().catch(() => '');
+      if (!res.ok) {
+        logger.warn(`[Mockifyer-Fetch] Proxy client mirror (Metro): HTTP ${res.status} ${text}`);
+        return;
+      }
+      try {
+        const parsed = JSON.parse(text) as { success?: boolean; error?: string };
+        if (parsed.success === false) {
+          logger.warn(`[Mockifyer-Fetch] Proxy client mirror (Metro): ${parsed.error || 'save failed'}`);
+          return;
+        }
+      } catch {
+        // non-JSON response
+      }
+      logger.info(`[Mockifyer-Fetch] Mirrored proxy recording (Metro): ${scenarioName}/redis/${hash}.json`);
+    } catch (e) {
+      logger.warn('[Mockifyer-Fetch] Proxy client mirror (Metro) failed:', e);
+    }
   }
 
   private async saveResponse(response: HTTPResponse): Promise<void> {

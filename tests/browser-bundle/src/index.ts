@@ -56,7 +56,7 @@ export async function testSeededReplay() {
       throw new Error('Missing mock should have thrown an error');
     }
     
-    if (!errorMessage.includes('No mock found') || !errorMessage.includes('Request key:')) {
+    if (!errorMessage.includes('No mock data found for request:') || !errorMessage.includes('To fix:')) {
       throw new Error(`Error message not clear enough: ${errorMessage}`);
     }
     
