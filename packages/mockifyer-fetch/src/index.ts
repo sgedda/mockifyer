@@ -40,9 +40,6 @@ import {
   scheduleRuntimeDateSyncFromConfig,
   DatabaseProvider,
   createProvider,
-  getCurrentScenario,
-  getScenarioFolderPath,
-  ensureScenarioFolder,
   initializeScenario,
   isScenarioLaunchFromNativeArguments,
   TestGenerator,
@@ -145,10 +142,12 @@ import { resolveProxyUpstreamTlsInsecure } from '@sgedda/mockifyer-core/utils/pr
 import { FetchHTTPClient } from './clients/fetch-client';
 import { bodyInitForFetchResponse } from './utils/fetch-response-body';
 import { resolvePatchedFetchRequest } from './utils/resolve-patched-fetch-request';
+import { NodeCapabilities } from './node-capabilities';
 
 class MockifyerClass {
   private config: MockifyerConfig;
   private httpClient: HTTPClient;
+  private capabilities: NodeCapabilities;
   private processingRequests: Set<string> = new Set();
   private savingResponses: Set<string> = new Set();
   private databaseProvider?: DatabaseProvider;
@@ -200,7 +199,7 @@ class MockifyerClass {
     }
     const scenario =
       this.config.proxy?.scenario?.trim() ||
-      getCurrentScenario(this.config.mockDataPath);
+      this.capabilities.getCurrentScenario(this.config.mockDataPath);
     response.data = unwrapInlineTraceEnvelopeEmittingNetworkEvents(response.data, {
       parentRequestId,
       config: this.config,
@@ -245,7 +244,7 @@ class MockifyerClass {
   ): void {
     const scenario =
       this.config.proxy?.scenario?.trim() ||
-      getCurrentScenario(this.config.mockDataPath);
+      this.capabilities.getCurrentScenario(this.config.mockDataPath);
 
     const { requestBody, responseBody, ...eventPartial } = partial;
     const businessResponseBody = getInlineTraceEnvelopeBusinessBody(responseBody);
@@ -429,7 +428,24 @@ class MockifyerClass {
     }
   }
 
-  constructor(config: MockifyerConfig) {
+  constructor(config: MockifyerConfig, capabilities?: NodeCapabilities) {
+    // Import Node capabilities lazily (avoids bundling in browser builds)
+    if (!capabilities) {
+      // Dynamic import for Node capabilities
+      // In Node/Jest: uses require. In browser: capabilities must be passed explicitly.
+      if (typeof require !== 'undefined') {
+        const nodeModule = require('./node-capabilities.node');
+        this.capabilities = nodeModule.nodeCapabilities;
+      } else {
+        throw new Error(
+          '[Mockifyer] No capabilities provided and require() not available. ' +
+          'In browser builds, pass capabilities explicitly or use the browser entry point.'
+        );
+      }
+    } else {
+      this.capabilities = capabilities;
+    }
+
     // Validate database provider - filesystem, expo-filesystem, hybrid, and memory are supported
     if (config.databaseProvider && config.databaseProvider.type) {
       const supportedTypes = ['filesystem', 'expo-filesystem', 'hybrid', 'memory', 'redis', 'sqlite'];
@@ -545,12 +561,12 @@ class MockifyerClass {
     
     configureFlightRecorder(resolveFlightRecorderConfig(this.config));
     configureAtlas(this.config, {
-      scenario: getCurrentScenario(this.config.mockDataPath, this.config.clientId),
+      scenario: this.capabilities.getCurrentScenario(this.config.mockDataPath, this.config.clientId),
       clientId: this.config.clientId ?? null,
     });
     setFlightRecorderRuntimeContext({
       clientId: this.config.clientId,
-      scenario: getCurrentScenario(this.config.mockDataPath, this.config.clientId),
+      scenario: this.capabilities.getCurrentScenario(this.config.mockDataPath, this.config.clientId),
     });
 
     if (this.config.proxy?.baseUrl && this.config.proxy.mirrorRecordedMocksToClient === undefined) {
@@ -744,8 +760,8 @@ class MockifyerClass {
       return undefined;
     }
 
-    const currentScenario = getCurrentScenario(resolvedMockDataPath, this.config.clientId);
-    const scenarioPath = getScenarioFolderPath(resolvedMockDataPath, currentScenario);
+    const currentScenario = this.capabilities.getCurrentScenario(resolvedMockDataPath, this.config.clientId);
+    const scenarioPath = this.capabilities.getScenarioFolderPath(resolvedMockDataPath, currentScenario);
     ensureOverrideGroupRuntimeForScenarioPath(scenarioPath, { clientId: this.config.clientId });
     
     if (!fs.existsSync(scenarioPath)) {
@@ -985,9 +1001,9 @@ class MockifyerClass {
           );
           const path = getPath();
           const hitScenarioPath = path
-            ? getScenarioFolderPath(
+            ? this.capabilities.getScenarioFolderPath(
                 path.resolve(this.config.mockDataPath),
-                getCurrentScenario(path.resolve(this.config.mockDataPath), this.config.clientId)
+                this.capabilities.getCurrentScenario(path.resolve(this.config.mockDataPath), this.config.clientId)
               )
             : undefined;
           if (hitScenarioPath) {
@@ -1082,7 +1098,7 @@ class MockifyerClass {
       }
 
       if (this.config.failOnMissingMock) {
-        const scenario = getCurrentScenario(this.config.mockDataPath, this.config.clientId);
+        const scenario = this.capabilities.getCurrentScenario(this.config.mockDataPath, this.config.clientId);
         throw new Error(
           `No mock found for ${request.method} ${request.url}\n` +
           `Scenario: ${scenario}\n` +
@@ -1264,9 +1280,9 @@ class MockifyerClass {
 
           const path = getPath();
           const liveScenarioPath = path
-            ? getScenarioFolderPath(
+            ? this.capabilities.getScenarioFolderPath(
                 path.resolve(this.config.mockDataPath),
-                getCurrentScenario(path.resolve(this.config.mockDataPath), this.config.clientId)
+                this.capabilities.getCurrentScenario(path.resolve(this.config.mockDataPath), this.config.clientId)
               )
             : undefined;
           if (liveScenarioPath) {
@@ -1602,9 +1618,9 @@ class MockifyerClass {
         const fs = getFs();
         const path = getPath();
         if (fs && path) {
-          const currentScenario = getCurrentScenario(this.config.mockDataPath, this.config.clientId);
-          const scenarioPath = getScenarioFolderPath(this.config.mockDataPath, currentScenario);
-          ensureScenarioFolder(this.config.mockDataPath, currentScenario);
+          const currentScenario = this.capabilities.getCurrentScenario(this.config.mockDataPath, this.config.clientId);
+          const scenarioPath = this.capabilities.getScenarioFolderPath(this.config.mockDataPath, currentScenario);
+          this.capabilities.ensureScenarioFolder(this.config.mockDataPath, currentScenario);
 
           const limitCheck = checkRequestLimit(this.config.mockDataPath);
           if (limitCheck.limitReached && limitCheck.error) {
@@ -1665,8 +1681,8 @@ class MockifyerClass {
           if (!fs || !path || this.databaseProvider) {
             return false;
           }
-          const currentScenario = getCurrentScenario(this.config.mockDataPath, this.config.clientId);
-          const scenarioPath = getScenarioFolderPath(this.config.mockDataPath, currentScenario);
+          const currentScenario = this.capabilities.getCurrentScenario(this.config.mockDataPath, this.config.clientId);
+          const scenarioPath = this.capabilities.getScenarioFolderPath(this.config.mockDataPath, currentScenario);
           return fs.existsSync(path.join(scenarioPath, inboundParentStubFilename(id)));
         },
         save: async (row) => {
@@ -1679,9 +1695,9 @@ class MockifyerClass {
           if (!fs || !path) {
             return;
           }
-          const currentScenario = getCurrentScenario(this.config.mockDataPath, this.config.clientId);
-          const scenarioPath = getScenarioFolderPath(this.config.mockDataPath, currentScenario);
-          ensureScenarioFolder(this.config.mockDataPath, currentScenario);
+          const currentScenario = this.capabilities.getCurrentScenario(this.config.mockDataPath, this.config.clientId);
+          const scenarioPath = this.capabilities.getScenarioFolderPath(this.config.mockDataPath, currentScenario);
+          this.capabilities.ensureScenarioFolder(this.config.mockDataPath, currentScenario);
           const filePath = path.join(scenarioPath, row.filename);
           if (fs.existsSync(filePath)) {
             return;
@@ -2341,6 +2357,9 @@ export {
   canUseDashboardRedisProxy,
   canUseDashboardCentralProxy,
 } from './utils/dashboard-redis-health';
+
+// Export MockifyerClass for browser/RN entries to use with capabilities
+export { MockifyerClass };
 
 // Re-export types from core
 export * from '@sgedda/mockifyer-core';

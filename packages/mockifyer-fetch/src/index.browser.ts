@@ -31,8 +31,9 @@ export {
   canUseDashboardCentralProxy,
 } from './utils/dashboard-redis-health';
 
-// Import setupMockifyer from main index (specific import, not export *)
-import { setupMockifyer as setupMockifyerNode, type MockifyerInstance } from './index';
+// Import MockifyerClass and browser capabilities
+import { MockifyerClass, type MockifyerInstance } from './index';
+import { browserCapabilities } from './node-capabilities.browser';
 
 // Re-export the interface
 export type { MockifyerInstance };
@@ -80,5 +81,25 @@ export function setupMockifyer(config: import('@sgedda/mockifyer-core').Mockifye
     config.databaseProvider = { type: 'memory', options: {} };
   }
 
-  return setupMockifyerNode(config);
+  // Create with browser capabilities (no Node fs/path/crypto)
+  const mockifyer = new MockifyerClass(config, browserCapabilities);
+  
+  // Return httpClient extended with mockifyer methods (same pattern as Node entry)
+  const httpClient = mockifyer.getHTTPClient();
+  const extendedClient = httpClient as any;
+  
+  extendedClient.reloadMockData = (syncFromProject?: boolean) => mockifyer.reloadMockData(syncFromProject);
+  extendedClient.clearStaleCacheEntries = () => mockifyer.clearStaleCacheEntries();
+  extendedClient.clearAllMocks = () => mockifyer.clearAllMocks();
+  extendedClient.setClientId = (lane: string) => mockifyer.setClientId(lane);
+  extendedClient.getClientId = () => mockifyer.getClientId();
+  extendedClient.setRecordMode = (enabled: boolean) => mockifyer.setRecordMode(enabled);
+  extendedClient.isRecordMode = () => mockifyer.isRecordMode();
+  extendedClient.setRecordResponses = (enabled: boolean) => mockifyer.setRecordResponses(enabled);
+  extendedClient.isRecordResponses = () => mockifyer.isRecordResponses();
+  extendedClient.enableMockifyer = () => mockifyer.enableMockifyer();
+  extendedClient.disableMockifyer = () => mockifyer.disableMockifyer();
+  extendedClient.isMockifyerEnabled = () => mockifyer.isMockifyerEnabled();
+  
+  return extendedClient;
 }
