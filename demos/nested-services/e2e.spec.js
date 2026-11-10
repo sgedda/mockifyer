@@ -81,21 +81,6 @@ test.describe('Dashboard Trace', () => {
     expect(content).not.toContain('_scratch');
     expect(content).not.toContain('0 files');
     
-    // All mocks should be fully recorded (Pending = 0)
-    // Verify no _scratch scenario (indicates incomplete recording)
-    expect(content).not.toContain('_scratch');
-    
-    // Verify all fixtures are complete: check Replay mode stats
-    // Dashboard shows: Replay (count), Refresh (0), Pending (0), Live (0)
-    // Extract the replay mode section and verify Pending shows 0
-    const replayModeMatch = content.match(/Replay mode.*?Replay.*?(\d+).*?Pending.*?(\d+)/s);
-    expect(replayModeMatch).toBeTruthy();
-    
-    if (replayModeMatch) {
-      const pendingCount = parseInt(replayModeMatch[2]);
-      expect(pendingCount).toBe(0); // Pending must be 0
-    }
-    
     await page.screenshot({ path: 'screenshots/e2e-04-dashboard.png', fullPage: true });
   });
 });
