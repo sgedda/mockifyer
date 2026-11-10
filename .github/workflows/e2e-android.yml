@@ -174,6 +174,15 @@ jobs:
           working-directory: e2e
           script: |
             echo "Emulator up; uptime (s since boot or snapshot restore): $(adb shell cat /proc/uptime)"
+            
+            # Stream logcat to file for failure diagnostics (capture from start, before tests)
+            adb logcat -v time > /tmp/logcat.txt 2>&1 &
+            LOGCAT_PID=$!
+            echo "Started logcat capture (PID: $LOGCAT_PID)"
+            
+            # Ensure logcat stops when script exits
+            trap "kill $LOGCAT_PID 2>/dev/null || true" EXIT
+            
             adb install -r ../example-projects/wanderweird-travel/apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk
             npx playwright test --project=android
 
@@ -229,7 +238,7 @@ jobs:
           if-no-files-found: warn
           overwrite: true
 
-      - name: Upload test results, Maestro output and service logs on failure
+      - name: Upload test results, Maestro output, service logs and logcat on failure
         if: failure() || cancelled()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -243,22 +252,7 @@ jobs:
             /tmp/gateway-api.log
             /tmp/scratch-dashboard.log
             /tmp/main-dashboard.log
-          retention-days: 7
-          if-no-files-found: warn
-          overwrite: true
-      
-      - name: Capture logcat on failure
-        if: failure() || cancelled()
-        run: |
-          echo "=== Capturing logcat (last 1000 lines) ===" 
-          adb logcat -d -t 1000 > /tmp/logcat.txt 2>&1 || echo "Failed to capture logcat"
-          
-      - name: Upload logcat on failure
-        if: failure() || cancelled()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: e2e-logcat
-          path: /tmp/logcat.txt
+            /tmp/logcat.txt
           retention-days: 7
           if-no-files-found: warn
           overwrite: true
