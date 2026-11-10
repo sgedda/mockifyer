@@ -231,7 +231,7 @@ export default function Introduction() {
       </section>
 
       {/* Code Example */}
-      <section className="mx-auto max-w-[1200px] px-5 py-20">
+      <section id="date-freezing" className="mx-auto max-w-[1200px] px-5 py-20">
         <div className="max-w-3xl mx-auto">
           <h2 className="text-3xl font-semibold tracking-tight mb-4">Setup in 30 Seconds</h2>
           <p className="text-muted-foreground mb-8">

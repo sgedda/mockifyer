@@ -24,7 +24,6 @@ const guideItems = [
   { href: '/guides/reproduce-tester-bugs', label: 'Reproduce Tester Bugs' },
   { href: '/guides/stable-react-native-e2e', label: 'Stable React Native E2E' },
   { href: '/guides/mock-drift', label: 'Stop Mock Drift' },
-  { href: '/guides/nuxt-ssr-fixtures', label: 'Nuxt SSR Fixtures' },
 ]
 
 export default function Navigation() {

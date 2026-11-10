@@ -28,20 +28,12 @@ test.describe('Guide Pages', () => {
     await expect(page.getByRole('button', { name: /Try Drift Detection Demo/i })).toBeVisible();
   });
 
-  test('should load Nuxt SSR Fixtures guide', async ({ page }) => {
-    await page.goto('/guides/nuxt-ssr-fixtures');
-    await expect(page.getByRole('heading', { name: /Nuxt SSR Fixtures/i })).toBeVisible();
-    // Use first() to avoid strict mode violation (appears multiple times)
-    await expect(page.getByText(/Nuxt.*Nitro/i).first()).toBeVisible();
-  });
-
   test('all guides should have back to home button', async ({ page }) => {
     const guides = [
       '/guides/mock-at-the-network-edge',
       '/guides/reproduce-tester-bugs',
       '/guides/stable-react-native-e2e',
       '/guides/mock-drift',
-      '/guides/nuxt-ssr-fixtures',
     ];
 
     for (const guide of guides) {

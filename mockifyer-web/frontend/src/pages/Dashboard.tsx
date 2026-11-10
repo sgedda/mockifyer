@@ -62,7 +62,7 @@ export default function Dashboard() {
       </section>
 
       {/* Atlas */}
-      <section>
+      <section id="network">
         <Card className="border-border">
           <CardHeader>
             <CardTitle className="text-2xl">Atlas: Live Tracing with the <code className="text-sm">t</code> Key</CardTitle>

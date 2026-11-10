@@ -17,7 +17,6 @@ import MockAtTheNetworkEdge from './pages/guides/MockAtTheNetworkEdge'
 import ReproduceTesterBugs from './pages/guides/ReproduceTesterBugs'
 import StableReactNativeE2E from './pages/guides/StableReactNativeE2E'
 import MockDrift from './pages/guides/MockDrift'
-import NuxtSsrFixtures from './pages/guides/NuxtSsrFixtures'
 import { ThemeProvider } from './lib/use-theme'
 import PageSeoManager from './components/PageSeoManager'
 
@@ -49,12 +48,11 @@ function App() {
               <Route path="/guides/reproduce-tester-bugs" element={<ReproduceTesterBugs />} />
               <Route path="/guides/stable-react-native-e2e" element={<StableReactNativeE2E />} />
               <Route path="/guides/mock-drift" element={<MockDrift />} />
-              <Route path="/guides/nuxt-ssr-fixtures" element={<NuxtSsrFixtures />} />
               
               {/* Redirects for removed pages */}
-              <Route path="/playground" element={<Navigate to="/" replace />} />
-              <Route path="/timeline" element={<Navigate to="/" replace />} />
-              <Route path="/settings" element={<Navigate to="/" replace />} />
+              <Route path="/playground" element={<Navigate to="/getting-started" replace />} />
+              <Route path="/timeline" element={<Navigate to="/dashboard#network" replace />} />
+              <Route path="/settings" element={<Navigate to="/#date-freezing" replace />} />
               
               <Route path="/date-config" element={<DateConfig />} />
               <Route path="/getting-started" element={<GettingStarted />} />

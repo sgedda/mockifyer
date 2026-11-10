@@ -92,11 +92,10 @@ test.describe('Navigation', () => {
     const mockEdgeLink = page.locator('a[href="/guides/mock-at-the-network-edge"]');
     await expect(mockEdgeLink).toBeVisible({ timeout: 5000 });
     
-    // Check other guide links exist
+    // Check other guide links exist (4 guides total)
     await expect(page.locator('a[href="/guides/reproduce-tester-bugs"]')).toBeVisible();
     await expect(page.locator('a[href="/guides/stable-react-native-e2e"]')).toBeVisible();
     await expect(page.locator('a[href="/guides/mock-drift"]')).toBeVisible();
-    await expect(page.locator('a[href="/guides/nuxt-ssr-fixtures"]')).toBeVisible();
   });
 
   test('should navigate to guide page from dropdown', async ({ page }) => {
