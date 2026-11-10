@@ -61,8 +61,39 @@ export default function Dashboard() {
         </Card>
       </section>
 
-      {/* Atlas */}
+      {/* Network */}
       <section id="network">
+        <Card className="border-border">
+          <CardHeader>
+            <CardTitle className="text-2xl">Network View</CardTitle>
+            <CardDescription className="text-base">
+              Live HTTP traffic filtered by client lane and scenario
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <p className="text-muted-foreground leading-relaxed">
+              The dashboard's <strong className="text-foreground">Network</strong> page shows every HTTP request in real-time,
+              with filtering by client ID and scenario. View the status, duration, and whether each request was a hit (served from mock) or miss (called the real API).
+            </p>
+            <ul className="space-y-2 text-sm text-muted-foreground">
+              {['Filter by client ID to see one device\'s traffic', 'Filter by scenario to isolate a test world', 'Click any request to view full request/response details', 'Export requests as curl commands from the mock editor'].map((item) => (
+                <li key={item} className="flex gap-2">
+                  <span className="text-primary">•</span>
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+            <CodeBlock
+              language="bash"
+              code={`# Start the dashboard and navigate to http://localhost:3002/network
+npx @sgedda/mockifyer-dashboard --path ./mock-data`}
+            />
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* Atlas */}
+      <section id="atlas">
         <Card className="border-border">
           <CardHeader>
             <CardTitle className="text-2xl">Atlas: Live Tracing with the <code className="text-sm">t</code> Key</CardTitle>
