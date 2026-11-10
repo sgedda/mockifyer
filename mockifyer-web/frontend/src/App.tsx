@@ -11,6 +11,10 @@ import Settings from './pages/Settings'
 import Contact from './pages/Contact'
 import Comparisons from './pages/Comparisons'
 import E2ETutorial from './pages/E2ETutorial'
+import Features from './pages/Features'
+import FAQ from './pages/FAQ'
+import Packages from './pages/Packages'
+import Dashboard from './pages/Dashboard'
 import { ThemeProvider } from './lib/use-theme'
 import PageSeoManager from './components/PageSeoManager'
 
@@ -32,6 +36,10 @@ function App() {
             <Routes>
               <Route path="/" element={<Introduction />} />
               <Route path="/index.html" element={<Introduction />} />
+              <Route path="/features" element={<Features />} />
+              <Route path="/faq" element={<FAQ />} />
+              <Route path="/packages" element={<Packages />} />
+              <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/playground" element={<Playground />} />
               <Route path="/timeline" element={<Timeline />} />
               <Route path="/date-config" element={<DateConfig />} />

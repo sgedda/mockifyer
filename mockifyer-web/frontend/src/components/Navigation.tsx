@@ -6,11 +6,11 @@ import Logo from './Logo'
 import { useTheme } from '@/lib/use-theme'
 
 const navItems = [
-  { href: '/getting-started', label: 'Getting Started' },
-  { href: '/playground', label: 'Playground' },
-  { href: '/comparisons', label: 'Comparisons' },
-  { href: '/e2e-tutorial', label: 'E2E Tutorial' },
-  { href: '/contact', label: 'Contact' },
+  { href: '/getting-started', label: 'Get Started' },
+  { href: '/features', label: 'Features' },
+  { href: '/dashboard', label: 'Dashboard' },
+  { href: '/packages', label: 'Packages' },
+  { href: '/faq', label: 'FAQ' },
 ]
 
 export default function Navigation() {
