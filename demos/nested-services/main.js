@@ -1,5 +1,25 @@
-const GATEWAY_URL = 'http://localhost:3001';
-const DASHBOARD_URL = 'http://localhost:3002';
+// Detect if running in StackBlitz WebContainer or similar cloud environment
+function getServiceUrl(port) {
+  const hostname = window.location.hostname;
+  
+  // StackBlitz WebContainer pattern: project-id.webcontainer.io becomes project-id-PORT.webcontainer.io
+  if (hostname.includes('.webcontainer.io')) {
+    const base = hostname.split('.webcontainer.io')[0];
+    return `https://${base}-${port}.webcontainer.io`;
+  }
+  
+  // Stackblitz legacy pattern or other cloud IDEs
+  if (hostname.includes('stackblitz') || hostname.includes('gitpod') || hostname.includes('codespaces')) {
+    const protocol = window.location.protocol;
+    return `${protocol}//${hostname.replace(/:\d+/, '')}:${port}`;
+  }
+  
+  // Local development
+  return `http://localhost:${port}`;
+}
+
+const GATEWAY_URL = getServiceUrl(3001);
+const DASHBOARD_URL = getServiceUrl(3002);
 
 const elements = {
   cityInput: document.getElementById('cityInput'),
@@ -104,8 +124,8 @@ async function switchScenario() {
   elements.switchScenarioButton.disabled = true;
   
   try {
-    const response = await fetch(`${DASHBOARD_URL}/api/scenario-config/active-scenario`, {
-      method: 'PUT',
+    const response = await fetch(`${DASHBOARD_URL}/api/scenario-config/set`, {
+      method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
@@ -142,5 +162,10 @@ elements.cityInput.addEventListener('keypress', (e) => {
 
 // Auto-fetch on load
 window.addEventListener('load', () => {
+  // Set dashboard links
+  document.getElementById('dashboardLink').href = DASHBOARD_URL;
+  document.getElementById('traceLink').href = `${DASHBOARD_URL}/#/network-events`;
+  document.getElementById('mocksLink').href = `${DASHBOARD_URL}/#/mocks`;
+  
   fetchTripInfo();
 });

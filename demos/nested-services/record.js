@@ -47,7 +47,7 @@ async function recordMocks() {
     
     await new Promise(resolve => setImmediate(resolve));
     
-    // Record reviews API (second-level hop)
+    // Record reviews API (second-level hop, using place_id=1)
     console.log('\n→ Recording Reviews API...');
     const reviewsRes = await fetch(
       'https://jsonplaceholder.typicode.com/posts/1/comments',

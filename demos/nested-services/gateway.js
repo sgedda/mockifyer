@@ -74,7 +74,7 @@ async function getLocationReviews(city, requestId) {
   }
   
   const places = await placesResponse.json();
-  const placeId = places?.features?.[0]?.properties?.place_id || 1;
+  const placeId = 1;
   
   // Second call: get reviews for that place (second-level hop!)
   console.log(`    [Places] → Reviews API: place ${placeId}`);

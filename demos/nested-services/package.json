@@ -7,7 +7,7 @@
     "dev": "concurrently \"npm run gateway\" \"npm run frontend\" \"npm run dashboard\"",
     "gateway": "node --watch gateway.js",
     "frontend": "vite",
-    "dashboard": "mockifyer-dashboard --mock-data ./mock-data --port 3002",
+    "dashboard": "mockifyer-dashboard --path ./mock-data --port 3002",
     "record": "node record.js",
     "test": "vitest run",
     "test:watch": "vitest"

@@ -1,7 +1,7 @@
 {
   "request": {
     "method": "GET",
-    "url": "https://api.weatherapi.com/v1/current.json?key=demo&q=London",
+    "url": "https://api.weatherapi.com/v1/current.json?key=***&q=London",
     "headers": {
       "x-mockifyer-request-id": "demo-record-001"
     }

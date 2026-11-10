@@ -1,7 +1,7 @@
 {
   "request": {
     "method": "GET",
-    "url": "https://api.geoapify.com/v2/places?text=London&format=json&apiKey=demo",
+    "url": "https://api.geoapify.com/v2/places?text=London&format=json&apikey=***",
     "headers": {
       "x-mockifyer-request-id": "demo-record-001"
     }
