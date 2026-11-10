@@ -4,14 +4,16 @@
   "type": "module",
   "description": "Mockifyer nested services demo: Gateway with fan-out topology, request tracing, and live dashboard",
   "scripts": {
+    "start": "concurrently \"npm run gateway\" \"npm run frontend\" \"npm run dashboard\"",
     "dev": "concurrently \"npm run gateway\" \"npm run frontend\" \"npm run dashboard\"",
-    "gateway": "node --watch gateway.js",
+    "gateway": "node gateway.js",
     "frontend": "vite",
     "dashboard": "mockifyer-dashboard --path ./mock-data --port 3002",
     "record": "node record.js",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:integration": "playwright test integration.spec.js"
   },
   "dependencies": {
     "@sgedda/mockifyer-core": "^1.10.181",

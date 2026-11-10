@@ -1,25 +1,28 @@
-// Detect if running in StackBlitz WebContainer or similar cloud environment
-function getServiceUrl(port) {
+// Compute dashboard URL for WebContainer or local development
+function getDashboardUrl() {
   const hostname = window.location.hostname;
   
-  // StackBlitz WebContainer pattern: project-id.webcontainer.io becomes project-id-PORT.webcontainer.io
+  // StackBlitz WebContainer: *.webcontainer.io
+  // Port pattern: project-5173.webcontainer.io → project-3002.webcontainer.io
   if (hostname.includes('.webcontainer.io')) {
-    const base = hostname.split('.webcontainer.io')[0];
-    return `https://${base}-${port}.webcontainer.io`;
+    // Replace the port number in the hostname
+    const dashboardHost = hostname.replace(/-\d+\.webcontainer\.io/, '-3002.webcontainer.io');
+    return `https://${dashboardHost}`;
   }
   
-  // Stackblitz legacy pattern or other cloud IDEs
+  // Other cloud IDEs
   if (hostname.includes('stackblitz') || hostname.includes('gitpod') || hostname.includes('codespaces')) {
     const protocol = window.location.protocol;
-    return `${protocol}//${hostname.replace(/:\d+/, '')}:${port}`;
+    return `${protocol}//${hostname.replace(/:\d+/, '')}:3002`;
   }
   
   // Local development
-  return `http://localhost:${port}`;
+  return 'http://localhost:3002';
 }
 
-const GATEWAY_URL = getServiceUrl(3001);
-const DASHBOARD_URL = getServiceUrl(3002);
+// Gateway is proxied through Vite, so use relative URL
+const GATEWAY_URL = '';  // Empty string means relative to current origin
+const DASHBOARD_URL = getDashboardUrl();
 
 const elements = {
   cityInput: document.getElementById('cityInput'),
@@ -47,7 +50,8 @@ async function fetchTripInfo() {
   try {
     // Get current scenario from selector
     const scenario = elements.scenarioSelect.value;
-    const url = `${GATEWAY_URL}/api/trip/${encodeURIComponent(city)}?scenario=${encodeURIComponent(scenario)}`;
+    // Use relative URL - Vite proxies /api to gateway on port 3001
+    const url = `/api/trip/${encodeURIComponent(city)}?scenario=${encodeURIComponent(scenario)}`;
     const response = await fetch(url);
     
     if (!response.ok) {
