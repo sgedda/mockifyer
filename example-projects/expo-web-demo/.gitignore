@@ -39,3 +39,10 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# test artifacts
+test-results/
+playwright-report/
+
+# npm packages
+*.tgz
