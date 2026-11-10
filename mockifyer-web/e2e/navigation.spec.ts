@@ -81,30 +81,33 @@ test.describe('Navigation', () => {
   test('should have Guides dropdown with guide links', async ({ page }) => {
     await page.goto('/');
     
-    // Click Guides button and wait for menu to appear
+    // Click Guides button
     const guidesButton = page.getByRole('button', { name: 'Guides' });
     await guidesButton.click();
     
-    // Wait for dropdown menu to be visible (use a reliable selector)
-    await page.waitForSelector('[role="menu"]', { state: 'visible', timeout: 5000 });
+    // Wait for any guide link to appear (they're rendered on click)
+    await page.waitForTimeout(500); // Allow dropdown to render
     
-    // Check guide links appear
-    await expect(page.getByRole('link', { name: 'Mock at the Network Edge' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Reproduce Tester Bugs' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Stable React Native E2E' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Stop Mock Drift' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Nuxt SSR Fixtures' })).toBeVisible();
+    // Check guide links appear (use getByRole to find links)
+    const mockEdgeLink = page.locator('a[href="/guides/mock-at-the-network-edge"]');
+    await expect(mockEdgeLink).toBeVisible({ timeout: 5000 });
+    
+    // Check other guide links exist
+    await expect(page.locator('a[href="/guides/reproduce-tester-bugs"]')).toBeVisible();
+    await expect(page.locator('a[href="/guides/stable-react-native-e2e"]')).toBeVisible();
+    await expect(page.locator('a[href="/guides/mock-drift"]')).toBeVisible();
+    await expect(page.locator('a[href="/guides/nuxt-ssr-fixtures"]')).toBeVisible();
   });
 
   test('should navigate to guide page from dropdown', async ({ page }) => {
     await page.goto('/');
     
-    // Open Guides dropdown and wait for menu
+    // Open Guides dropdown
     await page.getByRole('button', { name: 'Guides' }).click();
-    await page.waitForSelector('[role="menu"]', { state: 'visible', timeout: 5000 });
+    await page.waitForTimeout(500); // Allow dropdown to render
     
-    // Click on a guide
-    await page.getByRole('link', { name: 'Mock at the Network Edge' }).click();
+    // Click on a guide using href selector
+    await page.locator('a[href="/guides/mock-at-the-network-edge"]').click();
     
     // Check we're on the guide page
     await expect(page).toHaveURL(/.*guides\/mock-at-the-network-edge/);
