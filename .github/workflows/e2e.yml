@@ -45,12 +45,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      - name: Setup Node.js 20
-        uses: actions/setup-node@v4
+      - name: Setup Node.js 22
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
           cache-dependency-path: |
             package-lock.json
@@ -155,53 +155,53 @@ jobs:
 
       - name: Upload side-by-side GUI videos and run docs
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea6044f84ff7ed2b4541da7ac4bfa89eee8c2e66 # v4.5.0
         with:
           name: e2e-gui-videos
           path: |
             e2e/gui-videos/*.mp4
             e2e/gui-videos/*.md
             e2e/gui-videos/other-tests/*.md
-          retention-days: 30
+          retention-days: 7
           if-no-files-found: warn
           overwrite: true
 
-      - name: Upload individual videos
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+      - name: Upload individual videos (failure only)
+        if: failure()
+        uses: actions/upload-artifact@ea6044f84ff7ed2b4541da7ac4bfa89eee8c2e66 # v4.5.0
         with:
           name: e2e-videos
           path: |
             e2e/gui-videos/individual/*.webm
             e2e/test-results/**/*.webm
             !e2e/test-results/dashboard-gui-*/**
-          retention-days: 30
+          retention-days: 7
           if-no-files-found: warn
           overwrite: true
 
-      - name: Upload Playwright HTML report
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+      - name: Upload Playwright HTML report (failure only)
+        if: failure()
+        uses: actions/upload-artifact@ea6044f84ff7ed2b4541da7ac4bfa89eee8c2e66 # v4.5.0
         with:
           name: e2e-report
           path: e2e/playwright-report
-          retention-days: 30
+          retention-days: 7
           if-no-files-found: warn
           overwrite: true
 
-      - name: Upload traces
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+      - name: Upload traces (failure only)
+        if: failure()
+        uses: actions/upload-artifact@ea6044f84ff7ed2b4541da7ac4bfa89eee8c2e66 # v4.5.0
         with:
           name: e2e-traces
           path: e2e/test-results/**/trace.zip
-          retention-days: 30
+          retention-days: 7
           if-no-files-found: warn
           overwrite: true
 
       - name: Upload test results and service logs on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea6044f84ff7ed2b4541da7ac4bfa89eee8c2e66 # v4.5.0
         with:
           name: e2e-logs
           path: |
@@ -213,7 +213,7 @@ jobs:
             /tmp/wander-api.log
             /tmp/gateway-api.log
             /tmp/scratch-dashboard.log
-          retention-days: 30
+          retention-days: 7
           if-no-files-found: warn
           overwrite: true
 
