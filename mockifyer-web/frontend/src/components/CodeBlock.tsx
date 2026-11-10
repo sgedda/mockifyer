@@ -19,34 +19,29 @@ export default function CodeBlock({ code, language = 'typescript', className, sm
   const { theme } = useTheme()
   const isDark = theme === 'dark'
   
-  // Use dark theme for dark mode, light theme for light mode
   const syntaxStyle = isDark ? vscDarkPlus : prism
-  // Use a nice light blue-grey for light mode instead of plain grey
-  const bgColor = isDark ? '#1e1e1e' : '#f0f4f8'
 
   const handleCopy = () => {
     navigator.clipboard.writeText(code.trim())
     toast({
-      title: 'Copied',
-      description: 'Code copied to clipboard',
+      title: 'Copied to clipboard',
     })
   }
 
   return (
-    <div className={cn('rounded-md overflow-hidden border', className)} style={{ backgroundColor: bgColor }}>
-      <div className="flex items-center justify-between p-2 border-b" style={{ backgroundColor: bgColor }}>
-        <span className="text-xs text-muted-foreground uppercase font-medium">{language || 'code'}</span>
+    <div className={cn('relative group rounded-lg overflow-hidden border border-border bg-muted/50', className)}>
+      <div className="absolute top-2 right-2 z-10">
         <Button
           variant="ghost"
           size="sm"
           onClick={handleCopy}
-          className="h-7 px-2 text-xs"
+          className="h-8 px-3 text-xs opacity-0 group-hover:opacity-100 transition-opacity bg-background/80 backdrop-blur"
         >
-          <Copy className="h-3 w-3 mr-1" />
+          <Copy className="h-3.5 w-3.5 mr-1.5" />
           Copy
         </Button>
       </div>
-      <div className={cn('overflow-auto', small ? 'p-2' : 'p-4')}>
+      <div className={cn('overflow-auto', small ? 'p-3' : 'p-4')}>
         <SyntaxHighlighter
           language={language}
           style={syntaxStyle}
@@ -54,14 +49,14 @@ export default function CodeBlock({ code, language = 'typescript', className, sm
             margin: 0,
             padding: 0,
             fontSize: small ? '0.75rem' : '0.875rem',
-            lineHeight: '1.5',
+            lineHeight: '1.65',
             borderRadius: '0',
-            background: bgColor,
+            background: 'transparent',
             display: 'block',
           }}
           codeTagProps={{
             style: {
-              background: bgColor,
+              background: 'transparent',
               fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
             }
           }}
@@ -69,7 +64,7 @@ export default function CodeBlock({ code, language = 'typescript', className, sm
             <pre {...props} style={{ 
               margin: 0, 
               padding: 0, 
-              background: bgColor,
+              background: 'transparent',
             }}>
               {children}
             </pre>

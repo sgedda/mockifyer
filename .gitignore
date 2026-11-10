@@ -42,6 +42,9 @@ mock-data/
 example-projects/**/mock-data/
 test-mock-data/
 
+# Demo dependencies
+demos/**/node_modules/
+
 # Local checkout / submodule (not part of mockifyer releases)
 example-projects/capp-react-native/ 
 # Local Atlas HTML preview samples

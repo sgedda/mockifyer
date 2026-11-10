@@ -1,0 +1,10 @@
+{
+  "demo.devxtools.dev": {
+    "recordResponses": true,
+    "autoMock": true
+  },
+  "demo.devxtools.dev/tasks": {
+    "recordResponses": true,
+    "autoMock": true
+  }
+}

@@ -104,11 +104,12 @@ test.describe('E2E Tutorial Page', () => {
     await expect(page.getByText(/recorded with.*E2E_PRESENTATION/i)).toBeVisible();
   });
 
-  test('should be accessible from navigation', async ({ page }) => {
+  test('should be accessible from home page', async ({ page }) => {
     await page.goto('/');
-    const navLink = page.getByRole('navigation').getByRole('link', { name: 'E2E Tutorial' });
-    await expect(navLink).toBeVisible();
-    await navLink.click();
+    // E2E Tutorial link is in the hero section, not main nav
+    const tutorialLink = page.getByRole('link', { name: /E2E Tutorial/i }).first();
+    await expect(tutorialLink).toBeVisible();
+    await tutorialLink.click();
     await expect(page).toHaveURL(/.*e2e-tutorial/);
     await expect(page.getByRole('heading', { name: /Controlling a nested multi-service stack/i })).toBeVisible();
   });
