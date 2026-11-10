@@ -23,7 +23,8 @@ case "${1:-}" in
     EXPO_PUBLIC_E2E=1 \
     EXPO_PUBLIC_MOCKIFYER_BACKEND=redis \
     EXPO_PUBLIC_MOCKIFYER_CLIENT_ID="${MOCKIFYER_CLIENT_ID:-wanderweird-demo}" \
-      exec npx expo start --port "$METRO_PORT"
+    NODE_OPTIONS="${NODE_OPTIONS:---dns-result-order=ipv4first}" \
+      exec npx expo start --port "$METRO_PORT" --host 0.0.0.0
     ;;
   warm)
     out="$(mktemp)"
