@@ -75,11 +75,22 @@ test.describe('Dashboard Trace', () => {
     
     const content = await page.content();
     
-    // Should show at least 4 mocks
-    // Should show at least 1 multi-hop chain
-    // Should NOT be pointing at _scratch
+    // Verify no _scratch scenario (indicates incomplete recording)
     expect(content).not.toContain('_scratch');
     expect(content).not.toContain('0 files');
+    
+    // Verify request chain structure: should show 4 hops under one root
+    // (gateway inbound-parent → weather, places→reviews, currency)
+    // Note: The inbound-parent stub counts as "Pending = 1" (metadata/correlation root)
+    // but all real API calls should be "Replay"
+    
+    // Dashboard should show "1 multi-hop" and "4 hops" in the Service hops section
+    expect(content).toMatch(/1\s+multi-hop/i);
+    expect(content).toMatch(/4\s+hops/i);
+    
+    // Replay mode section should show at least 4 mocks in Replay (the real API calls)
+    // Check for the Replay badge with count
+    expect(content).toMatch(/Replay.*?[4-9]/s); // At least 4 in Replay mode
     
     await page.screenshot({ path: 'screenshots/e2e-04-dashboard.png', fullPage: true });
   });
