@@ -4,7 +4,7 @@
   "main": "index.js",
   "dependencies": {
     "@sgedda/mockifyer-core": "file:../packages/mockifyer-core/sgedda-mockifyer-core-1.10.192.tgz",
-    "@sgedda/mockifyer-fetch": "file:../packages/mockifyer-fetch/sgedda-mockifyer-fetch-1.8.107.tgz",
+    "@sgedda/mockifyer-fetch": "file:sgedda-mockifyer-fetch-1.8.107.tgz",
     "expo": "~58.0.23",
     "expo-status-bar": "~58.0.4",
     "react": "19.3.0",

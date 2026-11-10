@@ -48,6 +48,7 @@ import {
   resolveProxyStrictLaneScenario,
   resolveActivationMode,
   shouldApplyMockifyer,
+  isScenarioLaunchFromNativeArguments,
   isExplicitProxyScenarioContext,
   newRecordingUsesAlwaysUseRealApi,
   shouldBlockLocalMockRecording,
@@ -97,7 +98,7 @@ function getPath(): typeof import('path') | null {
   return lazyRequire('path');
 }
 
-class MockifyerClass {
+export class MockifyerClass {
   private config: MockifyerConfig;
   private httpClient: HTTPClient;
   private capabilities: NodeCapabilities;
@@ -430,7 +431,7 @@ class MockifyerClass {
       initialRuntimeEnabled: config.initialRuntimeEnabled,
       startDisabled: config.startDisabled,
       runtimeMode: config.runtimeMode,
-      launchScenarioPresent: false, // Browser: no launch arguments
+      launchScenarioPresent: isScenarioLaunchFromNativeArguments(),
     });
     
     if (!this.runtimeEnabled) {
@@ -928,10 +929,12 @@ class MockifyerClass {
 
       if (this.config.failOnMissingMock) {
         const scenario = this.capabilities.getCurrentScenario(this.config.mockDataPath, this.config.clientId);
+        const requestKey = this.generateRequestKey(request);
         throw new Error(
-          `No mock found for ${request.method} ${request.url}\n` +
+          `No mock data found for request: ${requestKey}\n` +
+          `\n` +
           `Scenario: ${scenario}\n` +
-          `Request key: ${this.generateRequestKey(request)}\n` +
+          `Request key: ${requestKey}\n` +
           `\n` +
           `In replay mode with failOnMissingMock=true, all requests must have recorded mocks.\n` +
           `To fix:\n` +
@@ -1528,5 +1531,3 @@ class MockifyerClass {
     }
   }
 }
-
-export { MockifyerClass };
