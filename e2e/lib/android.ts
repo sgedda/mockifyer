@@ -178,7 +178,7 @@ async function recordSize(): Promise<string> {
 
 /** `adb shell screenrecord` in consecutive chunks (180 s cap per file) until stopped, then one mp4. */
 export class ScreenRecorder {
-  private readonly chunks: Array<{ remote: string; startedAtMs: number }> = [];
+  private readonly chunks: Array<{ remote: string; startedAtMs: number; succeeded: boolean }> = [];
   private exited: Promise<void> = Promise.resolve();
   private stopping = false;
   private size = '';
@@ -202,7 +202,8 @@ export class ScreenRecorder {
       '--bit-rate', String(RECORD_BIT_RATE),
       remote,
     ], { stdio: 'ignore' });
-    this.chunks.push({ remote, startedAtMs });
+    const chunkIndex = this.chunks.length;
+    this.chunks.push({ remote, startedAtMs, succeeded: false });
     this.exited = new Promise((resolve) => {
       child.once('exit', (code) => {
         const elapsedMs = Date.now() - startedAtMs;
@@ -211,7 +212,7 @@ export class ScreenRecorder {
         if (code !== 0 || fastFailure) {
           this.consecutiveFailures++;
           console.warn(
-            `[ScreenRecorder] Chunk ${this.chunks.length - 1} exited with code ${code} after ${elapsedMs}ms ` +
+            `[ScreenRecorder] Chunk ${chunkIndex} exited with code ${code} after ${elapsedMs}ms ` +
             `(consecutive failures: ${this.consecutiveFailures}/${this.MAX_CONSECUTIVE_FAILURES})`
           );
           
@@ -223,6 +224,7 @@ export class ScreenRecorder {
             this.stopping = true;
           }
         } else {
+          this.chunks[chunkIndex].succeeded = true;
           this.consecutiveFailures = 0;
         }
         
@@ -230,7 +232,11 @@ export class ScreenRecorder {
           if (this.consecutiveFailures > 0 && this.consecutiveFailures < this.MAX_CONSECUTIVE_FAILURES) {
             const backoffMs = Math.min(1000 * Math.pow(2, this.consecutiveFailures - 1), 5000);
             console.warn(`[ScreenRecorder] Backing off ${backoffMs}ms before retry`);
-            setTimeout(() => this.recordChunk(), backoffMs);
+            setTimeout(() => {
+              if (!this.stopping) {
+                this.recordChunk();
+              }
+            }, backoffMs);
           } else {
             this.recordChunk();
           }
@@ -249,6 +255,7 @@ export class ScreenRecorder {
     mkdirSync(dir, { recursive: true });
     const local: string[] = [];
     for (const [i, chunk] of this.chunks.entries()) {
+      if (!chunk.succeeded) continue;
       const file = path.join(dir, `chunk-${i}.mp4`);
       await adb('pull', chunk.remote, file);
       await adb('shell', 'rm', '-f', chunk.remote);
