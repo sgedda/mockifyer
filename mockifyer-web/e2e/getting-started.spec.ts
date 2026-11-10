@@ -34,9 +34,9 @@ test.describe('Getting Started Page', () => {
     // Check Next Steps heading
     await expect(page.getByRole('heading', { name: /Next Steps/i })).toBeVisible();
     
-    // Should have E2E Tutorial and Dashboard links
-    await expect(page.getByRole('link', { name: /E2E Tutorial/i })).toBeVisible();
-    await expect(page.getByRole('link', { name: /Dashboard/i })).toBeVisible();
+    // Should have E2E Tutorial and Dashboard links (use first() to avoid strict mode)
+    await expect(page.getByRole('link', { name: /E2E Tutorial/i }).first()).toBeVisible();
+    await expect(page.getByRole('link', { name: /Dashboard/i }).first()).toBeVisible();
     
     // Should NOT have Playground link
     const playgroundLink = page.getByRole('link', { name: /Playground/i });
@@ -44,8 +44,8 @@ test.describe('Getting Started Page', () => {
   });
 
   test('should have Example Projects section', async ({ page }) => {
-    // Check for WanderWeird example
-    await expect(page.getByText(/WanderWeird/i)).toBeVisible();
+    // Check for WanderWeird example (use first() to avoid strict mode)
+    await expect(page.getByText(/WanderWeird/i).first()).toBeVisible();
     
     // Check for link to GitHub
     const githubLinks = page.getByRole('link', { name: /View on GitHub/i });

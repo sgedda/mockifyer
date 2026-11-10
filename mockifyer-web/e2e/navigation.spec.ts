@@ -21,10 +21,10 @@ test.describe('Navigation', () => {
 
   test('should navigate to Getting Started page', async ({ page }) => {
     await page.goto('/');
-    // Use the main CTA button, not nav link
-    await page.getByRole('main').getByRole('link', { name: /Browse Packages/i }).first().click();
-    await expect(page).toHaveURL(/.*packages/);
-    await expect(page.getByRole('heading', { name: /Packages/i })).toBeVisible();
+    // Use the Get Started nav link
+    await page.getByRole('navigation').getByRole('link', { name: 'Get Started' }).click();
+    await expect(page).toHaveURL(/.*getting-started/);
+    await expect(page.getByRole('heading', { name: /Getting Started/i })).toBeVisible();
   });
 
   test('should navigate to Features page', async ({ page }) => {
@@ -81,26 +81,28 @@ test.describe('Navigation', () => {
   test('should have Guides dropdown with guide links', async ({ page }) => {
     await page.goto('/');
     
-    // Click Guides button
+    // Click Guides button and wait for menu to appear
     const guidesButton = page.getByRole('button', { name: 'Guides' });
     await guidesButton.click();
+    await page.waitForTimeout(300); // Wait for dropdown animation
     
     // Check guide links appear
-    await expect(page.getByRole('link', { name: /Mock at the Network Edge/i })).toBeVisible();
-    await expect(page.getByRole('link', { name: /Reproduce Tester Bugs/i })).toBeVisible();
-    await expect(page.getByRole('link', { name: /Stable React Native E2E/i })).toBeVisible();
-    await expect(page.getByRole('link', { name: /Stop Mock Drift/i })).toBeVisible();
-    await expect(page.getByRole('link', { name: /Nuxt SSR Fixtures/i })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Mock at the Network Edge' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Reproduce Tester Bugs' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Stable React Native E2E' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Stop Mock Drift' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Nuxt SSR Fixtures' })).toBeVisible();
   });
 
   test('should navigate to guide page from dropdown', async ({ page }) => {
     await page.goto('/');
     
-    // Open Guides dropdown
+    // Open Guides dropdown and wait for menu
     await page.getByRole('button', { name: 'Guides' }).click();
+    await page.waitForTimeout(300); // Wait for dropdown animation
     
     // Click on a guide
-    await page.getByRole('link', { name: /Mock at the Network Edge/i }).click();
+    await page.getByRole('link', { name: 'Mock at the Network Edge' }).click();
     
     // Check we're on the guide page
     await expect(page).toHaveURL(/.*guides\/mock-at-the-network-edge/);

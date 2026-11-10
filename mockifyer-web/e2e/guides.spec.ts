@@ -4,13 +4,14 @@ test.describe('Guide Pages', () => {
   test('should load Mock at the Network Edge guide', async ({ page }) => {
     await page.goto('/guides/mock-at-the-network-edge');
     await expect(page.getByRole('heading', { name: /Mock at the Network Edge/i })).toBeVisible();
-    await expect(page.getByText(/Why mock HTTP instead of hooks/i)).toBeVisible();
+    await expect(page.getByText(/Your tests pass but bugs ship/i)).toBeVisible();
   });
 
   test('should load Reproduce Tester Bugs guide', async ({ page }) => {
     await page.goto('/guides/reproduce-tester-bugs');
     await expect(page.getByRole('heading', { name: /Reproduce Tester Bugs/i })).toBeVisible();
-    await expect(page.getByText(/x-mockifyer-request-id/i)).toBeVisible();
+    // Use first() to avoid strict mode violation (appears multiple times in code examples)
+    await expect(page.getByText(/x-mockifyer-request-id/i).first()).toBeVisible();
   });
 
   test('should load Stable React Native E2E guide', async ({ page }) => {
@@ -30,7 +31,8 @@ test.describe('Guide Pages', () => {
   test('should load Nuxt SSR Fixtures guide', async ({ page }) => {
     await page.goto('/guides/nuxt-ssr-fixtures');
     await expect(page.getByRole('heading', { name: /Nuxt SSR Fixtures/i })).toBeVisible();
-    await expect(page.getByText(/Nuxt.*Nitro/i)).toBeVisible();
+    // Use first() to avoid strict mode violation (appears multiple times)
+    await expect(page.getByText(/Nuxt.*Nitro/i).first()).toBeVisible();
   });
 
   test('all guides should have back to home button', async ({ page }) => {

@@ -4,8 +4,11 @@ test.describe('Introduction Page', () => {
   test('should display main content', async ({ page }) => {
     await page.goto('/');
     
+    // Check hero heading
+    await expect(page.getByRole('heading', { name: /Record real traffic.*Replay in tests/i })).toBeVisible();
+    
     // Check hero subtitle
-    await expect(page.getByText(/Record live API responses.*replay them instantly in tests/i)).toBeVisible();
+    await expect(page.getByText(/HTTP mock record\/replay for JavaScript and React Native/i)).toBeVisible();
     
     // Check problems section with new cards
     await expect(page.getByText(/API isn't ready yet/i)).toBeVisible();
@@ -40,9 +43,9 @@ test.describe('Introduction Page', () => {
     const tutorialLink = page.getByRole('link', { name: /E2E Tutorial/i }).first();
     await expect(tutorialLink).toBeVisible();
     
-    // Check Browse Packages link
-    const packagesLink = page.getByRole('link', { name: /Browse Packages/i }).first();
-    await expect(packagesLink).toBeVisible();
+    // Check Get Started link
+    const getStartedLink = page.getByRole('link', { name: 'Get Started' }).first();
+    await expect(getStartedLink).toBeVisible();
   });
 
   test('should have Try it Live demo button', async ({ page }) => {
@@ -59,7 +62,7 @@ test.describe('Introduction Page', () => {
     // Check use cases section
     await expect(page.getByRole('heading', { name: /Use Cases/i })).toBeVisible();
     await expect(page.getByText(/React Native Development/i)).toBeVisible();
-    await expect(page.getByText(/Integration Testing/i)).toBeVisible();
+    await expect(page.getByText(/Deterministic E2E Tests/i)).toBeVisible();
   });
 });
 
