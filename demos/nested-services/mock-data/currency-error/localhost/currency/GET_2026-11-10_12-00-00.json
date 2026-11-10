@@ -1,0 +1,5 @@
+{
+  "request": {"method": "GET", "url": "http://localhost:3003/currency", "headers": {}, "queryParams": {"from": "USD", "to": "EUR"}},
+  "response": {"status": 503, "data": {"error": "Service temporarily unavailable"}, "headers": {"content-type": "application/json"}},
+  "timestamp": "2026-11-10T12:00:00.000Z", "duration": 5
+}
