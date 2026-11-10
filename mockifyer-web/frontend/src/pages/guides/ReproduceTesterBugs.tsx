@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button'
 import { Link } from 'react-router-dom'
 import { ArrowLeft, AlertCircle, Terminal, Network, Code2 } from 'lucide-react'
 import CodeBlock from '@/components/CodeBlock'
+import QuickStartBox from '@/components/QuickStartBox'
 
 export default function ReproduceTesterBugs() {
   return (
@@ -21,6 +22,8 @@ export default function ReproduceTesterBugs() {
           When a non-technical tester reports a bug, capture the API calls behind it and replay them on your machine
         </p>
       </header>
+
+      <QuickStartBox variant="node-fetch" />
 
       <div className="p-4 border border-amber-500/50 bg-amber-500/10 rounded-md">
         <div className="flex gap-2">

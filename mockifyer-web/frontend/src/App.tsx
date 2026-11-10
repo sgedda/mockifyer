@@ -19,6 +19,7 @@ import MockAtTheNetworkEdge from './pages/guides/MockAtTheNetworkEdge'
 import ReproduceTesterBugs from './pages/guides/ReproduceTesterBugs'
 import StableReactNativeE2E from './pages/guides/StableReactNativeE2E'
 import MockDrift from './pages/guides/MockDrift'
+import ReactNativeWithoutMSW from './pages/guides/ReactNativeWithoutMSW'
 import { ThemeProvider } from './lib/use-theme'
 import PageSeoManager from './components/PageSeoManager'
 
@@ -75,6 +76,7 @@ function App() {
               <Route path="/guides/reproduce-tester-bugs" element={<ReproduceTesterBugs />} />
               <Route path="/guides/stable-react-native-e2e" element={<StableReactNativeE2E />} />
               <Route path="/guides/mock-drift" element={<MockDrift />} />
+              <Route path="/guides/react-native-without-msw" element={<ReactNativeWithoutMSW />} />
               
               {/* Redirects for removed pages */}
               <Route path="/playground" element={<Navigate to="/getting-started" replace />} />

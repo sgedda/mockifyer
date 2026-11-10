@@ -39,4 +39,9 @@ export const HOME_FAQ: FaqItem[] = [
     answer:
       'https://mockifyer.dev — Getting Started, config reference, E2E tutorial, features. Source: https://github.com/sgedda/mockifyer. AI summaries: https://mockifyer.dev/llms.txt',
   },
+  {
+    question: 'What Mockifyer doesn\'t do (yet)',
+    answer:
+      'Server-side fetch interception in Nuxt/Nitro is not supported yet (tracked in GitHub issue #497: https://github.com/sgedda/mockifyer/issues/497). For React Native, recording from a physical device requires a dashboard connection: iOS Simulator and Android Emulator can save mocks locally via ExpoFileSystemProvider and sync them back to your project via Metro HTTP endpoints, but physical devices lack filesystem access from the development machine, so they must route through the dashboard proxy (Redis or SQLite) to persist recordings.',
+  },
 ]

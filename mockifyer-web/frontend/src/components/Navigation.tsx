@@ -24,6 +24,7 @@ const guideItems = [
   { href: '/guides/reproduce-tester-bugs', label: 'Reproduce Tester Bugs' },
   { href: '/guides/stable-react-native-e2e', label: 'Stable React Native E2E' },
   { href: '/guides/mock-drift', label: 'Stop Mock Drift' },
+  { href: '/guides/react-native-without-msw', label: 'React Native: Handlers vs Recording' },
 ]
 
 export default function Navigation() {
