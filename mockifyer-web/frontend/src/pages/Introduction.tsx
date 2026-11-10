@@ -18,6 +18,7 @@ export default function Introduction() {
   const mediaItems: MediaItem[] = [
     {
       src: '/videos/e2e-tutorial/delay-and-status-override_b200.mp4',
+      poster: '/videos/e2e-tutorial/delay-and-status-override_cc36.jpg',
       caption: 'Override delays and HTTP status codes per scenario'
     },
     {
