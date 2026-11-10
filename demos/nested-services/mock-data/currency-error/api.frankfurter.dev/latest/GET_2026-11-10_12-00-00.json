@@ -1,0 +1,22 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "https://api.frankfurter.dev/latest?from=USD&to=EUR",
+    "headers": {
+      "x-mockifyer-request-id": "demo-record-001"
+    }
+  },
+  "response": {
+    "status": 503,
+    "data": {
+      "error": "Service temporarily unavailable"
+    },
+    "headers": {
+      "content-type": "application/json"
+    }
+  },
+  "timestamp": "2026-11-10T12:00:00.000Z",
+  "duration": 15,
+  "sessionId": "demo-session-001",
+  "requestId": "demo-record-001"
+}

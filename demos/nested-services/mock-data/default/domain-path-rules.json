@@ -1,0 +1,10 @@
+{
+  "api.weatherapi.com": {
+    "recordResponses": true,
+    "autoMock": true
+  },
+  "api.weatherapi.com/v1/current.json": {
+    "recordResponses": true,
+    "autoMock": true
+  }
+}

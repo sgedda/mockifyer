@@ -1,0 +1,27 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "https://api.frankfurter.dev/latest?from=USD&to=EUR",
+    "headers": {
+      "x-mockifyer-request-id": "demo-record-001"
+    }
+  },
+  "response": {
+    "status": 200,
+    "data": {
+      "amount": 1.0,
+      "base": "USD",
+      "date": "2026-11-10",
+      "rates": {
+        "EUR": 0.92345
+      }
+    },
+    "headers": {
+      "content-type": "application/json"
+    }
+  },
+  "timestamp": "2026-11-10T12:00:00.000Z",
+  "duration": 122,
+  "sessionId": "demo-session-001",
+  "requestId": "demo-record-001"
+}
