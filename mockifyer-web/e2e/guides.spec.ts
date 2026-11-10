@@ -28,12 +28,19 @@ test.describe('Guide Pages', () => {
     await expect(page.getByRole('button', { name: /Try Drift Detection Demo/i })).toBeVisible();
   });
 
+  test('should load React Native guide', async ({ page }) => {
+    await page.goto('/guides/react-native-without-msw');
+    await expect(page.getByRole('heading', { name: /Handlers vs Recording/i })).toBeVisible();
+    await expect(page.getByText(/MSW uses in-code handlers/i)).toBeVisible();
+  });
+
   test('all guides should have back to home button', async ({ page }) => {
     const guides = [
       '/guides/mock-at-the-network-edge',
       '/guides/reproduce-tester-bugs',
       '/guides/stable-react-native-e2e',
       '/guides/mock-drift',
+      '/guides/react-native-without-msw',
     ];
 
     for (const guide of guides) {

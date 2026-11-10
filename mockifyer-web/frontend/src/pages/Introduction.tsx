@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Github, ArrowRight, PlayCircle, Database, Code2, Sparkles, Construction, Target, Zap, GitBranch, Terminal, Play } from 'lucide-react'
-import Logo from '@/components/Logo'
 import CodeBlock from '@/components/CodeBlock'
 import RunItButton from '@/components/RunItButton'
 
@@ -41,13 +40,21 @@ export default function Introduction() {
         
         <div className="relative mx-auto max-w-[1200px] px-5 py-16 sm:py-24">
           <div className="text-center max-w-4xl mx-auto">
-            <div className="flex justify-center mb-6">
-              <Logo size="lg" />
+            <div className="flex justify-center mb-8">
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-primary/20 bg-primary/5 text-sm font-medium text-primary">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+                </span>
+                Open-source API record &amp; replay for Node, React Native &amp; Expo
+              </div>
             </div>
             
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight text-foreground leading-tight">
-              Record real traffic.{' '}
-              <span className="mockifyer-gradient-text">Replay in tests.</span>
+            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-foreground leading-tight">
+              <span className="inline-block">Record real APIs.</span>{' '}
+              <span className="inline-block bg-gradient-to-r from-primary via-blue-500 to-violet-500 bg-clip-text text-transparent animate-gradient">
+                Replay them anywhere.
+              </span>
             </h1>
             
             <p className="mt-6 text-lg text-muted-foreground leading-relaxed max-w-2xl mx-auto">
@@ -56,9 +63,9 @@ export default function Introduction() {
             
             <div className="mt-8 flex flex-wrap justify-center gap-4">
               <Link to="/getting-started">
-                <Button size="lg" className="h-12 px-8 text-base font-medium">
+                <Button size="lg" className="h-12 px-8 text-base font-medium group">
                   Get Started
-                  <ArrowRight className="ml-2 h-4 w-4" />
+                  <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
                 </Button>
               </Link>
               <Link to="/e2e-tutorial">

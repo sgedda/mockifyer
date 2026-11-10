@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { ArrowLeft, AlertTriangle, RefreshCw, CheckCircle2, XCircle } from 'lucide-react'
 import CodeBlock from '@/components/CodeBlock'
 import RunItButton from '@/components/RunItButton'
+import QuickStartBox from '@/components/QuickStartBox'
 
 export default function MockDrift() {
   return (
@@ -23,6 +24,8 @@ export default function MockDrift() {
         </p>
       </header>
 
+      <QuickStartBox variant="node-fetch" />
+
       <div className="p-4 border border-amber-500/50 bg-amber-500/10 rounded-md">
         <div className="flex gap-2">
           <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
@@ -32,6 +35,17 @@ export default function MockDrift() {
           </div>
         </div>
       </div>
+
+      <Card className="border-primary/20 bg-primary/5">
+        <CardContent className="pt-6">
+          <p className="text-base leading-relaxed">
+            Hand-written mocks drift from the real API over time—field names change, new required fields appear, and nested structures evolve. 
+            AI-generated tests often compound the problem by mocking everything and asserting against invented shapes that never existed in production. 
+            Recording real responses and replaying them keeps your fixtures honest: they reflect the API's actual contract at capture time. 
+            When you suspect drift, re-record and diff the new responses against the old—breaking changes surface immediately as test failures, not production incidents.
+          </p>
+        </CardContent>
+      </Card>
       
       <div className="flex justify-center">
         <RunItButton 

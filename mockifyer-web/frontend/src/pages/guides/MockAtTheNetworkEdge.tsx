@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button'
 import { Link } from 'react-router-dom'
 import { ArrowLeft, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react'
 import CodeBlock from '@/components/CodeBlock'
+import QuickStartBox from '@/components/QuickStartBox'
 
 export default function MockAtTheNetworkEdge() {
   return (
@@ -21,6 +22,8 @@ export default function MockAtTheNetworkEdge() {
           Your tests pass but bugs ship: mock only at the network boundary, not your own code
         </p>
       </header>
+
+      <QuickStartBox variant="node-fetch" />
 
       <div className="p-4 border border-amber-500/50 bg-amber-500/10 rounded-md">
         <div className="flex gap-2">

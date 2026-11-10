@@ -5,7 +5,7 @@ test.describe('Introduction Page', () => {
     await page.goto('/');
     
     // Check hero heading
-    await expect(page.getByRole('heading', { name: /Record real traffic.*Replay in tests/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Record real APIs.*Replay them anywhere/i })).toBeVisible();
     
     // Check hero subtitle
     await expect(page.getByText(/HTTP mock record\/replay for JavaScript and React Native/i)).toBeVisible();

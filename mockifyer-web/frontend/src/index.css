@@ -142,6 +142,21 @@
     @apply bg-gradient-to-r from-blue-600 via-purple-600 to-violet-600 bg-clip-text text-transparent;
   }
   
+  /* Animated gradient for hero */
+  .animate-gradient {
+    background-size: 200% 200%;
+    animation: gradient-shift 8s ease-in-out infinite;
+  }
+  
+  @keyframes gradient-shift {
+    0%, 100% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+  }
+  
   /* Refined card component */
   .card-hover {
     @apply transition-all duration-200 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5;
