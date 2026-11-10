@@ -4,6 +4,7 @@ import frankfurterRates from '../fixtures/frankfurter-rates.json';
 
 export async function testSeededReplay() {
   console.log('[Browser Test] Setting up mockifyer with seeded fixtures...');
+  console.log('[Browser Test] Fixture:', frankfurterRates);
   
   try {
     const mockifyer = setupMockifyer({
@@ -16,7 +17,8 @@ export async function testSeededReplay() {
       },
       recordMode: false,
       failOnMissingMock: true,
-      useGlobalFetch: true // Patch global fetch
+      useGlobalFetch: true, // Patch global fetch
+      logging: 'debug' // Enable debug logging
     });
     
     console.log('[Browser Test] ✅ setupMockifyer succeeded');

@@ -16,6 +16,18 @@ test('browser bundle with seeded replay (NO Node built-ins)', async ({ page }) =
     consoleErrors.push(error.message);
   });
 
+  // Block all external network requests to ensure mocks are used
+  await page.route('**/*', (route) => {
+    const url = route.request().url();
+    // Allow localhost (the test server)
+    if (url.startsWith('http://localhost:') || url.startsWith('http://127.0.0.1:')) {
+      return route.continue();
+    }
+    // Block all external requests
+    console.log('[Test] Blocking external request:', url);
+    return route.abort();
+  });
+
   await page.goto('/');
   
   // Wait for tests to complete (generous timeout for slow builds)

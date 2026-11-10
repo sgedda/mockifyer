@@ -108,8 +108,42 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
   // Create with browser capabilities (no Node fs/path/crypto)
   const mockifyer = new MockifyerClass(config, browserCapabilities);
   
-  // Return httpClient extended with mockifyer methods (same pattern as Node entry)
+  // Get HTTP client
   const httpClient = mockifyer.getHTTPClient();
+  
+  // Patch global fetch if useGlobalFetch is true
+  if (config.useGlobalFetch) {
+    const originalFetch = globalThis.fetch;
+    const mockifyerInstance = mockifyer;
+    
+    globalThis.fetch = async function(input: string | Request | URL, init?: RequestInit): Promise<Response> {
+      if (!mockifyerInstance.isMockifyerEnabled()) {
+        return await originalFetch(input, init);
+      }
+      
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      const method = (init?.method || 'GET').toUpperCase();
+      
+      // Perform the request through mockifyer
+      const response = await httpClient.request({
+        method,
+        url,
+        headers: init?.headers as Record<string, string> || {},
+        data: init?.body,
+      });
+      
+      // Convert mockifyer response to fetch Response
+      return new Response(
+        typeof response.data === 'string' ? response.data : JSON.stringify(response.data),
+        {
+          status: response.status,
+          headers: new Headers(response.headers || {})
+        }
+      );
+    };
+  }
+  
+  // Return httpClient extended with mockifyer methods
   const extendedClient = httpClient as any;
   
   extendedClient.reloadMockData = (syncFromProject?: boolean) => mockifyer.reloadMockData(syncFromProject);
