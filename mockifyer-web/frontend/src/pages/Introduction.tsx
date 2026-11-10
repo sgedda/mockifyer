@@ -1,8 +1,9 @@
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
-import { Github, ArrowRight, PlayCircle, Calendar, Database, Code2, Sparkles, Construction, Target, Zap, GitBranch, Terminal } from 'lucide-react'
+import { Github, ArrowRight, PlayCircle, Database, Code2, Sparkles, Construction, Target, Zap, GitBranch, Terminal, Play } from 'lucide-react'
 import Logo from '@/components/Logo'
 import CodeBlock from '@/components/CodeBlock'
+import RunItButton from '@/components/RunItButton'
 
 export default function Introduction() {
   return (
@@ -236,15 +237,20 @@ setupMockifyerForReactNative({
           />
           
           <div className="mt-8 p-5 rounded-xl border border-primary/20 bg-primary/5">
-            <div className="flex items-start gap-3">
-              <Calendar className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
+            <div className="flex items-start gap-3 mb-4">
+              <Play className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
               <div>
-                <h3 className="font-semibold text-foreground mb-2">Date Freezing & Shifting</h3>
-                <p className="text-sm text-muted-foreground">
-                  Fix dates per scenario so "check-in opens today" stays stable. Shift relative to now, or freeze at a specific date. Time-dependent tests stay green.
+                <h3 className="font-semibold text-foreground mb-2">Try it Live</h3>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Record API calls, replay them offline, switch scenarios (empty/error), and freeze dates—all in your browser.
                 </p>
               </div>
             </div>
+            <RunItButton 
+              project="record-replay-basics"
+              title="Run Demo in StackBlitz"
+              size="sm"
+            />
           </div>
         </div>
       </section>

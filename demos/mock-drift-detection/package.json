@@ -1,0 +1,18 @@
+{
+  "name": "mockifyer-mock-drift-detection",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Detect and fix mock drift when your API changes",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "record": "node record.js"
+  },
+  "dependencies": {
+    "@sgedda/mockifyer-core": "^1.8.37",
+    "@sgedda/mockifyer-fetch": "^1.8.31"
+  },
+  "devDependencies": {
+    "vitest": "^2.0.0"
+  }
+}

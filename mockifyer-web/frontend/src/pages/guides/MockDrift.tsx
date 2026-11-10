@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button'
 import { Link } from 'react-router-dom'
 import { ArrowLeft, AlertTriangle, RefreshCw, CheckCircle2, XCircle } from 'lucide-react'
 import CodeBlock from '@/components/CodeBlock'
+import RunItButton from '@/components/RunItButton'
 
 export default function MockDrift() {
   return (
@@ -30,6 +31,14 @@ export default function MockDrift() {
             but your hand-written mocks still return <code className="bg-muted px-1 rounded">{`{error}`}</code>. Tests pass, bugs ship.
           </div>
         </div>
+      </div>
+      
+      <div className="flex justify-center">
+        <RunItButton 
+          project="mock-drift-detection"
+          title="Try Drift Detection Demo"
+          size="default"
+        />
       </div>
 
       <section id="the-drift-problem">

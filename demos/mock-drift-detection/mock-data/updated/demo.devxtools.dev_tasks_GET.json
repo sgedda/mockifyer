@@ -1,0 +1,40 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "https://demo.devxtools.dev/tasks",
+    "path": "/tasks"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": [
+      {
+        "id": 1,
+        "title": "Set up project repository",
+        "completed": true,
+        "userId": 1,
+        "priority": "high",
+        "tags": ["setup", "infrastructure"]
+      },
+      {
+        "id": 2,
+        "title": "Write API documentation",
+        "completed": true,
+        "userId": 1,
+        "priority": "medium",
+        "tags": ["docs"]
+      },
+      {
+        "id": 3,
+        "title": "Deploy to production",
+        "completed": false,
+        "userId": 2,
+        "priority": "high",
+        "tags": ["deployment", "devops"]
+      }
+    ]
+  },
+  "recordedAt": "2026-11-10T15:00:00.000Z"
+}
