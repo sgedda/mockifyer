@@ -201,7 +201,15 @@ export class ScreenRecorder {
     this.chunks.push({ remote, startedAtMs: Date.now() });
     this.exited = new Promise((resolve) => {
       child.once('exit', () => {
-        if (!this.stopping) this.recordChunk();
+        if (!this.stopping) {
+          const chunk = this.chunks[this.chunks.length - 1];
+          const elapsedMs = Date.now() - chunk.startedAtMs;
+          // Only restart if the chunk ran for a reasonable duration (> 5s).
+          // Immediate exits indicate failure (already recording, /sdcard not writable, etc.)
+          if (elapsedMs > 5_000) {
+            this.recordChunk();
+          }
+        }
         resolve();
       });
     });
