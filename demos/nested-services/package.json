@@ -13,7 +13,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "test:e2e:integration": "playwright test integration.spec.js"
+    "test:e2e:integration": "playwright test integration.spec.js",
+    "test:dashboard-url": "node dashboard-url.test.js"
   },
   "dependencies": {
     "@sgedda/mockifyer-core": "^1.10.181",

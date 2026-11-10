@@ -3,9 +3,15 @@ function getDashboardUrl() {
   const hostname = window.location.hostname;
   
   // StackBlitz WebContainer: *.webcontainer.io
-  // Port pattern: project-5173.webcontainer.io → project-3002.webcontainer.io
+  // Real pattern: bnmiqabookgithub-0eb2--5173--0df13572.local-credentialless.webcontainer.io
+  // Port is between double dashes: --5173-- → --3002--
   if (hostname.includes('.webcontainer.io')) {
-    // Replace the port number in the hostname
+    // Replace --PORT-- with --3002--
+    if (hostname.includes('--')) {
+      const dashboardHost = hostname.replace(/--\d+--/, '--3002--');
+      return `https://${dashboardHost}`;
+    }
+    // Fallback for older pattern: project-5173.webcontainer.io
     const dashboardHost = hostname.replace(/-\d+\.webcontainer\.io/, '-3002.webcontainer.io');
     return `https://${dashboardHost}`;
   }
