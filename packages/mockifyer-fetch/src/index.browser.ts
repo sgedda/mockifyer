@@ -1,54 +1,86 @@
-// Browser entry - wraps main index.ts with browser-specific validation
-// Re-exports everything except validates provider type
+// Browser-only entry - imports from core/browser, never pulls in Node built-ins
+// The MockifyerClass from index.ts uses lazy-loaded fs/path which is safe for browsers
 
-export * from './index';
+// Re-export core browser-safe modules
+export * from '@sgedda/mockifyer-core/dist/index.browser';
 
-// Re-export with type narrowing for browser
-import type { MockifyerConfig } from '@sgedda/mockifyer-core';
-import { setupMockifyer as setupMockifyerNode, type MockifyerInstance } from './index';
+// Import the main MockifyerClass which has lazy fs/path loading
+// This is safe because getFs()/getPath() return null in browsers
+import {
+  setupMockifyer as setupMockifyerNode,
+  initMockifyerForDashboardProxy as initDashboardProxyNode,
+  initMockifyerForLocalFilesystem as initLocalFilesystemNode,
+  type MockifyerInstance,
+  canUseDashboardCentralProxy,
+  canUseDashboardRedisProxy,
+} from './index';
+
+// Re-export with browser-specific validation
+export { canUseDashboardCentralProxy, canUseDashboardRedisProxy };
+export type { MockifyerInstance };
 
 /**
- * Setup Mockifyer for browser/Expo web with in-memory provider.
- * 
- * **Browser-specific constraints:**
- * - Only `memory` provider is supported (filesystem/redis/sqlite need Node.js)
- * - Preload fixtures via `databaseProvider.options.fixtures: MockData[]`
+ * Setup Mockifyer for browser/Expo web environments.
+ * Requires MemoryProvider with preloaded fixtures.
  * 
  * @example
  * ```ts
  * import { setupMockifyer } from '@sgedda/mockifyer-fetch';
- * import rates from './mock-data/api.frankfurter.dev/v1/latest.json';
+ * import rates from './fixtures/api.frankfurter.dev/v1/GET_latest.json';
  * 
  * const mockifyer = setupMockifyer({
- *   mockDataPath: './mock-data',
+ *   mockDataPath: './fixtures',
  *   databaseProvider: {
  *     type: 'memory',
- *     options: {
- *       fixtures: [rates] // Preload from static JSON imports
- *     }
+ *     options: { fixtures: [rates] }
  *   },
  *   recordMode: false,
- *   failOnMissingMock: true, // Throw on cache miss
+ *   failOnMissingMock: true,
  *   useGlobalFetch: true
  * });
  * ```
  */
-export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
-  // Validate browser-safe config
-  if (config.databaseProvider && config.databaseProvider.type && config.databaseProvider.type !== 'memory') {
+export function setupMockifyer(config: any): MockifyerInstance {
+  // Validate browser-safe configuration
+  if (config.databaseProvider?.type && config.databaseProvider.type !== 'memory') {
     throw new Error(
-      `[Mockifyer Browser] Provider '${config.databaseProvider.type}' requires Node.js (fs/path/crypto). ` +
+      `[Mockifyer Browser] Provider '${config.databaseProvider.type}' requires Node.js. ` +
       `Use databaseProvider: { type: 'memory', options: { fixtures: [...] } } in browser builds.`
     );
   }
-
+  
   if (!config.databaseProvider) {
-    console.warn(
-      '[Mockifyer Browser] No databaseProvider configured. Falling back to memory provider. ' +
-      'Preload fixtures via databaseProvider: { type: "memory", options: { fixtures: [...] } }'
+    throw new Error(
+      `[Mockifyer Browser] No databaseProvider configured. ` +
+      `Browser builds require: databaseProvider: { type: 'memory', options: { fixtures: [...] } }`
     );
-    config.databaseProvider = { type: 'memory', options: {} };
   }
 
   return setupMockifyerNode(config);
+}
+
+/**
+ * Dashboard proxy preset for browser (requires memory provider).
+ */
+export async function initMockifyerForDashboardProxy(
+  options: any
+): Promise<MockifyerInstance> {
+  if (options.databaseProvider?.type && options.databaseProvider.type !== 'memory') {
+    throw new Error(
+      `[Mockifyer Browser] Dashboard proxy in browser requires memory provider. ` +
+      `Set databaseProvider: { type: 'memory', options: { fixtures: [...] } }`
+    );
+  }
+  return initDashboardProxyNode(options);
+}
+
+/**
+ * Local filesystem preset is NOT supported in browser - throws error.
+ * Use setupMockifyer with memory provider instead.
+ */
+export function initMockifyerForLocalFilesystem(_options: any): never {
+  throw new Error(
+    `[Mockifyer Browser] initMockifyerForLocalFilesystem requires Node.js filesystem. ` +
+    `Use setupMockifyer({ databaseProvider: { type: 'memory', options: { fixtures: [...] } } }) instead.`
+  );
 }

@@ -1,54 +1,74 @@
-// Test: setupMockifyer with memory provider should work in browser
+// Browser bundle test - verifies no Node built-ins are pulled in
 import { setupMockifyer } from '@sgedda/mockifyer-fetch';
+import frankfurterRates from '../fixtures/frankfurter-rates.json';
 
-const fixtures = [
-  {
-    request: {
-      method: 'GET',
-      url: 'https://api.frankfurter.dev/v1/latest',
-      headers: {},
-      queryParams: {}
-    },
-    response: {
-      status: 200,
-      headers: { 'content-type': 'application/json' },
-      data: {
-        amount: 1.0,
-        base: 'USD',
-        date: '2024-01-15',
-        rates: { EUR: 0.92, GBP: 0.79 }
-      }
-    },
-    timestamp: '2024-01-15T10:00:00.000Z'
-  }
-];
-
-export function testMemoryProvider() {
-  console.log('[Browser Test] Setting up mockifyer with memory provider...');
+export async function testSeededReplay() {
+  console.log('[Browser Test] Setting up mockifyer with seeded fixtures...');
   
   try {
     const mockifyer = setupMockifyer({
-      mockDataPath: './mock-data',
+      mockDataPath: './fixtures',
       databaseProvider: {
         type: 'memory',
-        options: {}
+        options: {
+          fixtures: [frankfurterRates]
+        }
       },
       recordMode: false,
       failOnMissingMock: true,
-      useGlobalFetch: false
+      useGlobalFetch: true // Patch global fetch
     });
     
     console.log('[Browser Test] ✅ setupMockifyer succeeded');
-    return { success: true, mockifyer };
+    
+    // Test 1: Seeded replay should work
+    console.log('[Browser Test] Test 1: Fetching seeded mock...');
+    const response = await fetch('https://api.frankfurter.dev/v1/latest');
+    const data = await response.json();
+    
+    if (data.base !== 'USD' || data.rates.EUR !== 0.92) {
+      throw new Error(`Unexpected data: ${JSON.stringify(data)}`);
+    }
+    console.log('[Browser Test] ✅ Seeded replay worked:', data);
+    
+    // Test 2: Missing mock should throw clear error
+    console.log('[Browser Test] Test 2: Testing missing mock error...');
+    let errorThrown = false;
+    let errorMessage = '';
+    try {
+      await fetch('https://api.frankfurter.dev/v1/currencies');
+    } catch (error: any) {
+      errorThrown = true;
+      errorMessage = error.message;
+      console.log('[Browser Test] ✅ Clear error thrown:', errorMessage);
+    }
+    
+    if (!errorThrown) {
+      throw new Error('Missing mock should have thrown an error');
+    }
+    
+    if (!errorMessage.includes('No mock found') || !errorMessage.includes('Request key:')) {
+      throw new Error(`Error message not clear enough: ${errorMessage}`);
+    }
+    
+    console.log('[Browser Test] ✅ All tests passed');
+    return { 
+      success: true, 
+      tests: {
+        seededReplay: true,
+        clearErrorOnMiss: true
+      }
+    };
   } catch (error: any) {
-    console.error('[Browser Test] ❌ setupMockifyer failed:', error.message);
+    console.error('[Browser Test] ❌ Test failed:', error.message);
     return { success: false, error: error.message };
   }
 }
 
 // Auto-run in browser
 if (typeof window !== 'undefined') {
-  (window as any).testMemoryProvider = testMemoryProvider;
-  const result = testMemoryProvider();
-  (window as any).mockifyerTestResult = result;
+  (window as any).testSeededReplay = testSeededReplay;
+  testSeededReplay().then(result => {
+    (window as any).mockifyerTestResult = result;
+  });
 }

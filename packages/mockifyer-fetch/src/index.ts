@@ -27,6 +27,35 @@ function getPath(): typeof import('path') | null {
   return lazyRequire('path');
 }
 
+// Lazy-load scenario functions to avoid pulling in fs/path
+let _scenarioModule: any = null;
+function getScenarioModule() {
+  if (_scenarioModule) return _scenarioModule;
+  try {
+    _scenarioModule = lazyRequire('@sgedda/mockifyer-core/dist/utils/scenario');
+    return _scenarioModule;
+  } catch {
+    // Fallback for browser - provide minimal implementations
+    return {
+      getCurrentScenario: () => 'default',
+      getScenarioFolderPath: (base: string) => base,
+      ensureScenarioFolder: () => {},
+    };
+  }
+}
+
+function getCurrentScenario(...args: any[]): string {
+  return getScenarioModule().getCurrentScenario(...args);
+}
+
+function getScenarioFolderPath(...args: any[]): string {
+  return getScenarioModule().getScenarioFolderPath(...args);
+}
+
+function ensureScenarioFolder(...args: any[]): void {
+  getScenarioModule().ensureScenarioFolder?.(...args);
+}
+
 // Import from core package
 import {
   MockifyerConfig,
@@ -40,10 +69,10 @@ import {
   initializeDateManipulation,
   scheduleRuntimeDateSyncFromConfig,
   DatabaseProvider,
-  createProvider,
-  getCurrentScenario,
-  getScenarioFolderPath,
-  ensureScenarioFolder,
+  // Scenario functions are lazy-loaded to avoid pulling in fs/path in browser builds
+  // getCurrentScenario,
+  // getScenarioFolderPath,
+  // ensureScenarioFolder,
   initializeScenario,
   isScenarioLaunchFromNativeArguments,
   TestGenerator,
@@ -430,18 +459,56 @@ class MockifyerClass {
     }
   }
 
-  constructor(config: MockifyerConfig) {
-    // Validate database provider - filesystem, expo-filesystem, hybrid, and memory are supported
-    if (config.databaseProvider && config.databaseProvider.type) {
-      const supportedTypes = ['filesystem', 'expo-filesystem', 'hybrid', 'memory', 'redis', 'sqlite'];
-      if (!supportedTypes.includes(config.databaseProvider.type)) {
-        throw new Error(
-          `Database provider type '${config.databaseProvider.type}' is not yet available for use. ` +
-          `Supported types: ${supportedTypes.join(', ')}. ` +
-          `Please use one of the supported provider types.`
-        );
+  /**
+   * Create database provider without importing all provider classes.
+   * This lazy-loads providers to avoid pulling fs/path/crypto into browser bundles.
+   */
+  private createProviderSafe(type: string, config: any): DatabaseProvider {
+    // Lazy-import to avoid bundling all providers
+    switch (type) {
+      case 'memory': {
+        const { MemoryProvider } = require('@sgedda/mockifyer-core/dist/providers/memory-provider');
+        return new MemoryProvider(config);
       }
+      case 'filesystem': {
+        const { FilesystemProvider } = lazyRequire('@sgedda/mockifyer-core/dist/providers/filesystem-provider');
+        if (!FilesystemProvider) {
+          throw new Error(`[Mockifyer] FilesystemProvider requires Node.js (fs/path not available)`);
+        }
+        return new FilesystemProvider(config);
+      }
+      case 'redis': {
+        const { RedisProvider } = lazyRequire('@sgedda/mockifyer-core/dist/providers/redis-provider');
+        if (!RedisProvider) {
+          throw new Error(`[Mockifyer] RedisProvider requires Node.js (crypto/ioredis not available)`);
+        }
+        return new RedisProvider(config);
+      }
+      case 'sqlite': {
+        const { SQLiteProvider } = lazyRequire('@sgedda/mockifyer-core/dist/providers/sqlite-provider');
+        if (!SQLiteProvider) {
+          throw new Error(`[Mockifyer] SQLiteProvider requires Node.js`);
+        }
+        return new SQLiteProvider(config);
+      }
+      case 'expo-filesystem': {
+        const { ExpoFileSystemProvider } = require('@sgedda/mockifyer-core/dist/providers/expo-filesystem-provider');
+        return new ExpoFileSystemProvider(config);
+      }
+      case 'hybrid': {
+        const { HybridProvider } = require('@sgedda/mockifyer-core/dist/providers/hybrid-provider');
+        return new HybridProvider(config);
+      }
+      default:
+        throw new Error(
+          `Database provider type '${type}' is not supported. ` +
+          `Supported types: memory, filesystem, expo-filesystem, hybrid, redis, sqlite`
+        );
     }
+  }
+
+  constructor(config: MockifyerConfig) {
+    // Validation is now done in createProviderSafe
     
     // Validate and normalize conflicting settings
     if (config.recordMode && config.failOnMissingMock) {
@@ -581,7 +648,9 @@ class MockifyerClass {
           getClientId: () => this.config.clientId,
         },
       };
-      this.databaseProvider = createProvider(config.databaseProvider.type, providerConfig);
+      // Create provider without importing the full createProvider function
+      // This avoids pulling in filesystem/redis/sqlite providers in browser builds
+      this.databaseProvider = this.createProviderSafe(config.databaseProvider.type, providerConfig);
       const initResult = this.databaseProvider.initialize();
       // Handle async initialization (expo-filesystem / hybrid providers)
       if (initResult instanceof Promise) {
