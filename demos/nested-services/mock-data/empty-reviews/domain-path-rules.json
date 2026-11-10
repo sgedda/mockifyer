@@ -1,3 +1,22 @@
 {
-  "domains": []
+  "localhost:3003": {
+    "recordResponses": true,
+    "autoMock": true
+  },
+  "localhost:3003/weather": {
+    "recordResponses": true,
+    "autoMock": true
+  },
+  "localhost:3003/places": {
+    "recordResponses": true,
+    "autoMock": true
+  },
+  "localhost:3003/reviews/:id": {
+    "recordResponses": true,
+    "autoMock": true
+  },
+  "localhost:3003/currency": {
+    "recordResponses": true,
+    "autoMock": true
+  }
 }

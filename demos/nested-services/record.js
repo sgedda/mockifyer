@@ -22,10 +22,10 @@ async function recordMocks() {
   const headers = { 'x-mockifyer-request-id': requestId };
   
   try {
-    // Record weather API
+    // Record weather API (localhost stub)
     console.log('→ Recording Weather API...');
     const weatherRes = await fetch(
-      'https://api.weatherapi.com/v1/current.json?key=demo&q=London',
+      'http://localhost:3003/weather?city=London',
       { headers }
     );
     console.log(`  Status: ${weatherRes.status}`);
@@ -35,22 +35,22 @@ async function recordMocks() {
     // Wait for async file write
     await new Promise(resolve => setImmediate(resolve));
     
-    // Record places API
+    // Record places API (localhost stub)
     console.log('\n→ Recording Places API...');
     const placesRes = await fetch(
-      'https://api.geoapify.com/v2/places?text=London&format=json&apiKey=demo',
+      'http://localhost:3003/places?city=London',
       { headers }
     );
     console.log(`  Status: ${placesRes.status}`);
-    await placesRes.json();
+    const places = await placesRes.json();
     console.log('  ✓ Recorded');
     
     await new Promise(resolve => setImmediate(resolve));
     
-    // Record reviews API (second-level hop, using place_id=1)
+    // Record reviews API (second-level hop, using actual place_id)
     console.log('\n→ Recording Reviews API...');
     const reviewsRes = await fetch(
-      'https://jsonplaceholder.typicode.com/posts/1/comments',
+      `http://localhost:3003/reviews/${places.place_id}`,
       { headers }
     );
     console.log(`  Status: ${reviewsRes.status}`);
@@ -59,10 +59,10 @@ async function recordMocks() {
     
     await new Promise(resolve => setImmediate(resolve));
     
-    // Record currency API
+    // Record currency API (localhost stub)
     console.log('\n→ Recording Currency API...');
     const currencyRes = await fetch(
-      'https://api.frankfurter.dev/latest?from=USD&to=EUR',
+      'http://localhost:3003/currency?from=USD&to=EUR',
       { headers }
     );
     console.log(`  Status: ${currencyRes.status}`);
