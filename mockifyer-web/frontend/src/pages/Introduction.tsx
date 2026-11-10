@@ -1,9 +1,8 @@
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
-import { Github, ArrowRight, PlayCircle, Code, Layers, TestTube2, Calendar, Database, Workflow } from 'lucide-react'
+import { Github, ArrowRight, PlayCircle, Calendar, Database, Code2, Sparkles, Construction, Target, Zap, GitBranch, Terminal } from 'lucide-react'
 import Logo from '@/components/Logo'
 import CodeBlock from '@/components/CodeBlock'
-import { HERO_TAGLINE } from '@/lib/use-page-seo'
 
 export default function Introduction() {
   return (
@@ -14,103 +13,166 @@ export default function Introduction() {
         <div className="pointer-events-none absolute inset-0 opacity-40 dark:opacity-20 [background-image:linear-gradient(hsl(var(--border))_1px,transparent_1px),linear-gradient(90deg,hsl(var(--border))_1px,transparent_1px)] [background-size:48px_48px] [mask-image:radial-gradient(ellipse_at_top,black,transparent_70%)]"></div>
         
         <div className="relative mx-auto max-w-[1200px] px-5 py-16 sm:py-24">
-          <div className="grid lg:grid-cols-2 gap-12 items-center">
-            {/* Left: Hero Content */}
-            <div>
-              <div className="flex items-center gap-3 mb-6">
-                <Logo size="md" />
-              </div>
-              
-              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight text-foreground leading-tight">
-                Deterministic test state that{' '}
-                <span className="mockifyer-gradient-text">doesn't drift</span>
-              </h1>
-              
-              <p className="mt-6 text-lg text-muted-foreground leading-relaxed max-w-xl">
-                {HERO_TAGLINE}
-              </p>
-              
-              <div className="mt-8 flex flex-wrap gap-4">
-                <Link to="/getting-started">
-                  <Button size="lg" className="h-12 px-8 text-base font-medium">
-                    Get Started
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
-                </Link>
-                <a href="https://github.com/sgedda/mockifyer" target="_blank" rel="noopener noreferrer">
-                  <Button size="lg" variant="outline" className="h-12 px-8 text-base font-medium">
-                    <Github className="mr-2 h-5 w-5" />
-                    GitHub
-                  </Button>
-                </a>
-              </div>
+          <div className="text-center max-w-4xl mx-auto">
+            <div className="flex justify-center mb-6">
+              <Logo size="lg" />
             </div>
-
-            {/* Right: Code Example */}
-            <div className="lg:order-last">
-              <CodeBlock
-                language="typescript"
-                code={`// Setup once
-setupMockifyerForReactNative({
-  mockDataPath: './mock-data',
-  defaultScenario: 'trips-many'
-});
-
-// Switch scenarios at runtime
-setActiveScenario('trips-empty');
-setActiveScenario('trips-one');
-setActiveScenario('checkin-open');
-
-// Same mock world, every test run`}
-              />
+            
+            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight text-foreground leading-tight">
+              Record real traffic.{' '}
+              <span className="mockifyer-gradient-text">Replay in tests.</span>
+            </h1>
+            
+            <p className="mt-6 text-lg text-muted-foreground leading-relaxed max-w-2xl mx-auto">
+              HTTP mock record/replay for JavaScript and React Native. No account, no cloud—mocks are JSON in your repo or your own Redis/SQLite.
+            </p>
+            
+            <div className="mt-8 flex flex-wrap justify-center gap-4">
+              <Link to="/getting-started">
+                <Button size="lg" className="h-12 px-8 text-base font-medium">
+                  Get Started
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              </Link>
+              <Link to="/e2e-tutorial">
+                <Button size="lg" variant="outline" className="h-12 px-8 text-base font-medium">
+                  <PlayCircle className="mr-2 h-5 w-5" />
+                  E2E Tutorial
+                </Button>
+              </Link>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Why Mockifyer */}
+      {/* See It In Action Showcase */}
+      <section className="mx-auto max-w-[1200px] px-5 py-16 border-b border-border">
+        <div className="text-center mb-8">
+          <h2 className="text-3xl font-semibold tracking-tight mb-3">See It In Action</h2>
+          <p className="text-muted-foreground max-w-2xl mx-auto">
+            Record traffic, edit mocks in the dashboard, and control delay/status for every scenario
+          </p>
+          <p className="text-sm text-muted-foreground mt-3">
+            Want to try it yourself? Check out the{' '}
+            <a 
+              href="https://github.com/sgedda/mockifyer/tree/main/example-projects/wanderweird-travel" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-primary hover:underline font-medium"
+            >
+              WanderWeird demo app
+            </a>
+            {' '}— a full-stack Expo + multi-service example (7 Node services, Umbraco CMS, scenarios, request tracing).{' '}
+            <Link to="/e2e-tutorial" className="text-primary hover:underline font-medium">
+              E2E Tutorial →
+            </Link>
+          </p>
+        </div>
+        
+        <div className="max-w-4xl mx-auto rounded-xl border border-border bg-card overflow-hidden">
+          <video
+            src="/videos/e2e-tutorial/delay-and-status-override_b200.mp4"
+            autoPlay
+            muted
+            loop
+            playsInline
+            className="w-full"
+            style={{ aspectRatio: '1662/800' }}
+          >
+            Your browser doesn't support video playback.
+          </video>
+        </div>
+        
+        <div className="grid md:grid-cols-2 gap-4 mt-6 max-w-4xl mx-auto">
+          <div className="rounded-lg border border-border bg-card overflow-hidden">
+            <video
+              src="/videos/e2e-tutorial/mock-editor-body-edit_7064.mp4"
+              muted
+              loop
+              playsInline
+              preload="metadata"
+              className="w-full"
+              onMouseEnter={(e) => e.currentTarget.play()}
+              onMouseLeave={(e) => e.currentTarget.pause()}
+            >
+              Your browser doesn't support video playback.
+            </video>
+            <div className="p-3 text-sm text-center text-muted-foreground">
+              Edit mock response bodies in real-time
+            </div>
+          </div>
+          
+          <div className="rounded-lg border border-border bg-card overflow-hidden">
+            <video
+              src="/videos/e2e-tutorial/header-scenario-picker_4de8.mp4"
+              muted
+              loop
+              playsInline
+              preload="metadata"
+              className="w-full"
+              onMouseEnter={(e) => e.currentTarget.play()}
+              onMouseLeave={(e) => e.currentTarget.pause()}
+            >
+              Your browser doesn't support video playback.
+            </video>
+            <div className="p-3 text-sm text-center text-muted-foreground">
+              Switch scenarios to test different states
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Problems It Solves */}
       <section className="mx-auto max-w-[1200px] px-5 py-20">
-        <h2 className="text-3xl font-semibold tracking-tight text-center mb-4">Why Mockifyer?</h2>
+        <h2 className="text-3xl font-semibold tracking-tight text-center mb-4">The Problems Mockifyer Solves</h2>
         <p className="text-center text-muted-foreground mb-12 max-w-2xl mx-auto">
-          Testing integrations is challenging when data disappears, dates drift, and state setup requires manual work
+          Testing integrations is hard when dependencies aren't stable
         </p>
         
-        <div className="grid md:grid-cols-2 gap-6 max-w-4xl mx-auto">
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           <div className="p-6 rounded-xl border border-border bg-card">
-            <div className="text-2xl mb-3">💔</div>
-            <h3 className="font-semibold text-lg mb-2">Test Data Disappears</h3>
+            <Construction className="h-8 w-8 text-primary mb-3" />
+            <h3 className="font-semibold text-lg mb-2">API Isn't Ready Yet</h3>
             <p className="text-sm text-muted-foreground">
-              A booking created yesterday might be expired today, or deleted by another developer
+              Backend is still being built but you need to build and test the frontend now
             </p>
           </div>
           
           <div className="p-6 rounded-xl border border-border bg-card">
-            <div className="text-2xl mb-3">📅</div>
-            <h3 className="font-semibold text-lg mb-2">Dates Drift</h3>
+            <Target className="h-8 w-8 text-primary mb-3" />
+            <h3 className="font-semibold text-lg mb-2">Hard-to-Reproduce States</h3>
             <p className="text-sm text-muted-foreground">
-              Time-dependent logic like "upcoming trips" or "check-in window" breaks as calendar dates move forward
+              Errors, slowness, a specific date, or edge cases that you can't easily set up in a live API
             </p>
           </div>
           
           <div className="p-6 rounded-xl border border-border bg-card">
-            <div className="text-2xl mb-3">⚙️</div>
-            <h3 className="font-semibold text-lg mb-2">Manual State Setup</h3>
+            <Zap className="h-8 w-8 text-primary mb-3" />
+            <h3 className="font-semibold text-lg mb-2">E2E Tests Flake on Live Data</h3>
             <p className="text-sm text-muted-foreground">
-              Creating the right test state requires clicking through admin panels or running database scripts
+              Real APIs change, data disappears, dates drift—tests that passed yesterday fail today
             </p>
           </div>
           
           <div className="p-6 rounded-xl border border-border bg-card">
-            <div className="text-2xl mb-3">✅</div>
-            <h3 className="font-semibold text-lg mb-2">Mockifyer Fixes This</h3>
+            <GitBranch className="h-8 w-8 text-primary mb-3" />
+            <h3 className="font-semibold text-lg mb-2">Trace Requests Across Services</h3>
             <p className="text-sm text-muted-foreground">
-              Record once, switch scenarios at runtime, control dates—deterministic state that doesn't drift
+              Follow request chains service-to-service via <code className="text-xs bg-muted px-1 py-0.5 rounded">x-mockifyer-request-id</code> headers. See what each hop sent and received.
+            </p>
+          </div>
+          
+          <div className="p-6 rounded-xl border border-border bg-card">
+            <Terminal className="h-8 w-8 text-primary mb-3" />
+            <h3 className="font-semibold text-lg mb-2">Replicate Any Request with curl</h3>
+            <p className="text-sm text-muted-foreground">
+              Export recorded requests as copy-paste curl commands. Test backends directly, share reproduction steps.
             </p>
           </div>
         </div>
       </section>
 
-      {/* How It Works */}
+      {/* How It Works - 3 Steps */}
       <section className="border-y border-border bg-muted/30">
         <div className="mx-auto max-w-[1200px] px-5 py-20">
           <h2 className="text-3xl font-semibold tracking-tight text-center mb-12">How It Works</h2>
@@ -118,21 +180,21 @@ setActiveScenario('checkin-open');
           <div className="grid md:grid-cols-3 gap-8">
             <div className="text-center">
               <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 text-primary mb-4">
-                <Code className="h-8 w-8" />
+                <Code2 className="h-8 w-8" />
               </div>
               <h3 className="font-semibold text-lg mb-2">1. Record</h3>
               <p className="text-sm text-muted-foreground">
-                Capture real API responses as JSON files during development
+                Run with <code className="text-xs bg-muted px-1 py-0.5 rounded border border-border">MOCKIFYER_RECORD=true</code>. Every HTTP request is captured as JSON.
               </p>
             </div>
             
             <div className="text-center">
               <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 text-primary mb-4">
-                <Layers className="h-8 w-8" />
+                <Database className="h-8 w-8" />
               </div>
-              <h3 className="font-semibold text-lg mb-2">2. Switch Scenarios</h3>
+              <h3 className="font-semibold text-lg mb-2">2. Organize Scenarios</h3>
               <p className="text-sm text-muted-foreground">
-                Organize mocks into complete worlds: trips-empty, trips-one, trips-many
+                Edit mocks in the dashboard. Create scenario folders (trips-empty, trips-many).
               </p>
             </div>
             
@@ -142,102 +204,118 @@ setActiveScenario('checkin-open');
               </div>
               <h3 className="font-semibold text-lg mb-2">3. Replay in Tests</h3>
               <p className="text-sm text-muted-foreground">
-                Lock the mock world with launch arguments—same state every run
+                Lock the scenario with launch arguments—same state every run.
               </p>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Key Features */}
+      {/* Code Example */}
       <section className="mx-auto max-w-[1200px] px-5 py-20">
-        <h2 className="text-3xl font-semibold tracking-tight text-center mb-4">Key Features</h2>
-        <p className="text-center text-muted-foreground mb-12 max-w-2xl mx-auto">
-          Everything you need for deterministic API mocking and testing
-        </p>
-        
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-          <div className="group p-6 rounded-xl border border-border hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 transition-all duration-200">
-            <Layers className="h-10 w-10 text-primary mb-4" />
-            <h3 className="font-semibold text-lg mb-2">Switchable Scenarios</h3>
-            <p className="text-sm text-muted-foreground">
-              Flip between complete mock datasets at runtime from your dev menu
-            </p>
-          </div>
+        <div className="max-w-3xl mx-auto">
+          <h2 className="text-3xl font-semibold tracking-tight mb-4">Setup in 30 Seconds</h2>
+          <p className="text-muted-foreground mb-8">
+            Add one setup call at app startup. That's it.
+          </p>
           
-          <div className="group p-6 rounded-xl border border-border hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 transition-all duration-200">
-            <Calendar className="h-10 w-10 text-primary mb-4" />
-            <h3 className="font-semibold text-lg mb-2">Deterministic Dates</h3>
-            <p className="text-sm text-muted-foreground">
-              Fix dates per scenario so time-dependent tests stay stable
-            </p>
-          </div>
+          <CodeBlock
+            language="typescript"
+            code={`import { setupMockifyerForReactNative } from '@sgedda/mockifyer-fetch';
+
+setupMockifyerForReactNative({
+  mockDataPath: './mock-data',
+  recordMode: false,
+  dateManipulation: {
+    fixedDate: '2024-12-20',
+    timezone: 'America/New_York'
+  }
+});
+
+// Your app code runs normally—fetch is patched automatically`}
+          />
           
-          <div className="group p-6 rounded-xl border border-border hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 transition-all duration-200">
-            <TestTube2 className="h-10 w-10 text-primary mb-4" />
-            <h3 className="font-semibold text-lg mb-2">Maestro E2E</h3>
-            <p className="text-sm text-muted-foreground">
-              Launch arguments lock the mock world—no API flakes
-            </p>
-          </div>
-          
-          <div className="group p-6 rounded-xl border border-border hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 transition-all duration-200">
-            <Database className="h-10 w-10 text-primary mb-4" />
-            <h3 className="font-semibold text-lg mb-2">Client Lanes</h3>
-            <p className="text-sm text-muted-foreground">
-              Per-device isolation via Redis/SQLite for multi-tester workflows
-            </p>
-          </div>
-          
-          <div className="group p-6 rounded-xl border border-border hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 transition-all duration-200">
-            <Workflow className="h-10 w-10 text-primary mb-4" />
-            <h3 className="font-semibold text-lg mb-2">Atlas Tracing</h3>
-            <p className="text-sm text-muted-foreground">
-              Press 't' in Metro to capture nested HTTP calls with payload search
-            </p>
-          </div>
-          
-          <div className="group p-6 rounded-xl border border-border hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 transition-all duration-200">
-            <Code className="h-10 w-10 text-primary mb-4" />
-            <h3 className="font-semibold text-lg mb-2">React Native + Expo</h3>
-            <p className="text-sm text-muted-foreground">
-              Hybrid storage, Metro sync, device-to-repo two-way sync
-            </p>
+          <div className="mt-8 p-5 rounded-xl border border-primary/20 bg-primary/5">
+            <div className="flex items-start gap-3">
+              <Calendar className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
+              <div>
+                <h3 className="font-semibold text-foreground mb-2">Date Freezing & Shifting</h3>
+                <p className="text-sm text-muted-foreground">
+                  Fix dates per scenario so "check-in opens today" stays stable. Shift relative to now, or freeze at a specific date. Time-dependent tests stay green.
+                </p>
+              </div>
+            </div>
           </div>
         </div>
-        
-        <div className="text-center mt-12">
-          <Link to="/features">
-            <Button variant="outline" size="lg">
-              View All Features
-              <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
-          </Link>
+      </section>
+
+      {/* Use Cases */}
+      <section className="border-y border-border bg-muted/30">
+        <div className="mx-auto max-w-[1200px] px-5 py-20">
+          <h2 className="text-3xl font-semibold tracking-tight text-center mb-12">Use Cases</h2>
+          
+          <div className="grid md:grid-cols-2 gap-6 max-w-4xl mx-auto">
+            <div className="p-6 rounded-xl border border-border bg-card">
+              <Code2 className="h-8 w-8 text-primary mb-3" />
+              <h3 className="font-semibold text-lg mb-2">React Native Development</h3>
+              <p className="text-sm text-muted-foreground">
+                Develop mobile apps with consistent mock data. Switch scenarios from your dev menu, test edge cases, and work offline.
+              </p>
+            </div>
+            
+            <div className="p-6 rounded-xl border border-border bg-card">
+              <PlayCircle className="h-8 w-8 text-primary mb-3" />
+              <h3 className="font-semibold text-lg mb-2">Deterministic E2E Tests</h3>
+              <p className="text-sm text-muted-foreground">
+                Lock the mock world with launch arguments. Same state every run—no flakes, no external dependencies.
+              </p>
+            </div>
+            
+            <div className="p-6 rounded-xl border border-border bg-card">
+              <Database className="h-8 w-8 text-primary mb-3" />
+              <h3 className="font-semibold text-lg mb-2">Demos & Presentations</h3>
+              <p className="text-sm text-muted-foreground">
+                Show your app with perfect data every time. No network issues, no unexpected responses during the demo.
+              </p>
+            </div>
+            
+            <div className="p-6 rounded-xl border border-border bg-card">
+              <Sparkles className="h-8 w-8 text-primary mb-3" />
+              <h3 className="font-semibold text-lg mb-2">AI Agents via MCP</h3>
+              <p className="text-sm text-muted-foreground">
+                Connect Cursor or Claude to your dashboard. AI can search mocks, set scenarios, and override field values. <strong>Not on npm</strong>—local tooling only.
+              </p>
+            </div>
+          </div>
         </div>
       </section>
 
       {/* Final CTA */}
-      <section className="border-t border-border bg-muted/30">
-        <div className="mx-auto max-w-[1200px] px-5 py-20 text-center">
-          <h2 className="text-3xl font-semibold tracking-tight mb-4">Ready to Get Started?</h2>
-          <p className="text-lg text-muted-foreground mb-8 max-w-2xl mx-auto">
-            Install Mockifyer and start building deterministic tests in minutes
-          </p>
-          
-          <div className="flex flex-wrap justify-center gap-4">
-            <Link to="/getting-started">
-              <Button size="lg" className="h-12 px-8 text-base font-medium">
-                Get Started
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            </Link>
-            <Link to="/playground">
-              <Button size="lg" variant="outline" className="h-12 px-8 text-base font-medium">
-                <PlayCircle className="mr-2 h-5 w-5" />
-                Try Playground
-              </Button>
-            </Link>
-          </div>
+      <section className="mx-auto max-w-[1200px] px-5 py-20 text-center">
+        <h2 className="text-3xl font-semibold tracking-tight mb-4">Ready to Get Started?</h2>
+        <p className="text-lg text-muted-foreground mb-8 max-w-2xl mx-auto">
+          Install Mockifyer and start building deterministic tests in minutes. No account required, no cloud service—everything runs locally.
+        </p>
+        
+        <div className="flex flex-wrap justify-center gap-4">
+          <Link to="/getting-started">
+            <Button size="lg" className="h-12 px-8 text-base font-medium">
+              Get Started
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+          </Link>
+          <Link to="/e2e-tutorial">
+            <Button size="lg" variant="outline" className="h-12 px-8 text-base font-medium">
+              <PlayCircle className="mr-2 h-5 w-5" />
+              E2E Tutorial
+            </Button>
+          </Link>
+          <a href="https://github.com/sgedda/mockifyer" target="_blank" rel="noopener noreferrer">
+            <Button size="lg" variant="outline" className="h-12 px-8 text-base font-medium">
+              <Github className="mr-2 h-5 w-5" />
+              GitHub
+            </Button>
+          </a>
         </div>
       </section>
     </div>

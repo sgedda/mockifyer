@@ -82,6 +82,6 @@ Each file stores request metadata + response body used for replay.
 
 ## External docs
 
-- [mockifyer.dev](https://mockifyer.dev) — getting started, playground
+- [mockifyer.dev](https://mockifyer.dev) — getting started, features, E2E tutorial, dashboard
 - [llms.txt](https://mockifyer.dev/llms.txt) — AI-oriented summary
 - [GitHub](https://github.com/sgedda/mockifyer) — source, issues

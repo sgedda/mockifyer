@@ -37,6 +37,6 @@ export const HOME_FAQ: FaqItem[] = [
   {
     question: 'Where is the official documentation?',
     answer:
-      'https://mockifyer.dev — Getting Started, config reference, playground. Source: https://github.com/sgedda/mockifyer. AI summaries: https://mockifyer.dev/llms.txt',
+      'https://mockifyer.dev — Getting Started, config reference, E2E tutorial, features. Source: https://github.com/sgedda/mockifyer. AI summaries: https://mockifyer.dev/llms.txt',
   },
 ]

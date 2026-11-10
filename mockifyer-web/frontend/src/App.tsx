@@ -1,13 +1,11 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { Toaster } from '@/components/ui/toaster'
 import Navigation from './components/Navigation'
+import { Navigate } from 'react-router-dom'
 import Introduction from './pages/Introduction'
-import Playground from './pages/Playground'
-import Timeline from './pages/Timeline'
 import DateConfig from './pages/DateConfig'
 import GettingStarted from './pages/GettingStarted'
 import ConfigReference from './pages/ConfigReference'
-import Settings from './pages/Settings'
 import Contact from './pages/Contact'
 import Comparisons from './pages/Comparisons'
 import E2ETutorial from './pages/E2ETutorial'
@@ -40,14 +38,17 @@ function App() {
               <Route path="/faq" element={<FAQ />} />
               <Route path="/packages" element={<Packages />} />
               <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/playground" element={<Playground />} />
-              <Route path="/timeline" element={<Timeline />} />
+              
+              {/* Redirects for removed pages */}
+              <Route path="/playground" element={<Navigate to="/e2e-tutorial" replace />} />
+              <Route path="/timeline" element={<Navigate to="/dashboard" replace />} />
+              <Route path="/settings" element={<Navigate to="/#date-config" replace />} />
+              
               <Route path="/date-config" element={<DateConfig />} />
               <Route path="/getting-started" element={<GettingStarted />} />
               <Route path="/config-reference" element={<ConfigReference />} />
               <Route path="/comparisons" element={<Comparisons />} />
               <Route path="/e2e-tutorial" element={<E2ETutorial />} />
-              <Route path="/settings" element={<Settings />} />
               <Route path="/contact" element={<Contact />} />
             </Routes>
           </main>

@@ -4,35 +4,33 @@ test.describe('Introduction Page', () => {
   test('should display main content', async ({ page }) => {
     await page.goto('/');
     
-    // Check main heading (in main content area, not nav)
-    await expect(page.getByRole('main').getByText(/Mockifyer/i).first()).toBeVisible();
+    // Check main heading
+    await expect(page.getByRole('heading', { name: /Record real traffic.*Replay in tests/i })).toBeVisible();
     
     // Check hero tagline
-    await expect(page.getByText(/record and replay axios, fetch, and GraphQL/i)).toBeVisible();
+    await expect(page.getByText(/No account, no cloud/i)).toBeVisible();
     
-    // Check key benefits section
-    await expect(page.getByRole('heading', { name: /What is Mockifyer\?/i })).toBeVisible();
-    await expect(page.getByText(/No more API rate limits/i)).toBeVisible();
-    await expect(page.getByText(/Faster tests/i)).toBeVisible();
-    await expect(page.getByText(/Deterministic testing:/i).first()).toBeVisible();
+    // Check problems section
+    await expect(page.getByRole('heading', { name: /The Problems Mockifyer Solves/i })).toBeVisible();
+    await expect(page.getByText(/API Isn't Ready Yet/i)).toBeVisible();
+    await expect(page.getByText(/Hard-to-Reproduce States/i)).toBeVisible();
+    await expect(page.getByText(/E2E Tests Flake/i)).toBeVisible();
 
-    // FAQ section (SEO / AI answer engines)
-    await expect(page.getByRole('heading', { name: /Frequently Asked Questions/i })).toBeVisible();
-    await expect(page.getByRole('heading', { name: /How is Mockifyer different from MSW\?/i })).toBeVisible();
+    // How it works section
+    await expect(page.getByRole('heading', { name: /How It Works/i })).toBeVisible();
+    await expect(page.getByText(/Record Real Traffic/i)).toBeVisible();
+    await expect(page.getByText(/Organize into Scenarios/i)).toBeVisible();
   });
 
   test('should have working links to other pages', async ({ page }) => {
     await page.goto('/');
     
-    // Check Playground link
-    const playgroundLink = page.getByRole('link', { name: /Explore Playground/i });
-    await expect(playgroundLink).toBeVisible();
-    await playgroundLink.click();
-    await expect(page).toHaveURL(/.*playground/);
+    // Check E2E Tutorial link
+    const tutorialLink = page.getByRole('link', { name: /E2E Tutorial/i }).first();
+    await expect(tutorialLink).toBeVisible();
     
-    // Go back and check other links
-    await page.goto('/');
-    const gettingStartedLink = page.getByRole('link', { name: /Get Started Guide/i });
+    // Check Get Started link
+    const gettingStartedLink = page.getByRole('link', { name: /Get Started/i }).first();
     await expect(gettingStartedLink).toBeVisible();
   });
 

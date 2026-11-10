@@ -49,24 +49,6 @@ export const PAGE_SEO: Record<string, PageSeoConfig> = {
       'Install @sgedda/mockifyer-axios or mockifyer-fetch, configure mock data paths, and start recording or replaying HTTP API responses in minutes.',
     path: '/getting-started',
   },
-  '/playground': {
-    title: 'API Mock Playground',
-    description:
-      'Try Mockifyer live: send HTTP requests, switch mock scenarios, and inspect recorded axios and fetch responses in the browser.',
-    path: '/playground',
-  },
-  '/timeline': {
-    title: 'Request Timeline',
-    description:
-      'Browse recorded HTTP requests and responses captured by Mockifyer. Inspect headers, bodies, and mock match details.',
-    path: '/timeline',
-  },
-  '/settings': {
-    title: 'Settings & Scenarios',
-    description:
-      'Configure Mockifyer scenarios, date manipulation, runtime options, and environment variables for local development and testing.',
-    path: '/settings',
-  },
   '/date-config': {
     title: 'Date Configuration',
     description:

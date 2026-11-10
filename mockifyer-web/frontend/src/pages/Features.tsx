@@ -54,9 +54,9 @@ export default function Features() {
                 <h3 className="font-semibold mb-2">Getting Started</h3>
                 <p className="text-sm text-muted-foreground">Installation and setup guide</p>
               </Link>
-              <Link to="/playground" className="p-4 rounded-lg border border-border hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 transition-all">
-                <h3 className="font-semibold mb-2">Playground</h3>
-                <p className="text-sm text-muted-foreground">Interactive demo application</p>
+              <Link to="/e2e-tutorial" className="p-4 rounded-lg border border-border hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 transition-all">
+                <h3 className="font-semibold mb-2">E2E Tutorial</h3>
+                <p className="text-sm text-muted-foreground">End-to-end testing guide</p>
               </Link>
               <Link to="/e2e-tutorial" className="p-4 rounded-lg border border-border hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 transition-all">
                 <h3 className="font-semibold mb-2">E2E Tutorial</h3>

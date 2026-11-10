@@ -38,6 +38,21 @@ export default function E2ETutorial() {
             (app on the left, dashboard on the right).
           </p>
           
+          <div className="p-4 border border-primary/20 bg-primary/5 rounded-md">
+            <p className="text-sm mb-2">
+              <strong>Try it yourself:</strong> The WanderWeird demo app is a full-stack Expo + multi-service example with 7 Node services, 
+              Umbraco CMS, scenarios, and request tracing.
+            </p>
+            <a 
+              href="https://github.com/sgedda/mockifyer/tree/main/example-projects/wanderweird-travel"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary hover:underline font-medium text-sm"
+            >
+              View WanderWeird source on GitHub →
+            </a>
+          </div>
+          
           <div className="p-4 border border-amber-500/50 bg-amber-500/10 rounded-md">
             <div className="flex gap-2">
               <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />

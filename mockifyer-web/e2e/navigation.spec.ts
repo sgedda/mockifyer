@@ -4,50 +4,48 @@ test.describe('Navigation', () => {
   test('should display logo and navigation links', async ({ page }) => {
     await page.goto('/');
     
-    // Check logo is visible (use first() since there are two logos - nav and main)
+    // Check logo is visible
     const logo = page.getByRole('navigation').getByRole('link', { name: /mockifyer/i });
     await expect(logo).toBeVisible();
     
     // Check navigation links (use navigation role to avoid duplicates)
-    await expect(page.getByRole('navigation').getByRole('link', { name: 'Getting Started' })).toBeVisible();
-    await expect(page.getByRole('navigation').getByRole('link', { name: 'Playground', exact: true })).toBeVisible();
-    await expect(page.getByRole('navigation').getByRole('link', { name: 'Timeline', exact: true })).toBeVisible();
-    await expect(page.getByRole('navigation').getByRole('link', { name: 'Settings', exact: true })).toBeVisible();
+    await expect(page.getByRole('navigation').getByRole('link', { name: 'Get Started' })).toBeVisible();
+    await expect(page.getByRole('navigation').getByRole('link', { name: 'Features', exact: true })).toBeVisible();
+    await expect(page.getByRole('navigation').getByRole('link', { name: 'Dashboard', exact: true })).toBeVisible();
+    await expect(page.getByRole('navigation').getByRole('link', { name: 'Packages', exact: true })).toBeVisible();
+    await expect(page.getByRole('navigation').getByRole('link', { name: 'FAQ', exact: true })).toBeVisible();
   });
 
   test('should navigate to Getting Started page', async ({ page }) => {
     await page.goto('/');
-    await page.getByRole('link', { name: 'Getting Started' }).click();
+    await page.getByRole('link', { name: 'Get Started' }).click();
     await expect(page).toHaveURL(/.*getting-started/);
-    await expect(page.getByText(/Getting Started with Mockifyer/i)).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Getting Started/i })).toBeVisible();
   });
 
-  test('should navigate to Playground page', async ({ page }) => {
+  test('should navigate to Features page', async ({ page }) => {
     await page.goto('/');
-    await page.getByRole('navigation').getByRole('link', { name: 'Playground', exact: true }).click();
-    await expect(page).toHaveURL(/.*playground/);
-    // Wait for page to load and check for Status Banner (reliable indicator)
-    await page.waitForLoadState('networkidle');
-    await expect(page.getByText(/Mockifyer:/i)).toBeVisible({ timeout: 10000 });
+    await page.getByRole('navigation').getByRole('link', { name: 'Features', exact: true }).click();
+    await expect(page).toHaveURL(/.*features/);
+    await expect(page.getByRole('heading', { name: /All Features/i })).toBeVisible();
   });
 
-  test('should navigate to Timeline page', async ({ page }) => {
+  test('should navigate to Dashboard page', async ({ page }) => {
     await page.goto('/');
-    await page.getByRole('navigation').getByRole('link', { name: 'Timeline', exact: true }).click();
-    await expect(page).toHaveURL(/.*timeline/);
-    await page.waitForLoadState('networkidle');
-    await expect(page.getByRole('heading', { name: /API Timeline/i })).toBeVisible({ timeout: 10000 });
+    await page.getByRole('navigation').getByRole('link', { name: 'Dashboard', exact: true }).click();
+    await expect(page).toHaveURL(/.*dashboard/);
+    await expect(page.getByRole('heading', { name: /Dashboard & Tooling/i })).toBeVisible();
   });
 
-  test('should navigate to Settings page', async ({ page }) => {
+  test('should navigate to FAQ page', async ({ page }) => {
     await page.goto('/');
-    await page.getByRole('navigation').getByRole('link', { name: 'Settings', exact: true }).click();
-    await expect(page).toHaveURL(/.*settings/);
-    await expect(page.getByRole('heading', { name: /Settings/i })).toBeVisible();
+    await page.getByRole('navigation').getByRole('link', { name: 'FAQ', exact: true }).click();
+    await expect(page).toHaveURL(/.*faq/);
+    await expect(page.getByRole('heading', { name: /Frequently Asked Questions/i })).toBeVisible();
   });
 
   test('should have logo link to home page', async ({ page }) => {
-    await page.goto('/playground');
+    await page.goto('/features');
     const logo = page.getByRole('navigation').getByRole('link', { name: /mockifyer/i });
     await logo.click();
     await expect(page).toHaveURL('/');
@@ -59,43 +57,20 @@ test.describe('Navigation', () => {
     await page.goto('/');
     await page.waitForLoadState('networkidle');
     
-    // On mobile, navigation links might be in a hamburger menu or always visible
-    // Check if there's a menu button (hamburger icon) - look for button with Menu icon
-    const buttons = page.locator('button');
-    const buttonCount = await buttons.count();
-    let menuButton = null;
+    // Find and click the menu button
+    const menuButton = page.getByRole('button', { name: /menu/i });
+    await expect(menuButton).toBeVisible();
+    await menuButton.click();
+    await page.waitForTimeout(500); // Wait for menu animation
     
-    // Find button that might be the menu button (usually has an SVG icon)
-    for (let i = 0; i < buttonCount; i++) {
-      const button = buttons.nth(i);
-      const hasSvg = await button.locator('svg').count() > 0;
-      const isVisible = await button.isVisible().catch(() => false);
-      if (hasSvg && isVisible) {
-        menuButton = button;
-        break;
-      }
-    }
+    // Check that navigation links are visible in mobile menu
+    const featuresLink = page.getByRole('link', { name: 'Features' });
+    const dashboardLink = page.getByRole('link', { name: 'Dashboard' });
     
-    if (menuButton) {
-      // Click menu button to open mobile menu
-      await menuButton.click();
-      await page.waitForTimeout(500); // Wait for menu animation
-      
-      // Check that navigation links are visible in mobile menu
-      const gettingStartedLink = page.getByRole('link', { name: 'Getting Started' });
-      const playgroundLink = page.getByRole('link', { name: 'Playground' });
-      
-      // At least one should be visible after clicking menu
-      const hasGettingStarted = await gettingStartedLink.isVisible().catch(() => false);
-      const hasPlayground = await playgroundLink.isVisible().catch(() => false);
-      expect(hasGettingStarted || hasPlayground).toBeTruthy();
-    } else {
-      // On mobile, navigation might be always visible (responsive design)
-      // Just verify navigation links are accessible
-      const navLinks = page.getByRole('navigation').getByRole('link');
-      const linkCount = await navLinks.count();
-      expect(linkCount).toBeGreaterThan(0);
-    }
+    // At least one should be visible after clicking menu
+    const hasFeatures = await featuresLink.isVisible().catch(() => false);
+    const hasDashboard = await dashboardLink.isVisible().catch(() => false);
+    expect(hasFeatures || hasDashboard).toBeTruthy();
   });
 });
 

@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Link } from 'react-router-dom'
-import { CheckCircle2, Code, Zap, BookOpen, Settings, Play, Shield, Terminal, Monitor, TestTube, Clock } from 'lucide-react'
+import { CheckCircle2, Code, Zap, BookOpen, Play, Shield, Terminal, Monitor, TestTube, Clock } from 'lucide-react'
 import CodeBlock from '@/components/CodeBlock'
 import PackagesOverview from '@/components/PackagesOverview'
 import { MCP_TOOLS } from '@/lib/product-docs'
@@ -845,37 +845,47 @@ npm test tests/generated
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            This example project shows how to use Mockifyer with Express.js, TypeScript, and both Axios and Fetch.
-            Check out the implementation in <code className="bg-muted px-1 rounded">src/lib/mockifyer.ts</code>.
-          </p>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="p-4 border rounded-md">
-              <h4 className="font-semibold mb-2 flex items-center gap-2">
-                <Play className="h-4 w-4" />
-                Try It Out
-              </h4>
-              <p className="text-sm text-muted-foreground mb-3">
-                Test API endpoints and see Mockifyer in action
-              </p>
-              <Link to="/playground">
-                <Button size="sm" className="w-full">Open Playground</Button>
+          <div>
+            <h4 className="font-semibold mb-2">WanderWeird Travel Demo</h4>
+            <p className="text-sm text-muted-foreground mb-3">
+              A comprehensive full-stack Expo + multi-service example with 7 Node services, Umbraco CMS, 
+              scenarios, request tracing across services, and all Mockifyer features in one app.
+            </p>
+            <div className="flex gap-2">
+              <a 
+                href="https://github.com/sgedda/mockifyer/tree/main/example-projects/wanderweird-travel"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <Button variant="outline" size="sm">
+                  <Code className="mr-2 h-4 w-4" />
+                  View Source
+                </Button>
+              </a>
+              <Link to="/e2e-tutorial">
+                <Button variant="outline" size="sm">
+                  <BookOpen className="mr-2 h-4 w-4" />
+                  E2E Tutorial
+                </Button>
               </Link>
             </div>
+          </div>
 
-            <div className="p-4 border rounded-md">
-              <h4 className="font-semibold mb-2 flex items-center gap-2">
-                <Settings className="h-4 w-4" />
-                Configure
-              </h4>
-              <p className="text-sm text-muted-foreground mb-3">
-                Manage date settings and view configuration
-              </p>
-              <Link to="/settings">
-                <Button size="sm" variant="outline" className="w-full">Open Settings</Button>
-              </Link>
-            </div>
+          <div className="border-t border-border pt-4">
+            <h4 className="font-semibold mb-2">Express API Mock</h4>
+            <p className="text-sm text-muted-foreground mb-3">
+              A simpler example showing Mockifyer with Express.js, TypeScript, and both Axios and Fetch.
+            </p>
+            <a 
+              href="https://github.com/sgedda/mockifyer/tree/main/example-projects/express-api-mock"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Button variant="outline" size="sm">
+                <Code className="mr-2 h-4 w-4" />
+                View Source
+              </Button>
+            </a>
           </div>
         </CardContent>
       </Card>
@@ -889,33 +899,33 @@ npm test tests/generated
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Link to="/playground" className="p-4 border rounded-md hover:bg-accent transition-colors">
+            <Link to="/e2e-tutorial" className="p-4 border rounded-md hover:bg-accent transition-colors">
               <div className="flex items-center gap-2 mb-2">
                 <Play className="h-5 w-5 text-primary" />
-                <h4 className="font-semibold">Playground</h4>
+                <h4 className="font-semibold">E2E Tutorial</h4>
               </div>
               <p className="text-sm text-muted-foreground">
-                Test API endpoints interactively and see mock responses
+                Walk through the WanderWeird demo with Playwright tests
               </p>
             </Link>
 
-            <Link to="/timeline" className="p-4 border rounded-md hover:bg-accent transition-colors">
+            <Link to="/dashboard" className="p-4 border rounded-md hover:bg-accent transition-colors">
               <div className="flex items-center gap-2 mb-2">
-                <Zap className="h-5 w-5 text-primary" />
-                <h4 className="font-semibold">Timeline</h4>
+                <Monitor className="h-5 w-5 text-primary" />
+                <h4 className="font-semibold">Dashboard</h4>
               </div>
               <p className="text-sm text-muted-foreground">
-                Visualize how requests flow through Mockifyer
+                Browse, edit, and manage your mock data with a local UI
               </p>
             </Link>
 
-            <Link to="/settings" className="p-4 border rounded-md hover:bg-accent transition-colors">
+            <Link to="/features#date-config" className="p-4 border rounded-md hover:bg-accent transition-colors">
               <div className="flex items-center gap-2 mb-2">
-                <BookOpen className="h-5 w-5 text-primary" />
-                <h4 className="font-semibold">Settings</h4>
+                <Clock className="h-5 w-5 text-primary" />
+                <h4 className="font-semibold">Date Manipulation</h4>
               </div>
               <p className="text-sm text-muted-foreground">
-                Configure date manipulation and view runtime settings
+                Freeze or shift dates for time-dependent test scenarios
               </p>
             </Link>
           </div>
