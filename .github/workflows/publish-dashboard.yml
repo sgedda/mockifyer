@@ -14,7 +14,7 @@ jobs:
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: "22.x"
+          node-version: "24.x"
 
       - name: Install core dependencies (local file:)
         run: npm --prefix packages/mockifyer-core ci --ignore-scripts
@@ -42,7 +42,7 @@ jobs:
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: "22.x"
+          node-version: "24.x"
           registry-url: "https://registry.npmjs.org"
 
       - name: Install core dependencies (local file:)
