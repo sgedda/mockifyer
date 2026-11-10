@@ -4,9 +4,11 @@ console.log('📝 Recording mock responses...\n');
 
 // Ensure recorded mocks are immediately replayable
 process.env.MOCKIFYER_RECORD_DEFAULT_ALWAYS_USE_REAL_API = 'false';
+process.env.MOCKIFYER_RECORD_RESPONSES = 'true';  // CRITICAL: Record full response bodies!
 
 setupMockifyer({
   recordMode: true,
+  recordResponses: true,  // CRITICAL: Include response bodies in recordings!
   mockDataPath: './mock-data',
   defaultScenario: 'default',
   provider: 'filesystem',
