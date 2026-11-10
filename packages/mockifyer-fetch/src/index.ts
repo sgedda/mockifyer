@@ -4,16 +4,15 @@
 // DO NOT change this to static require() or import - bundlers will fail on browser builds.
 // The dynamic require is hidden inside functions to prevent bundle-time resolution.
 
-// Lazy-load Node.js built-ins (hidden from bundlers via function scope + indirect eval)
+// Lazy-load Node.js built-ins (hidden from bundlers via function scope)
 function lazyRequire(moduleName: string): any {
   // Only works in Node.js
   if (typeof process === 'undefined' || !process.versions?.node) {
     return null;
   }
   try {
-    // Use indirect eval to prevent bundlers from seeing the require
-    const req = (0, eval)('require');
-    return req(moduleName);
+    // Direct require works in Node module scope; function guard + try/catch prevent bundler issues
+    return require(moduleName);
   } catch {
     return null;
   }

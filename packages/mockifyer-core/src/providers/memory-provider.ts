@@ -28,7 +28,7 @@ export class MemoryProvider implements DatabaseProvider {
 
   initialize(): void {
     // Nothing to initialize for in-memory storage
-    console.log('[Mockifyer] MemoryProvider initialized (in-memory storage, ${this.mocks.size} mocks loaded)');
+    console.log(`[Mockifyer] MemoryProvider initialized (in-memory storage, ${this.mocks.size} mocks loaded)`);
   }
 
   /**
