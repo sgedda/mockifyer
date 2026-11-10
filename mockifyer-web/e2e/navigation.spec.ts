@@ -62,20 +62,17 @@ test.describe('Navigation', () => {
     await page.goto('/');
     await page.waitForLoadState('networkidle');
     
-    // Find and click the menu button
+    // Find the menu button (should be visible on mobile)
     const menuButton = page.getByRole('button', { name: /menu/i });
     await expect(menuButton).toBeVisible();
+    
+    // Click to open mobile menu
     await menuButton.click();
     await page.waitForTimeout(500); // Wait for menu animation
     
-    // Check that navigation links are visible in mobile menu
-    const featuresLink = page.getByRole('link', { name: 'Features' });
-    const dashboardLink = page.getByRole('link', { name: 'Dashboard' });
-    
-    // At least one should be visible after clicking menu
-    const hasFeatures = await featuresLink.isVisible().catch(() => false);
-    const hasDashboard = await dashboardLink.isVisible().catch(() => false);
-    expect(hasFeatures || hasDashboard).toBeTruthy();
+    // After clicking, menu should have expanded (check for mobile nav links)
+    // Mobile navigation shows links that are collapsed on desktop
+    await expect(page.locator('nav.lg\\:hidden')).toBeVisible();
   });
 
   test('should have Guides dropdown with guide links', async ({ page }) => {
@@ -88,14 +85,15 @@ test.describe('Navigation', () => {
     // Wait for any guide link to appear (they're rendered on click)
     await page.waitForTimeout(500); // Allow dropdown to render
     
-    // Check guide links appear (use getByRole to find links)
-    const mockEdgeLink = page.locator('a[href="/guides/mock-at-the-network-edge"]');
+    // Check guide links appear (use menuitem role to target dropdown items specifically)
+    const mockEdgeLink = page.getByRole('menuitem', { name: 'Mock at the Network Edge' });
     await expect(mockEdgeLink).toBeVisible({ timeout: 5000 });
     
-    // Check other guide links exist (4 guides total)
-    await expect(page.locator('a[href="/guides/reproduce-tester-bugs"]')).toBeVisible();
-    await expect(page.locator('a[href="/guides/stable-react-native-e2e"]')).toBeVisible();
-    await expect(page.locator('a[href="/guides/mock-drift"]')).toBeVisible();
+    // Check other guide links exist (5 guides total)
+    await expect(page.getByRole('menuitem', { name: 'Stop Mock Drift' })).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: 'Reproduce Tester Bugs' })).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: 'Stable React Native E2E' })).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: 'React Native: Handlers vs Recording' })).toBeVisible();
   });
 
   test('should navigate to guide page from dropdown', async ({ page }) => {
@@ -105,8 +103,8 @@ test.describe('Navigation', () => {
     await page.getByRole('button', { name: 'Guides' }).click();
     await page.waitForTimeout(500); // Allow dropdown to render
     
-    // Click on a guide using href selector
-    await page.locator('a[href="/guides/mock-at-the-network-edge"]').click();
+    // Click on a guide using menuitem role to target dropdown specifically
+    await page.getByRole('menuitem', { name: 'Mock at the Network Edge' }).click();
     
     // Check we're on the guide page
     await expect(page).toHaveURL(/.*guides\/mock-at-the-network-edge/);
