@@ -22,50 +22,74 @@
 }
 
 @layer base {
+  @font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url('https://rsms.me/inter/font-files/InterVariable.woff2') format('woff2');
+  }
+
   :root {
+    /* Refined zinc-based palette inspired by DevXTools */
     --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --foreground: 240 10% 3.9%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 240 10% 3.9%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover-foreground: 240 10% 3.9%;
+    
+    /* Mockifyer blue accent - refined from original */
     --primary: 221.2 83.2% 53.3%;
     --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 88%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 220 15% 75%;
-    --muted-foreground: 222.2 47.4% 11.2%;
-    --accent: 210 40% 88%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    
+    /* Refined secondary colors using zinc palette */
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
+    --accent: 240 4.8% 95.9%;
+    --accent-foreground: 240 5.9% 10%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 82%;
-    --input: 214.3 31.8% 82%;
+    
+    /* Subtle borders and inputs */
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
     --ring: 221.2 83.2% 53.3%;
     --radius: 0.5rem;
+    
+    /* Custom semantic colors for Mockifyer */
+    --mockifyer-gradient-from: 221.2 83.2% 53.3%;
+    --mockifyer-gradient-to: 262.1 83.3% 57.8%;
   }
 
   /* Keep .dark class - used dynamically via JavaScript */
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
+    /* Dark mode with refined zinc palette */
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 240 10% 3.9%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 10% 3.9%;
+    --popover-foreground: 0 0% 98%;
+    
+    /* Lighter blue for dark mode */
     --primary: 217.2 91.2% 59.8%;
     --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
+    
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
+    --accent: 240 3.7% 15.9%;
+    --accent-foreground: 0 0% 98%;
     --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
+    --destructive-foreground: 0 0% 98%;
+    
+    --border: 240 3.7% 15.9%;
+    --input: 240 3.7% 15.9%;
+    --ring: 217.2 91.2% 59.8%;
   }
 
   /* Dim theme - darker than light but lighter than dark */
@@ -90,6 +114,25 @@
     --input: 240 3.7% 25%;
     --ring: 217.2 91.2% 59.8%;
   }
+  
+  html {
+    overflow-x: clip;
+  }
+  
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+      'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-size: 15px;
+    overflow-x: clip;
+  }
+  
+  @media (min-width: 1024px) {
+    body {
+      font-size: 16px;
+    }
+  }
 }
 
 @layer base {
@@ -102,8 +145,27 @@
 }
 
 @layer components {
-  .gradient-text {
-    @apply bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent;
+  /* Mockifyer gradient - distinct from DevXTools */
+  .mockifyer-gradient-text {
+    @apply bg-gradient-to-r from-blue-600 via-purple-600 to-violet-600 bg-clip-text text-transparent;
+  }
+  
+  /* Refined card component */
+  .card-hover {
+    @apply transition-all duration-200 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5;
+  }
+  
+  /* Better code blocks */
+  pre {
+    @apply rounded-lg border border-border bg-muted/50 p-4 overflow-x-auto;
+  }
+  
+  code {
+    @apply text-[0.875em] font-mono;
+  }
+  
+  :not(pre) > code {
+    @apply px-1.5 py-0.5 rounded bg-muted border border-border text-foreground;
   }
   
   .scrollbar-hide {
@@ -122,6 +184,12 @@
   
   .touch-manipulation {
     touch-action: manipulation;
+  }
+  
+  /* Container with refined max-width */
+  .container {
+    @apply mx-auto px-4 sm:px-6 lg:px-8;
+    max-width: 80rem;
   }
 }
 

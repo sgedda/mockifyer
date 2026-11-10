@@ -28,7 +28,7 @@ function App() {
         <div className="min-h-screen bg-background">
           <PageSeoManager />
           <Navigation />
-          <main className="container mx-auto px-4 py-8">
+          <main>
             <Routes>
               <Route path="/" element={<Introduction />} />
               <Route path="/index.html" element={<Introduction />} />

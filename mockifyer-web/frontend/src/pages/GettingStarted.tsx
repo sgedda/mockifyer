@@ -10,26 +10,29 @@ import { MCP_TOOLS } from '@/lib/product-docs'
 
 export default function GettingStarted() {
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold flex items-center gap-2">
-          <Zap className="h-8 w-8" />
-          Getting Started with Mockifyer
+    <div className="mx-auto max-w-[1200px] px-5 py-16 space-y-16">
+      <header>
+        <h1 className="text-4xl sm:text-5xl font-semibold tracking-tight flex items-center gap-3">
+          <Zap className="h-10 w-10 text-primary" />
+          Getting Started
         </h1>
-        <p className="text-muted-foreground mt-2">
+        <p className="text-muted-foreground mt-4 text-lg max-w-3xl">
           Node.js, React Native, dashboard, and MCP — install the @sgedda packages that match your stack
         </p>
-      </div>
+      </header>
 
-      <PackagesOverview />
+      <section>
+        <PackagesOverview />
+      </section>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Quick Start</CardTitle>
-          <CardDescription>
-            Get Mockifyer up and running in minutes
-          </CardDescription>
-        </CardHeader>
+      <section>
+        <Card className="border-border">
+          <CardHeader>
+            <CardTitle className="text-2xl">Quick Start</CardTitle>
+            <CardDescription className="text-base">
+              Get Mockifyer up and running in minutes
+            </CardDescription>
+          </CardHeader>
         <CardContent className="space-y-6">
           <Tabs defaultValue="axios" className="w-full">
             <TabsList className="grid w-full grid-cols-2">
@@ -918,6 +921,7 @@ npm test tests/generated
           </div>
         </CardContent>
       </Card>
+      </section>
     </div>
   )
 }

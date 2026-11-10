@@ -20,235 +20,324 @@ import CodeBlock from '@/components/CodeBlock'
 
 export default function Introduction() {
   return (
-    <div className="space-y-8">
-      <header className="text-center py-12">
-        <h1 className="flex justify-center mb-6">
-          <Logo size="lg" />
-        </h1>
-        <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
-          {HERO_TAGLINE}
-        </p>
-      </header>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>What is Mockifyer?</CardTitle>
-          <CardDescription>
-            Deterministic test state that doesn&apos;t drift — switchable scenario worlds for realistic testing
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p>
-            Modern applications depend on many underlying systems. Test data disappears or goes stale, 
-            dates drift, and setting up the right state takes manual admin work. Mockifyer gives you 
-            deterministic state that doesn&apos;t drift.
+    <div className="space-y-0">
+      {/* Hero Section */}
+      <section className="relative overflow-hidden border-b border-border">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(99,102,241,.12),transparent_60%)]"></div>
+        <div className="pointer-events-none absolute inset-0 opacity-40 dark:opacity-20 [background-image:linear-gradient(hsl(var(--border))_1px,transparent_1px),linear-gradient(90deg,hsl(var(--border))_1px,transparent_1px)] [background-size:48px_48px] [mask-image:radial-gradient(ellipse_at_top,black,transparent_70%)]"></div>
+        
+        <div className="relative mx-auto max-w-[1200px] px-5 py-20 sm:py-28 text-center">
+          <div className="flex justify-center mb-6">
+            <Logo size="lg" />
+          </div>
+          
+          <h1 className="mx-auto mt-6 max-w-4xl text-4xl font-semibold tracking-tight text-foreground sm:text-6xl">
+            Deterministic test state that{' '}
+            <span className="mockifyer-gradient-text">doesn't drift</span>
+          </h1>
+          
+          <p className="mx-auto mt-6 max-w-2xl text-lg text-muted-foreground leading-relaxed">
+            {HERO_TAGLINE}
           </p>
-          <p>
-            Record real API responses once, switch between complete <strong>scenario worlds</strong> at 
-            runtime (trips-empty, trips-one, trips-many, checkin-open), and control dates so time-dependent 
-            tests stay stable. No more &quot;works on my machine&quot; — the same mock world loads for everyone.
-          </p>
-          <div>
-            <strong className="text-foreground text-lg mb-4 block">What you get today</strong>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {KEY_FEATURES.map((feature) => (
-                <div
-                  key={feature.title}
-                  className="flex items-start gap-3 p-3 rounded-lg hover:bg-accent/50 transition-colors"
-                >
-                  <span className="text-2xl flex-shrink-0">{feature.icon}</span>
-                  <div>
-                    <strong className="text-foreground block mb-1">{feature.title}</strong>
-                    <p className="text-sm text-muted-foreground">{feature.description}</p>
-                  </div>
-                </div>
-              ))}
+          
+          <div className="mt-10 flex flex-wrap justify-center gap-4">
+            <Link to="/getting-started">
+              <Button size="lg" className="h-12 px-8 text-base font-medium">
+                Get Started
+              </Button>
+            </Link>
+            <Link to="/playground">
+              <Button size="lg" variant="outline" className="h-12 px-8 text-base font-medium">
+                Try Playground
+              </Button>
+            </Link>
+          </div>
+          
+          <div className="mx-auto mt-14 grid max-w-md grid-cols-3 gap-8 text-center">
+            <div>
+              <div className="text-sm text-muted-foreground">Packages</div>
+              <div className="text-2xl font-semibold text-foreground mt-1">6</div>
+            </div>
+            <div>
+              <div className="text-sm text-muted-foreground">Open Source</div>
+              <div className="text-2xl font-semibold text-foreground mt-1">MIT</div>
+            </div>
+            <div>
+              <div className="text-sm text-muted-foreground">Platform</div>
+              <div className="text-2xl font-semibold text-foreground mt-1">JS/TS</div>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
-      <PackagesOverview />
+      {/* Main Content */}
+      <div className="mx-auto max-w-[1200px] px-5 py-16 space-y-20">
+        {/* What is Mockifyer */}
+        <section>
+          <Card className="border-border">
+            <CardHeader>
+              <CardTitle className="text-2xl">What is Mockifyer?</CardTitle>
+              <CardDescription className="text-base">
+                Deterministic test state that doesn&apos;t drift — switchable scenario worlds for realistic testing
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="prose prose-zinc dark:prose-invert max-w-none">
+                <p className="text-muted-foreground leading-relaxed">
+                  Modern applications depend on many underlying systems. Test data disappears or goes stale, 
+                  dates drift, and setting up the right state takes manual admin work. Mockifyer gives you 
+                  deterministic state that doesn&apos;t drift.
+                </p>
+                <p className="text-muted-foreground leading-relaxed">
+                  Record real API responses once, switch between complete <strong className="text-foreground">scenario worlds</strong> at 
+                  runtime (trips-empty, trips-one, trips-many, checkin-open), and control dates so time-dependent 
+                  tests stay stable. No more &quot;works on my machine&quot; — the same mock world loads for everyone.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </section>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Why Mockifyer?</CardTitle>
-          <CardDescription>
-            The problem it solves
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-muted-foreground">
-            Applications depend on many underlying systems — APIs, databases, third-party services. 
-            Testing these integrations is challenging:
-          </p>
-          <ul className="space-y-2 text-sm text-muted-foreground list-disc pl-5">
-            <li>
-              <strong className="text-foreground">Test data disappears or goes stale:</strong> A booking 
-              created yesterday might be expired today, or deleted by another developer
-            </li>
-            <li>
-              <strong className="text-foreground">Dates drift:</strong> Time-dependent logic like 
-              &quot;upcoming trips&quot; or &quot;check-in window&quot; breaks as calendar dates move forward
-            </li>
-            <li>
-              <strong className="text-foreground">State setup takes manual work:</strong> Creating the 
-              right test state requires clicking through admin panels or running database scripts
-            </li>
-            <li>
-              <strong className="text-foreground">Previous fixes were hacky:</strong> Hardcoded backend 
-              bypasses tied to one test user, supporting only one dataset at a time
-            </li>
-          </ul>
-          <p className="text-muted-foreground">
-            <strong className="text-foreground">Mockifyer gives you deterministic state that doesn&apos;t drift.</strong> Record 
-            real API responses once, switch between complete scenarios at runtime, and control dates to keep 
-            time-dependent tests stable.
-          </p>
-        </CardContent>
-      </Card>
-
-      <HomeFaq />
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Dashboard & MCP</CardTitle>
-          <CardDescription>
-            Optional tooling on top of the core libraries
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-muted-foreground">
-            <strong>@sgedda/mockifyer-dashboard</strong> runs locally to manage scenarios, client lanes, 
-            network hops, and Date Config. With Redis or SQLite, it proxies traffic so each device/app 
-            has its own isolated mock world.
-          </p>
-          <ul className="text-sm text-muted-foreground space-y-1 list-disc pl-5">
-            <li>Active scenario and client lane management</li>
-            <li>Browse and edit JSON mocks for each world</li>
-            <li>Network view: live hops filtered by lane</li>
-            <li>Date Config: per-scenario date overrides</li>
-            <li>Domain-path rules: control which endpoints to record/mock</li>
-          </ul>
-          <CodeBlock
-            language="bash"
-            code={`npx @sgedda/mockifyer-dashboard --path ./mock-data`}
-          />
-          <div className="mt-4">
-            <p className="text-muted-foreground mb-2">
-              <strong>@sgedda/mockifyer-mcp</strong> exposes dashboard APIs to Cursor and Claude Desktop 
-              via Model Context Protocol. <span className="inline-block bg-amber-100 dark:bg-amber-900/30 text-amber-900 dark:text-amber-200 text-xs px-2 py-0.5 rounded ml-2">
-                Experimental
-              </span>
-            </p>
-            <ul className="text-sm text-muted-foreground space-y-1 list-disc pl-5">
-              {MCP_TOOLS.map((tool) => (
-                <li key={tool}>{tool}</li>
-              ))}
-            </ul>
+        {/* Key Features Grid */}
+        <section>
+          <div className="mb-8">
+            <h2 className="text-2xl font-semibold tracking-tight text-foreground">What you get today</h2>
+            <p className="mt-2 text-muted-foreground">Everything you need for deterministic API mocking</p>
           </div>
-          <Link to="/config-reference">
-            <Button variant="outline" size="sm">
-              Configuration reference
-            </Button>
-          </Link>
-        </CardContent>
-      </Card>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {KEY_FEATURES.map((feature) => (
+              <div
+                key={feature.title}
+                className="group rounded-xl border border-border p-5 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 transition-all duration-200"
+              >
+                <span className="text-3xl block mb-3">{feature.icon}</span>
+                <h3 className="text-foreground font-semibold mb-2">{feature.title}</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">{feature.description}</p>
+              </div>
+            ))}
+          </div>
+        </section>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Atlas: Live Tracing with the <code className="text-sm">t</code> Key</CardTitle>
-          <CardDescription>
-            Press <code className="text-sm">t</code> in the Metro terminal to capture and visualize nested HTTP calls
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-muted-foreground">
-            When running React Native with Metro, press <code className="text-xs bg-muted px-1 py-0.5 rounded">t</code> to 
-            start <strong>Atlas capture</strong>. A browser opens showing a live stream of correlated, nested 
-            HTTP calls as an expandable/collapsible tree: app → BFF → downstream services.
-          </p>
-          <ul className="text-sm text-muted-foreground space-y-1 list-disc pl-5">
-            <li>View request/response payloads with inline search</li>
-            <li>Find booking data the UI doesn&apos;t display yet</li>
-            <li>Trace error chains across multiple hops</li>
-            <li>Verify what actually went over the wire</li>
-            <li>Press <code className="text-xs bg-muted px-1 py-0.5 rounded">t</code> again to stop and render searchable HTML docs</li>
-          </ul>
-          <p className="text-sm text-muted-foreground">
-            <strong>Atlas vs Network view:</strong> The dashboard&apos;s Network tab shows live traffic hop-by-hop. 
-            Atlas maps and searches across an entire captured session, generating AI-ready documentation.
-          </p>
-        </CardContent>
-      </Card>
+        {/* Packages Overview */}
+        <section>
+          <PackagesOverview />
+        </section>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Deterministic Maestro E2E</CardTitle>
-          <CardDescription>
-            Launch arguments lock the mock world on every test run
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-muted-foreground">
-            Launch arguments <code className="text-xs bg-muted px-1 py-0.5 rounded">mockifyerClientId</code> and{' '}
-            <code className="text-xs bg-muted px-1 py-0.5 rounded">scenario</code> start the app in the same 
-            mock world on every test run. No flaky API dependencies, no race conditions.
-          </p>
-          <CodeBlock
-            language="yaml"
-            code={`- launchApp:
+        {/* Why Mockifyer */}
+        <section>
+          <Card className="border-border">
+            <CardHeader>
+              <CardTitle className="text-2xl">Why Mockifyer?</CardTitle>
+              <CardDescription className="text-base">
+                The problem it solves
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <p className="text-muted-foreground leading-relaxed">
+                Applications depend on many underlying systems — APIs, databases, third-party services. 
+                Testing these integrations is challenging:
+              </p>
+              <ul className="space-y-3 text-muted-foreground">
+                <li className="flex gap-3">
+                  <span className="text-primary font-semibold">→</span>
+                  <span>
+                    <strong className="text-foreground">Test data disappears or goes stale:</strong> A booking 
+                    created yesterday might be expired today, or deleted by another developer
+                  </span>
+                </li>
+                <li className="flex gap-3">
+                  <span className="text-primary font-semibold">→</span>
+                  <span>
+                    <strong className="text-foreground">Dates drift:</strong> Time-dependent logic like 
+                    &quot;upcoming trips&quot; or &quot;check-in window&quot; breaks as calendar dates move forward
+                  </span>
+                </li>
+                <li className="flex gap-3">
+                  <span className="text-primary font-semibold">→</span>
+                  <span>
+                    <strong className="text-foreground">State setup takes manual work:</strong> Creating the 
+                    right test state requires clicking through admin panels or running database scripts
+                  </span>
+                </li>
+                <li className="flex gap-3">
+                  <span className="text-primary font-semibold">→</span>
+                  <span>
+                    <strong className="text-foreground">Previous fixes were hacky:</strong> Hardcoded backend 
+                    bypasses tied to one test user, supporting only one dataset at a time
+                  </span>
+                </li>
+              </ul>
+              <div className="mt-6 p-4 rounded-lg bg-primary/5 border border-primary/20">
+                <p className="text-foreground font-medium">
+                  Mockifyer gives you deterministic state that doesn&apos;t drift. Record 
+                  real API responses once, switch between complete scenarios at runtime, and control dates to keep 
+                  time-dependent tests stable.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </section>
+
+        {/* FAQ */}
+        <section>
+          <HomeFaq />
+        </section>
+
+        {/* Dashboard & MCP */}
+        <section>
+          <Card className="border-border">
+            <CardHeader>
+              <CardTitle className="text-2xl">Dashboard & MCP</CardTitle>
+              <CardDescription className="text-base">
+                Optional tooling on top of the core libraries
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div>
+                <p className="text-muted-foreground leading-relaxed mb-4">
+                  <strong className="text-foreground">@sgedda/mockifyer-dashboard</strong> runs locally to manage scenarios, client lanes, 
+                  network hops, and Date Config. With Redis or SQLite, it proxies traffic so each device/app 
+                  has its own isolated mock world.
+                </p>
+                <ul className="space-y-2 text-sm text-muted-foreground">
+                  {['Active scenario and client lane management', 'Browse and edit JSON mocks for each world', 'Network view: live hops filtered by lane', 'Date Config: per-scenario date overrides', 'Domain-path rules: control which endpoints to record/mock'].map((item) => (
+                    <li key={item} className="flex gap-2">
+                      <span className="text-primary">•</span>
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <CodeBlock
+                language="bash"
+                code={`npx @sgedda/mockifyer-dashboard --path ./mock-data`}
+              />
+              <div className="pt-4 border-t border-border">
+                <p className="text-muted-foreground leading-relaxed mb-3">
+                  <strong className="text-foreground">@sgedda/mockifyer-mcp</strong> exposes dashboard APIs to Cursor and Claude Desktop 
+                  via Model Context Protocol. <span className="inline-flex items-center bg-amber-100 dark:bg-amber-900/30 text-amber-900 dark:text-amber-200 text-xs px-2 py-0.5 rounded ml-2">
+                    Experimental
+                  </span>
+                </p>
+                <ul className="space-y-2 text-sm text-muted-foreground">
+                  {MCP_TOOLS.map((tool) => (
+                    <li key={tool} className="flex gap-2">
+                      <span className="text-primary">•</span>
+                      <span className="font-mono text-xs">{tool}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <Link to="/config-reference">
+                <Button variant="outline" size="sm">
+                  Configuration reference
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        </section>
+
+        {/* Atlas Tracing */}
+        <section>
+          <Card className="border-border">
+            <CardHeader>
+              <CardTitle className="text-2xl">Atlas: Live Tracing with the <code className="text-sm">t</code> Key</CardTitle>
+              <CardDescription className="text-base">
+                Press <code className="text-sm">t</code> in the Metro terminal to capture and visualize nested HTTP calls
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <p className="text-muted-foreground leading-relaxed">
+                When running React Native with Metro, press <code className="text-xs bg-muted px-1 py-0.5 rounded border border-border">t</code> to 
+                start <strong className="text-foreground">Atlas capture</strong>. A browser opens showing a live stream of correlated, nested 
+                HTTP calls as an expandable/collapsible tree: app → BFF → downstream services.
+              </p>
+              <ul className="space-y-2 text-sm text-muted-foreground">
+                {['View request/response payloads with inline search', 'Find booking data the UI doesn\'t display yet', 'Trace error chains across multiple hops', 'Verify what actually went over the wire', 'Press t again to stop and render searchable HTML docs'].map((item) => (
+                  <li key={item} className="flex gap-2">
+                    <span className="text-primary">•</span>
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+              <div className="p-4 rounded-lg bg-muted/50 border border-border">
+                <p className="text-sm text-foreground">
+                  <strong>Atlas vs Network view:</strong> <span className="text-muted-foreground">The dashboard&apos;s Network tab shows live traffic hop-by-hop. 
+                  Atlas maps and searches across an entire captured session, generating AI-ready documentation.</span>
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </section>
+
+        {/* Maestro E2E */}
+        <section>
+          <Card className="border-border">
+            <CardHeader>
+              <CardTitle className="text-2xl">Deterministic Maestro E2E</CardTitle>
+              <CardDescription className="text-base">
+                Launch arguments lock the mock world on every test run
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <p className="text-muted-foreground leading-relaxed">
+                Launch arguments <code className="text-xs bg-muted px-1 py-0.5 rounded border border-border">mockifyerClientId</code> and{' '}
+                <code className="text-xs bg-muted px-1 py-0.5 rounded border border-border">scenario</code> start the app in the same 
+                mock world on every test run. No flaky API dependencies, no race conditions.
+              </p>
+              <CodeBlock
+                language="yaml"
+                code={`- launchApp:
     clearState: true
     arguments:
       mockifyerClientId: e2e-trips-one
       scenario: trips-one`}
-          />
-          <p className="text-sm text-muted-foreground">
-            <strong>Workflow:</strong> Record the real API responses, have an AI write a Maestro test that 
-            starts with that scenario, then assert on what the UI components render. Every run replays the 
-            exact same backend state.
-          </p>
-        </CardContent>
-      </Card>
+              />
+              <div className="p-4 rounded-lg bg-muted/50 border border-border">
+                <p className="text-sm text-muted-foreground">
+                  <strong className="text-foreground">Workflow:</strong> Record the real API responses, have an AI write a Maestro test that 
+                  starts with that scenario, then assert on what the UI components render. Every run replays the 
+                  exact same backend state.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </section>
 
-      <UpcomingFeaturesCard />
+        {/* Upcoming Features */}
+        <section>
+          <UpcomingFeaturesCard />
+        </section>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Playground</CardTitle>
-          <CardDescription>
-            The Playground is an interactive example application that demonstrates Mockifyer's capabilities
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Link to="/playground">
-            <Button>Explore Playground</Button>
-          </Link>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Next Steps</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          <Link to="/getting-started" className="block">
-            <Button variant="outline" className="w-full justify-start">
-              Get Started Guide
-            </Button>
-          </Link>
-          <Link to="/playground" className="block">
-            <Button variant="outline" className="w-full justify-start">
-              Try the Playground
-            </Button>
-          </Link>
-          <Link to="/timeline" className="block">
-            <Button variant="outline" className="w-full justify-start">
-              View API Timeline
-            </Button>
-          </Link>
-        </CardContent>
-      </Card>
+        {/* Next Steps */}
+        <section>
+          <Card className="border-border">
+            <CardHeader>
+              <CardTitle className="text-2xl">Next Steps</CardTitle>
+              <CardDescription className="text-base">
+                Explore Mockifyer's capabilities
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <Link to="/getting-started" className="group block p-6 rounded-xl border border-border hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 transition-all duration-200">
+                  <div className="text-lg font-semibold text-foreground mb-2">Get Started</div>
+                  <p className="text-sm text-muted-foreground">Installation and setup guide</p>
+                </Link>
+                <Link to="/playground" className="group block p-6 rounded-xl border border-border hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 transition-all duration-200">
+                  <div className="text-lg font-semibold text-foreground mb-2">Playground</div>
+                  <p className="text-sm text-muted-foreground">Interactive demo application</p>
+                </Link>
+                <Link to="/comparisons" className="group block p-6 rounded-xl border border-border hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 transition-all duration-200">
+                  <div className="text-lg font-semibold text-foreground mb-2">Comparisons</div>
+                  <p className="text-sm text-muted-foreground">How Mockifyer compares to alternatives</p>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+        </section>
+      </div>
     </div>
   )
 }
