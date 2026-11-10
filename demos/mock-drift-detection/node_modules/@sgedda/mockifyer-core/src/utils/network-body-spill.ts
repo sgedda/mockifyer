@@ -1,0 +1,418 @@
+/**
+ * Spill full network bodies so hops only keep short previews.
+ * Texts are buffered in memory and flushed to `atlas-html/bodies/` on Render
+ * (and best-effort async to disk/Metro during capture).
+ * Every non-empty captured body is spilled so Atlas hop detail can show the full
+ * payload; inline hop JSON still uses a short preview.
+ */
+
+import { utf8ByteLength } from './crypto-digest';
+import { getAtlasDocHtmlOutputPath } from './atlas-doc-html';
+import { resolveUnpatchedFetch } from './unpatched-global-fetch';
+
+let fs: typeof import('fs') | undefined;
+let pathMod: typeof import('path') | undefined;
+
+try {
+  fs = require('fs');
+  pathMod = require('path');
+} catch {
+  fs = undefined;
+  pathMod = undefined;
+}
+
+/**
+ * Inline hop body preview budget (UTF-8).
+ * Large enough for typical GraphQL / JSON bodies the live stream re-sends.
+ * Full payloads still spill when larger (up to {@link NETWORK_BODY_SPILL_MAX_BYTES}).
+ */
+export const NETWORK_LOG_INLINE_BODY_PREVIEW_BYTES = 512_000;
+
+
+/** Do not spill bodies larger than this (UTF-8 bytes). */
+export const NETWORK_BODY_SPILL_MAX_BYTES = 2_000_000;
+
+const DEFAULT_METRO_PORT = 8081;
+const METRO_UPLOAD_TIMEOUT_MS = 8_000;
+const MAX_IN_FLIGHT = 2;
+/** Soft caps so the in-memory spill buffer stays bounded until Render flush. */
+const MAX_BUFFER_ENTRIES = 200;
+const MAX_BUFFER_BYTES = 15_000_000;
+
+export interface NetworkBodySpillRefs {
+  requestBodyRef?: string;
+  responseBodyRef?: string;
+  requestBodyTruncated?: boolean;
+  responseBodyTruncated?: boolean;
+}
+
+export interface ScheduleNetworkBodySpillInput {
+  eventId: string;
+  requestId?: string | null;
+  requestBodyText?: string;
+  responseBodyText?: string;
+  /** Override atlas-html root (Node). Default: {@link getAtlasDocHtmlOutputPath}. */
+  outputDir?: string;
+  metroPort?: number;
+  /**
+   * Metro origin that received the hop (`http://host:port`).
+   * Spills POST here so include-trace replay can read the full request body.
+   * Falls back to `http://localhost:{@link metroPort}` when omitted.
+   */
+  metroBaseUrl?: string;
+}
+
+interface SpillJob {
+  relativePath: string;
+  text: string;
+  outputDir?: string;
+  metroPort?: number;
+  metroBaseUrl?: string;
+}
+
+let spillEnabled = true;
+let inFlight = 0;
+const queue: SpillJob[] = [];
+/** relativePath → full body text (survives failed async writes until Render flush). */
+const spillBuffer = new Map<string, string>();
+let bufferBytes = 0;
+
+/** Enable/disable body spill (default on). Spill still only runs when captureBodies + oversized body. */
+export function setNetworkBodySpillEnabled(enabled: boolean): void {
+  spillEnabled = enabled;
+}
+
+export function isNetworkBodySpillEnabled(): boolean {
+  return spillEnabled;
+}
+
+/** Snapshot of buffered spills for Metro render POST / diagnostics. */
+export function getNetworkBodySpillSnapshot(): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of spillBuffer) {
+    out[k] = v;
+  }
+  return out;
+}
+
+/** Reset queue / buffer / flags (tests). */
+export function resetNetworkBodySpillRuntime(): void {
+  spillEnabled = true;
+  inFlight = 0;
+  queue.length = 0;
+  spillBuffer.clear();
+  bufferBytes = 0;
+}
+
+/**
+ * Compact JSON text for a body. No size cap — callers decide what to keep.
+ */
+export function serializeBodyText(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  let text: string;
+  if (typeof value === 'string') {
+    text = value;
+  } else {
+    try {
+      text = JSON.stringify(value);
+    } catch {
+      text = String(value);
+    }
+  }
+  return text || undefined;
+}
+
+/**
+ * Serialize a request/response value for spill (capped at {@link NETWORK_BODY_SPILL_MAX_BYTES}).
+ * Oversized bodies return undefined so callers can keep a short preview without writing a stub file.
+ */
+export function serializeBodyForSpill(value: unknown): string | undefined {
+  const text = serializeBodyText(value);
+  if (!text) return undefined;
+  if (utf8ByteLength(text) <= NETWORK_BODY_SPILL_MAX_BYTES) return text;
+  return undefined;
+}
+
+export function safeSpillKey(eventId: string, requestId?: string | null): string {
+  const raw = (requestId?.trim() || eventId || 'hop').slice(0, 80);
+  const cleaned = raw.replace(/[^a-zA-Z0-9._-]+/g, '_').replace(/^_+|_+$/g, '');
+  return cleaned || 'hop';
+}
+
+/** Predicted relative spill path under atlas-html (even before the file exists). */
+export function networkBodySpillRelPath(
+  eventId: string,
+  requestId: string | null | undefined,
+  side: 'req' | 'res',
+): string {
+  return `bodies/${safeSpillKey(eventId, requestId)}-${side}.json`;
+}
+
+/**
+ * Resolve req/res body relative paths for a hop.
+ * Prefers captured refs; otherwise predicts the canonical spill names.
+ */
+export function resolveNetworkEventBodyRelPaths(event: {
+  id: string;
+  requestId?: string | null;
+  requestBodyRef?: string;
+  responseBodyRef?: string;
+}): { req: string; res: string } {
+  const req = event.requestBodyRef?.trim();
+  const res = event.responseBodyRef?.trim();
+  return {
+    req: req || networkBodySpillRelPath(event.id, event.requestId, 'req'),
+    res: res || networkBodySpillRelPath(event.id, event.requestId, 'res'),
+  };
+}
+
+function resolveMetroPort(explicit?: number): number {
+  if (explicit != null && Number.isFinite(explicit) && explicit > 0) {
+    return explicit;
+  }
+  if (typeof process !== 'undefined') {
+    const fromEnv = process.env.METRO_PORT?.trim();
+    if (fromEnv) {
+      const n = Number.parseInt(fromEnv, 10);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+  }
+  return DEFAULT_METRO_PORT;
+}
+
+function spillFilePath(outputDir: string, relativePath: string): string | undefined {
+  if (!pathMod) return undefined;
+  return pathMod.join(outputDir, relativePath);
+}
+
+/** Compact body on disk. Pretty-print happens later on the short hop preview, not the full file. */
+function writeSpillLocal(outputDir: string, relativePath: string, text: string): boolean {
+  if (!fs || !pathMod) return false;
+  try {
+    const abs = spillFilePath(outputDir, relativePath);
+    if (!abs) return false;
+    fs.mkdirSync(pathMod.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, text, 'utf8');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function writeSpillLocalAsync(outputDir: string, relativePath: string, text: string): Promise<boolean> {
+  if (!fs?.promises || !pathMod) return false;
+  try {
+    const abs = spillFilePath(outputDir, relativePath);
+    if (!abs) return false;
+    await fs.promises.mkdir(pathMod.dirname(abs), { recursive: true });
+    await fs.promises.writeFile(abs, text, 'utf8');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function rememberInBuffer(relativePath: string, text: string): void {
+  const prev = spillBuffer.get(relativePath);
+  if (prev !== undefined) {
+    bufferBytes -= utf8ByteLength(prev);
+  }
+  while (
+    spillBuffer.size >= MAX_BUFFER_ENTRIES ||
+    bufferBytes + utf8ByteLength(text) > MAX_BUFFER_BYTES
+  ) {
+    const oldest = spillBuffer.keys().next().value as string | undefined;
+    if (!oldest) break;
+    const oldText = spillBuffer.get(oldest);
+    spillBuffer.delete(oldest);
+    if (oldText) bufferBytes -= utf8ByteLength(oldText);
+    if (oldest === relativePath) break;
+  }
+  spillBuffer.set(relativePath, text);
+  bufferBytes += utf8ByteLength(text);
+}
+
+/**
+ * Write all buffered spills under `atlasHtmlDir` (creates `bodies/`).
+ * @returns number of files written
+ */
+export function flushNetworkBodySpillsToDir(atlasHtmlDir: string): number {
+  const root = atlasHtmlDir.trim();
+  if (!root || !fs || !pathMod) return 0;
+  let written = 0;
+  for (const [relativePath, text] of spillBuffer) {
+    if (writeSpillLocal(root, relativePath, text)) {
+      written += 1;
+    }
+  }
+  return written;
+}
+
+/** Normalized `bodies/<name>.json|txt` path, or undefined when unsafe. */
+function normalizeSpillRelPath(relativePath: string): string | undefined {
+  const rel = relativePath.trim().replace(/^\/+/, '').replace(/\\/g, '/');
+  if (!rel || rel.includes('..') || !rel.startsWith('bodies/') || !/\.(json|txt)$/.test(rel)) {
+    return undefined;
+  }
+  return rel;
+}
+
+/**
+ * Keep a body in the in-memory spill buffer without touching disk.
+ * Metro uses this for device uploads so hops never write into the watched
+ * project tree; {@link flushNetworkBodySpillsToDir} persists them on Render.
+ * @returns the normalized relative path, or undefined when the path is unsafe
+ */
+export function bufferNetworkBodySpill(relativePath: string, text: string): string | undefined {
+  const rel = normalizeSpillRelPath(relativePath);
+  if (!rel || typeof text !== 'string' || !text) return undefined;
+  rememberInBuffer(rel, text);
+  return rel;
+}
+
+/**
+ * Apply a spill map onto disk (Metro render payload).
+ */
+export function writeNetworkBodySpillMap(
+  atlasHtmlDir: string,
+  spills: Record<string, string> | undefined
+): number {
+  const root = atlasHtmlDir.trim();
+  if (!root || !spills || !fs || !pathMod) return 0;
+  let written = 0;
+  for (const [relativePath, text] of Object.entries(spills)) {
+    const rel = normalizeSpillRelPath(relativePath);
+    if (!rel) continue;
+    if (typeof text !== 'string') continue;
+    if (writeSpillLocal(root, rel, text)) {
+      written += 1;
+      rememberInBuffer(rel, text);
+    }
+  }
+  return written;
+}
+
+function trimTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value.charCodeAt(end - 1) === 47) {
+    end -= 1;
+  }
+  return value.slice(0, end);
+}
+
+async function writeSpillViaMetro(
+  relativePath: string,
+  text: string,
+  metroPort?: number,
+  metroBaseUrl?: string
+): Promise<boolean> {
+  const fetchFn = resolveUnpatchedFetch();
+  if (!fetchFn) return false;
+  const base = metroBaseUrl?.trim();
+  const url = base
+    ? `${trimTrailingSlashes(base)}/mockifyer-atlas-body-spill`
+    : `http://localhost:${resolveMetroPort(metroPort)}/mockifyer-atlas-body-spill`;
+  const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : undefined;
+  const timeout =
+    ctrl &&
+    setTimeout(() => {
+      try {
+        ctrl.abort();
+      } catch {
+        /* ignore */
+      }
+    }, METRO_UPLOAD_TIMEOUT_MS);
+  try {
+    const res = await fetchFn(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ relativePath, text }),
+      signal: ctrl?.signal,
+    });
+    return res.ok;
+  } catch {
+    return false;
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
+function pumpQueue(): void {
+  while (inFlight < MAX_IN_FLIGHT && queue.length > 0) {
+    const job = queue.shift()!;
+    inFlight += 1;
+    void (async () => {
+      try {
+        const dir = job.outputDir?.trim() || getAtlasDocHtmlOutputPath()?.trim();
+        let ok = false;
+        if (dir && fs?.promises) {
+          ok = await writeSpillLocalAsync(dir, job.relativePath, job.text);
+        }
+        if (!ok) {
+          await writeSpillViaMetro(
+            job.relativePath,
+            job.text,
+            job.metroPort,
+            job.metroBaseUrl
+          );
+        }
+      } catch {
+        // Observability must not break the app — buffer still held for Render flush
+      } finally {
+        inFlight -= 1;
+        pumpQueue();
+      }
+    })();
+  }
+}
+
+function enqueueSpill(job: SpillJob): void {
+  // Drop oldest queued IO if backlog grows (buffer Map still keeps text for Render).
+  if (queue.length >= 100) {
+    queue.shift();
+  }
+  queue.push(job);
+  pumpQueue();
+}
+
+/**
+ * If a body is present, buffer full text + return a relative ref for Atlas HTML /
+ * MCP. Inline hop previews stay short ({@link NETWORK_LOG_INLINE_BODY_PREVIEW_BYTES});
+ * `*Truncated` is true only when the preview is shorter than the spilled file.
+ * Async disk/Metro write is best-effort; {@link flushNetworkBodySpillsToDir} on Render is authoritative.
+ */
+export function scheduleNetworkBodySpill(input: ScheduleNetworkBodySpillInput): NetworkBodySpillRefs {
+  const refs: NetworkBodySpillRefs = {};
+  if (!spillEnabled) return refs;
+
+  const key = safeSpillKey(input.eventId, input.requestId);
+  const outputDir = input.outputDir?.trim() || getAtlasDocHtmlOutputPath()?.trim();
+
+  const maybeSpill = (side: 'req' | 'res', text: string | undefined): void => {
+    if (!text) return;
+    const len = utf8ByteLength(text);
+    // Always spill non-empty bodies so Atlas hop detail can load the full payload
+    // (inline previews stay capped separately in sanitizeNetworkEvent).
+    const relativePath = `bodies/${key}-${side}.json`;
+    const previewTruncated = len > NETWORK_LOG_INLINE_BODY_PREVIEW_BYTES;
+    if (side === 'req') {
+      refs.requestBodyRef = relativePath;
+      if (previewTruncated) refs.requestBodyTruncated = true;
+    } else {
+      refs.responseBodyRef = relativePath;
+      if (previewTruncated) refs.responseBodyTruncated = true;
+    }
+    rememberInBuffer(relativePath, text);
+    enqueueSpill({
+      relativePath,
+      text,
+      outputDir,
+      metroPort: input.metroPort,
+      metroBaseUrl: input.metroBaseUrl,
+    });
+  };
+
+  maybeSpill('req', input.requestBodyText);
+  maybeSpill('res', input.responseBodyText);
+  return refs;
+}

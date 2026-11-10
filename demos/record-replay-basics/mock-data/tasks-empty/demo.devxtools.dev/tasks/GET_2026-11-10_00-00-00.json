@@ -1,0 +1,18 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "https://demo.devxtools.dev/tasks",
+    "headers": {}
+  },
+  "response": {
+    "status": 200,
+    "data": [],
+    "headers": {
+      "content-type": "application/json"
+    }
+  },
+  "timestamp": "2026-11-10T00:00:00.000Z",
+  "duration": 100,
+  "sessionId": "session-manual",
+  "requestId": "manual-empty"
+}

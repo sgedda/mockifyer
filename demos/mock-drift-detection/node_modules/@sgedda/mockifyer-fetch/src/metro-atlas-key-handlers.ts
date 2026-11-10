@@ -1,0 +1,561 @@
+/**
+ * Metro terminal keys for Mockifyer:
+ * - `t` (default): start/stop Atlas capture (start opens the live stream page
+ *   and signals the app to call `enableMockifyer()` for `runtimeMode: 'manual'`;
+ *   stop ends capture — generate HTML from the live page “Render docs” button)
+ * - dashboard key is off unless `dashboardKey` is set (for example `"m"`)
+ *
+ * Capture starts only when `t` is pressed. Opening the live page or connecting
+ * the SSE stream does not start it. Press `t` again to stop, or use Render docs
+ * on the live page without stopping.
+ *
+ * `a` is reserved by Metro for Android (`i` iOS, `r` reload, `d` Dev Menu, `j` DevTools).
+ * Disable Atlas with `atlasKey: false`.
+ */
+import * as readline from "readline";
+import { spawn } from "child_process";
+import {
+  ATLAS_LIVE_STREAM_PATH,
+  logger,
+  resolveMetroNetworkStreamPort,
+} from "@sgedda/mockifyer-core";
+
+/**
+ * Keys already used by @react-native/community-cli-plugin (avoid stealing).
+ * Value is the short reason shown when a binding collides.
+ */
+const RESERVED_METRO_KEYS: ReadonlyMap<string, string> = new Map([
+  ["a", "Android"],
+  ["d", "the Dev Menu"],
+  ["i", "iOS"],
+  ["j", "DevTools"],
+  ["r", "reload"],
+]);
+
+/** `t` — `a` launches Android in the Metro / RN CLI. */
+export const DEFAULT_METRO_ATLAS_KEY = "t";
+export const DEFAULT_METRO_DASHBOARD_KEY = "m";
+export const DEFAULT_METRO_DASHBOARD_URL = "http://localhost:3002";
+
+/** Delay so RN/Expo CLI can own raw-mode stdin first. */
+const ATTACH_DEFER_MS = 1000;
+
+export type AtlasKeyOption = string | false;
+
+export type MetroAtlasSessionPhase = "idle" | "capturing" | "rendering";
+
+export type MetroAtlasSessionStartReason = "key" | "stream";
+
+export interface AttachMetroAtlasKeyHandlerOptions {
+  /**
+   * Key that toggles Atlas capture (default `"t"`).
+   * Pass `false` to disable. `a` is reserved by Metro for Android.
+   */
+  atlasKey?: AtlasKeyOption;
+  /**
+   * Key that opens the dashboard in the browser.
+   * Off unless set (for example `"m"`). Pass `false` to keep it off.
+   */
+  dashboardKey?: AtlasKeyOption;
+  /**
+   * Dashboard origin (default: `MOCKIFYER_DASHBOARD_URL` or `http://localhost:3002`).
+   * Mount prefix from `MOCKIFYER_DASHBOARD_BASE` is appended when set.
+   */
+  dashboardUrl?: string;
+  /** Called when capture starts. Only the Atlas key (`t`) starts a session. */
+  onSessionStart?: (reason: MetroAtlasSessionStartReason) => void;
+  /** Called on session stop — end capture (HTML is rendered from the live page). */
+  onSessionStop?: () => void | Promise<void>;
+  /** Override stdin (tests). */
+  stdin?: NodeJS.ReadStream;
+  /** Override defer delay in ms (tests). */
+  deferMs?: number;
+  /** Override URL opener (tests). */
+  openUrl?: (url: string) => void;
+}
+
+export interface AttachedMetroAtlasKeyHandler {
+  /** Resolved Atlas key (lowercase), or null if disabled. */
+  key: string | null;
+  /** Resolved dashboard key (lowercase), or null if disabled. */
+  dashboardKey: string | null;
+  /** Resolved dashboard browse URL. */
+  dashboardUrl: string | null;
+  /** Live Atlas stream page opened when capture starts via the Atlas key. */
+  liveUrl: string | null;
+  /** Detach listener and clear module attach flag. */
+  detach: () => void;
+}
+
+interface SessionCallbacks {
+  key: string | null;
+  dashboardKey: string | null;
+  dashboardUrl: string | null;
+  liveUrl: string | null;
+  onSessionStart?: (reason: MetroAtlasSessionStartReason) => void;
+  onSessionStop?: () => void | Promise<void>;
+  openUrl: (url: string) => void;
+}
+
+let attached = false;
+let weSetRawMode = false;
+let activeHandler: ((str: string, key: readline.Key) => void) | null = null;
+let activeStdin: NodeJS.ReadStream | null = null;
+let pendingTimer: ReturnType<typeof setTimeout> | null = null;
+let sessionPhase: MetroAtlasSessionPhase = "idle";
+let sessionStartedAt: number | null = null;
+let sessionCallbacks: SessionCallbacks | null = null;
+let streamSubscriberCount = 0;
+
+/**
+ * Normalize a single-char key option: default when undefined, `false` → disabled.
+ */
+export function resolveKeyOption(
+  value: AtlasKeyOption | undefined,
+  defaultKey: string,
+): string | null {
+  if (value === false) return null;
+  const raw =
+    value === undefined || value === null ? defaultKey : String(value).trim();
+  if (!raw) return null;
+  const key = raw.length === 1 ? raw.toLowerCase() : raw.toLowerCase().charAt(0);
+  return key || null;
+}
+
+/**
+ * Normalize `atlasKey` option: default `"t"`, `false` → disabled, else single char.
+ */
+export function resolveAtlasKeyOption(
+  atlasKey?: AtlasKeyOption,
+): string | null {
+  return resolveKeyOption(atlasKey, DEFAULT_METRO_ATLAS_KEY);
+}
+
+/**
+ * Normalize `dashboardKey`. Omitted or `false` → disabled.
+ * An explicit letter (for example `"m"`) opens the dashboard.
+ */
+export function resolveDashboardKeyOption(
+  dashboardKey?: AtlasKeyOption,
+): string | null {
+  if (dashboardKey === undefined || dashboardKey === false) return null;
+  return resolveKeyOption(dashboardKey, DEFAULT_METRO_DASHBOARD_KEY);
+}
+
+/**
+ * Resolve dashboard browse URL for Metro `m`.
+ * Precedence: explicit → `MOCKIFYER_DASHBOARD_URL` → `http://localhost:3002`,
+ * then append `MOCKIFYER_DASHBOARD_BASE` when set.
+ */
+export function resolveMetroDashboardUrl(explicit?: string): string {
+  const fromExplicit = explicit?.trim();
+  const fromEnv =
+    typeof process !== "undefined"
+      ? process.env.MOCKIFYER_DASHBOARD_URL?.trim()
+      : undefined;
+  const base = (fromExplicit || fromEnv || DEFAULT_METRO_DASHBOARD_URL).replace(
+    /\/+$/,
+    "",
+  );
+  const mountRaw =
+    typeof process !== "undefined"
+      ? process.env.MOCKIFYER_DASHBOARD_BASE?.trim()
+      : undefined;
+  if (!mountRaw) return base;
+  const mount = mountRaw.replace(/\/+$/, "");
+  if (!mount || mount === "/") return base;
+  return `${base}${mount.startsWith("/") ? mount : `/${mount}`}`;
+}
+
+/**
+ * Browser URL for the Metro live Atlas hop stream page.
+ * Uses `MOCKIFYER_METRO_URL` when set, otherwise `http://localhost:<METRO_PORT|8081>`.
+ */
+export function resolveMetroAtlasLiveUrl(explicitBase?: string): string {
+  const fromExplicit = typeof explicitBase === "string" ? explicitBase.trim() : "";
+  const fromEnv =
+    typeof process !== "undefined" ? process.env.MOCKIFYER_METRO_URL?.trim() : "";
+  const base = (fromExplicit || fromEnv || `http://localhost:${resolveMetroNetworkStreamPort()}`).replace(
+    /\/+$/,
+    "",
+  );
+  return `${base}${ATLAS_LIVE_STREAM_PATH}`;
+}
+
+/**
+ * Open a URL with the OS default handler (browser / file).
+ */
+export function openMetroBrowseUrl(target: string): void {
+  const platform = process.platform;
+  const child =
+    platform === "darwin"
+      ? spawn("open", [target], { detached: true, stdio: "ignore" })
+      : platform === "win32"
+        ? spawn("cmd", ["/c", "start", "", target], {
+            detached: true,
+            stdio: "ignore",
+            windowsVerbatimArguments: true,
+          })
+        : spawn("xdg-open", [target], { detached: true, stdio: "ignore" });
+  child.once("error", (err) => {
+    console.error(`[Mockifyer] could not open: ${err.message}`);
+    console.log(`[Mockifyer] open manually: ${target}`);
+  });
+  child.unref();
+}
+
+/**
+ * Whether a keypress matches a bound key (no ctrl/meta).
+ */
+export function matchesAtlasKey(
+  str: string | undefined,
+  key: readline.Key | undefined,
+  atlasKey: string,
+): boolean {
+  if (!atlasKey) return false;
+  if (key?.ctrl || key?.meta) return false;
+  if (key?.name === atlasKey) return true;
+  if (typeof str === "string" && str.toLowerCase() === atlasKey) return true;
+  return false;
+}
+
+/** Current session phase (idle / capturing / rendering). Exported for tests. */
+export function getMetroAtlasSessionPhase(): MetroAtlasSessionPhase {
+  return sessionPhase;
+}
+
+/** Active SSE stream subscriber count (tests / diagnostics). */
+export function getMetroAtlasStreamSubscriberCount(): number {
+  return streamSubscriberCount;
+}
+
+function formatSessionDuration(startedAt: number): string {
+  const ms = Date.now() - startedAt;
+  if (ms < 1000) return `${ms}ms`;
+  const sec = Math.round(ms / 1000);
+  if (sec < 60) return `${sec}s`;
+  const min = Math.floor(sec / 60);
+  const rem = sec % 60;
+  return `${min}m ${rem}s`;
+}
+
+/**
+ * Start capture when idle. No-op if already capturing/rendering or Atlas key off.
+ * @returns true if a new session was started
+ */
+export function startMetroAtlasSession(
+  reason: MetroAtlasSessionStartReason = "key",
+): boolean {
+  if (!sessionCallbacks?.key || !sessionCallbacks.onSessionStart) return false;
+  if (sessionPhase !== "idle") return false;
+
+  const { key, onSessionStart } = sessionCallbacks;
+  sessionPhase = "capturing";
+  sessionStartedAt = Date.now();
+  try {
+    onSessionStart(reason);
+  } catch (err) {
+    sessionPhase = "idle";
+    sessionStartedAt = null;
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[Mockifyer] Atlas session start failed: ${message}`);
+    return false;
+  }
+
+  if (reason === "stream") {
+    console.log(
+      `[Mockifyer] Atlas capture started (stream connected) — Mockifyer activated (turns off again on stop if it was off). Press ${key} to stop, or Render docs on the live page.`,
+    );
+  } else {
+    console.log(
+      `[Mockifyer] Atlas capture started — Mockifyer activated (turns off again on stop if it was off). Press ${key} again to stop, or Render docs on the live page.`,
+    );
+    openMetroAtlasLivePage();
+  }
+  return true;
+}
+
+/** Open the live hop stream page in the browser (Atlas key start). */
+export function openMetroAtlasLivePage(): boolean {
+  const url = sessionCallbacks?.liveUrl;
+  if (!url || !sessionCallbacks?.openUrl) {
+    return false;
+  }
+  console.log(`[Mockifyer] Opening Atlas live stream → ${url}`);
+  try {
+    sessionCallbacks.openUrl(url);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[Mockifyer] Could not open Atlas live stream: ${message}`);
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Stop capture when capturing (does not write Atlas HTML — use live page Render docs).
+ * @returns true if stop was kicked off
+ */
+export function stopMetroAtlasSession(): boolean {
+  if (!sessionCallbacks?.onSessionStop) return false;
+  if (sessionPhase !== "capturing") return false;
+
+  const { onSessionStop } = sessionCallbacks;
+  const startedAt = sessionStartedAt ?? Date.now();
+  const duration = formatSessionDuration(startedAt);
+  sessionPhase = "rendering";
+  console.log(
+    `[Mockifyer] Atlas capture stopped (${duration}) — Mockifyer turns off again if it was off before press t.`,
+  );
+  Promise.resolve()
+    .then(() => onSessionStop())
+    .catch((err: unknown) => {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[Mockifyer] Atlas session stop failed: ${message}`);
+    })
+    .finally(() => {
+      sessionPhase = "idle";
+      sessionStartedAt = null;
+    });
+  return true;
+}
+
+/** Open the dashboard URL when the dashboard key is enabled. */
+export function openMetroDashboard(): boolean {
+  if (!sessionCallbacks?.dashboardKey || !sessionCallbacks.dashboardUrl) {
+    return false;
+  }
+  const url = sessionCallbacks.dashboardUrl;
+  console.log(`[Mockifyer] Opening dashboard → ${url}`);
+  try {
+    sessionCallbacks.openUrl(url);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[Mockifyer] Could not open dashboard: ${message}`);
+    return false;
+  }
+  return true;
+}
+
+/**
+ * SSE client connected to `/mockifyer-network-events/stream`.
+ * Does not start capture — that happens only when the Atlas key (`t`) is pressed.
+ */
+export function notifyMetroAtlasStreamClientConnected(): void {
+  streamSubscriberCount += 1;
+}
+
+/**
+ * SSE client disconnected — capture stays open until the Atlas key is pressed again.
+ */
+export function notifyMetroAtlasStreamClientDisconnected(): void {
+  streamSubscriberCount = Math.max(0, streamSubscriberCount - 1);
+}
+
+function clearPendingTimer(): void {
+  if (pendingTimer != null) {
+    clearTimeout(pendingTimer);
+    pendingTimer = null;
+  }
+}
+
+/**
+ * Detach a previously attached handler (idempotent). Exported for tests.
+ */
+export function detachMetroAtlasKeyHandler(): void {
+  clearPendingTimer();
+  if (activeHandler && activeStdin) {
+    activeStdin.removeListener("keypress", activeHandler);
+  }
+  if (weSetRawMode && activeStdin?.isTTY && typeof activeStdin.setRawMode === "function") {
+    try {
+      activeStdin.setRawMode(false);
+    } catch {
+      // ignore
+    }
+  }
+  activeHandler = null;
+  activeStdin = null;
+  weSetRawMode = false;
+  attached = false;
+  sessionPhase = "idle";
+  sessionStartedAt = null;
+  sessionCallbacks = null;
+  streamSubscriberCount = 0;
+}
+
+function warnIfReserved(key: string, label: string): void {
+  const reason = RESERVED_METRO_KEYS.get(key);
+  if (reason) {
+    logger.warn(
+      `[Mockifyer] ${label} "${key}" is reserved for ${reason} — pick another letter`,
+    );
+  }
+}
+
+/**
+ * Listen for Metro terminal keys (Atlas capture + open dashboard).
+ * Safe to call once per process; subsequent calls are no-ops until detach.
+ */
+export function attachMetroAtlasKeyHandler(
+  options: AttachMetroAtlasKeyHandlerOptions,
+): AttachedMetroAtlasKeyHandler {
+  const atlasKey = resolveAtlasKeyOption(options.atlasKey);
+  const dashboardKey = resolveDashboardKeyOption(options.dashboardKey);
+  const dashboardUrl =
+    dashboardKey != null
+      ? resolveMetroDashboardUrl(options.dashboardUrl)
+      : null;
+
+  if (atlasKey == null && dashboardKey == null) {
+    return {
+      key: null,
+      dashboardKey: null,
+      dashboardUrl: null,
+      liveUrl: null,
+      detach: () => undefined,
+    };
+  }
+
+  if (atlasKey != null) warnIfReserved(atlasKey, "atlasKey");
+  if (dashboardKey != null) warnIfReserved(dashboardKey, "dashboardKey");
+
+  if (
+    atlasKey != null &&
+    dashboardKey != null &&
+    atlasKey === dashboardKey
+  ) {
+    logger.warn(
+      `[Mockifyer] atlasKey and dashboardKey are both "${atlasKey}" — dashboard key ignored`,
+    );
+  }
+
+  const effectiveDashboardKey =
+    atlasKey != null && dashboardKey === atlasKey ? null : dashboardKey;
+
+  const liveUrl = atlasKey != null ? resolveMetroAtlasLiveUrl() : null;
+
+  sessionCallbacks = {
+    key: atlasKey,
+    dashboardKey: effectiveDashboardKey,
+    dashboardUrl: effectiveDashboardKey != null ? dashboardUrl : null,
+    liveUrl,
+    onSessionStart: options.onSessionStart,
+    onSessionStop: options.onSessionStop,
+    openUrl: options.openUrl ?? openMetroBrowseUrl,
+  };
+
+  if (attached) {
+    return {
+      key: atlasKey,
+      dashboardKey: effectiveDashboardKey,
+      dashboardUrl: sessionCallbacks.dashboardUrl,
+      liveUrl,
+      detach: detachMetroAtlasKeyHandler,
+    };
+  }
+
+  const stdin = options.stdin ?? process.stdin;
+  const deferMs = options.deferMs ?? ATTACH_DEFER_MS;
+
+  const onKeypress = (str: string, keyObj: readline.Key): void => {
+    if (keyObj?.ctrl && keyObj.name === "c") {
+      if (weSetRawMode) {
+        try {
+          if (typeof stdin.setRawMode === "function") stdin.setRawMode(false);
+        } catch {
+          // ignore
+        }
+        process.exit(0);
+      }
+      return;
+    }
+
+    if (
+      effectiveDashboardKey &&
+      matchesAtlasKey(str, keyObj, effectiveDashboardKey)
+    ) {
+      openMetroDashboard();
+      return;
+    }
+
+    if (!atlasKey || !matchesAtlasKey(str, keyObj, atlasKey)) return;
+
+    if (sessionPhase === "rendering") {
+      console.log("[Mockifyer] Atlas stop already in progress…");
+      return;
+    }
+
+    if (sessionPhase === "idle") {
+      startMetroAtlasSession("key");
+      return;
+    }
+
+    stopMetroAtlasSession();
+  };
+
+  const doAttach = (): void => {
+    if (attached) return;
+    if (!stdin.isTTY) {
+      logger.info(
+        "[Mockifyer] Metro keys skipped (stdin is not a TTY — use mockifyer-atlas or Dev Menu)",
+      );
+      return;
+    }
+
+    readline.emitKeypressEvents(stdin);
+    if (typeof stdin.setRawMode === "function" && stdin.isRaw !== true) {
+      try {
+        stdin.setRawMode(true);
+        weSetRawMode = true;
+      } catch (err) {
+        logger.warn(
+          "[Mockifyer] Could not enable raw stdin for Metro keys:",
+          err,
+        );
+        return;
+      }
+    }
+
+    if (typeof stdin.resume === "function") {
+      stdin.resume();
+    }
+
+    activeHandler = onKeypress;
+    activeStdin = stdin;
+    stdin.on("keypress", onKeypress);
+    attached = true;
+
+    const parts: string[] = [];
+    if (atlasKey) {
+      parts.push(
+        `Press ${atlasKey} to start/stop Atlas capture (activates Mockifyer if off, restores off on stop; start opens live stream; Render docs on the page writes HTML)`,
+      );
+    }
+    if (parts.length > 0) {
+      console.log(`[Mockifyer] info ${parts.join(". ")}.`);
+    }
+  };
+
+  clearPendingTimer();
+  if (deferMs <= 0) {
+    doAttach();
+  } else {
+    pendingTimer = setTimeout(() => {
+      pendingTimer = null;
+      doAttach();
+    }, deferMs);
+    // Don't keep the process alive solely for the defer timer.
+    if (typeof pendingTimer === "object" && pendingTimer && "unref" in pendingTimer) {
+      (pendingTimer as NodeJS.Timeout).unref();
+    }
+  }
+
+  return {
+    key: atlasKey,
+    dashboardKey: effectiveDashboardKey,
+    dashboardUrl: sessionCallbacks.dashboardUrl,
+    liveUrl,
+    detach: detachMetroAtlasKeyHandler,
+  };
+}

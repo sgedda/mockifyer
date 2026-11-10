@@ -1,0 +1,963 @@
+/**
+ * Auto-documentation map for Atlas — upsert by stable ids (page/node/screen).
+ * Structure is a union across users/sessions; prop *values* keep last sample + schema.
+ * When HTML output is configured (see atlas-doc-html), upserts schedule a debounced rewrite.
+ */
+
+import {
+  resetAtlasDocHtmlRuntime,
+  scheduleAtlasDocHtmlRewrite,
+} from './atlas-doc-html';
+import { registerAtlasDocUsageWriter } from './atlas-doc-usage-bridge';
+import {
+  extractAtlasCmsLinkRefs,
+  mergeAtlasCmsLinkRefs,
+  type AtlasCmsLinkRef,
+} from './atlas-cms-links';
+
+export type { AtlasCmsLinkRef } from './atlas-cms-links';
+export {
+  extractAtlasCmsLinkRefs,
+  isLikelyAtlasCmsPagePath,
+  mergeAtlasCmsLinkRefs,
+} from './atlas-cms-links';
+
+export type AtlasDocSchema =
+  | 'string'
+  | 'number'
+  | 'boolean'
+  | 'null'
+  | 'unknown'
+  | 'mixed'
+  | AtlasDocSchema[]
+  | { [key: string]: AtlasDocSchema };
+
+export interface AtlasDocDatasourceEdge {
+  datasourceId: string;
+  dataRoot?: string;
+  kind?: string;
+  /** Union of seen GraphQL/REST operation names. */
+  operations: string[];
+  /** Last hop id that produced this edge (for Network jump). */
+  lastRequestId?: string;
+}
+
+export interface AtlasDocNode {
+  nodeId: string
+  type: string
+  path: string
+  label?: string
+  source: 'cms' | 'hardcoded'
+  parentId?: string | null
+  datasources: AtlasDocDatasourceEdge[]
+  /** Outbound CMS page links found in props (destinationId / nav urls). */
+  links?: AtlasCmsLinkRef[]
+  /** Inferred types from shown props (union across visits). */
+  propsSchema?: AtlasDocSchema
+  /** Last seen sample (illustration only — not multi-user truth). */
+  propsSample?: unknown
+  lastSeenAt: string
+}
+
+/** One Atlas screen/page PNG capture (supports early + ready phases). */
+export interface AtlasDocScreenshotRef {
+  path: string
+  capturedAt: string
+  sessionId?: string
+  phase?: string
+}
+
+/**
+ * One occurrence of a page in the CMS/site tree.
+ * The same pageId may appear under multiple parents (duplicate placements).
+ */
+export interface AtlasDocPagePlacement {
+  /** Full path for this occurrence (e.g. `discover/hotels/hotel-x`). Unique among placements. */
+  treePath: string
+  /** Parent placement path, or null at the root. */
+  parentTreePath: string | null
+  /** Parent page id when known (often the parent path for path-derived trees). */
+  parentPageId: string | null
+  /** 0 = root. */
+  depth: number
+  lastSeenAt: string
+}
+
+export interface AtlasDocPage {
+  pageId: string
+  pageSlug?: string
+  nodes: Record<string, AtlasDocNode>
+  lastSeenAt: string
+  /**
+   * Where this page sits in the CMS/site tree.
+   * Multiple entries = same page under different parents / paths.
+   */
+  placements?: AtlasDocPagePlacement[]
+  /** Relative path under atlas-html when captured via CMS presentation. */
+  screenshotPath?: string
+  screenshotSessionId?: string
+  screenshotCapturedAt?: string
+  /** All captures for this page (early + ready) — Scrub uses capturedAt. */
+  screenshots?: AtlasDocScreenshotRef[]
+}
+
+/** Normalize a CMS/route path into a stable tree path (`a/b/c`). */
+export function normalizeAtlasPageTreePath(raw?: string | null): string {
+  if (!raw?.trim()) return ''
+  return raw
+    .trim()
+    .replace(/\\/g, '/')
+    .replace(/^\/+|\/+$/g, '')
+    .replace(/\/+/g, '/')
+}
+
+/** Derive parent / depth metadata from a tree path. */
+export function deriveAtlasPageTreeMeta(treePath: string): {
+  treePath: string
+  parentTreePath: string | null
+  parentPageId: string | null
+  depth: number
+} {
+  const normalized = normalizeAtlasPageTreePath(treePath)
+  const parts = normalized.split('/').filter(Boolean)
+  if (parts.length === 0) {
+    return { treePath: '', parentTreePath: null, parentPageId: null, depth: 0 }
+  }
+  if (parts.length === 1) {
+    return {
+      treePath: parts[0],
+      parentTreePath: null,
+      parentPageId: null,
+      depth: 0,
+    }
+  }
+  const parentTreePath = parts.slice(0, -1).join('/')
+  return {
+    treePath: parts.join('/'),
+    parentTreePath,
+    parentPageId: parentTreePath,
+    depth: parts.length - 1,
+  }
+}
+
+function ensurePageStub(map: AtlasDocMap, pageId: string, now: string, pageSlug?: string): AtlasDocPage {
+  let page = map.pages[pageId]
+  if (!page) {
+    page = { pageId, pageSlug, nodes: {}, lastSeenAt: now, placements: [] }
+    map.pages[pageId] = page
+  } else {
+    if (pageSlug && !page.pageSlug) page.pageSlug = pageSlug
+    if (now > page.lastSeenAt) page.lastSeenAt = now
+    if (!page.placements) page.placements = []
+  }
+  return page
+}
+
+function upsertPlacementOnPage(
+  page: AtlasDocPage,
+  placement: AtlasDocPagePlacement
+): void {
+  if (!page.placements) page.placements = []
+  const idx = page.placements.findIndex((p) => p.treePath === placement.treePath)
+  if (idx >= 0) {
+    page.placements[idx] = {
+      ...page.placements[idx],
+      ...placement,
+      lastSeenAt: placement.lastSeenAt,
+    }
+  } else {
+    page.placements.push(placement)
+  }
+  page.placements.sort((a, b) => a.treePath.localeCompare(b.treePath))
+}
+
+export interface UpsertDocPagePlacementInput {
+  scenario?: string
+  pageId: string
+  pageSlug?: string
+  /** CMS/site path for this visit (required for hierarchy). */
+  treePath: string
+  parentPageId?: string | null
+  parentTreePath?: string | null
+  /** Create stub pages for path ancestors so the HTML tree can link. Default true. */
+  ensureAncestors?: boolean
+  timestamp?: string
+}
+
+/**
+ * Record where a CMS page sits in the site tree.
+ * Same pageId with different treePaths → duplicate placements (allowed).
+ */
+export function upsertAtlasDocPagePlacement(input: UpsertDocPagePlacementInput): AtlasDocMap {
+  const scenario = input.scenario?.trim() || 'default'
+  const map = ensureMap(scenario)
+  const now = input.timestamp ?? new Date().toISOString()
+  const pageId = input.pageId.trim() || '_app'
+  const derived = deriveAtlasPageTreeMeta(input.treePath)
+  if (!derived.treePath) return map
+
+  const parentTreePath =
+    input.parentTreePath !== undefined
+      ? input.parentTreePath
+        ? normalizeAtlasPageTreePath(input.parentTreePath)
+        : null
+      : derived.parentTreePath
+  const parentPageId =
+    input.parentPageId !== undefined ? input.parentPageId : derived.parentPageId
+  const depth =
+    parentTreePath == null
+      ? 0
+      : parentTreePath.split('/').filter(Boolean).length
+
+  const ensureAncestors = input.ensureAncestors !== false
+  if (ensureAncestors) {
+    const parts = derived.treePath.split('/').filter(Boolean)
+    for (let i = 0; i < parts.length - 1; i++) {
+      const ancestorPath = parts.slice(0, i + 1).join('/')
+      const ancestorParent = i === 0 ? null : parts.slice(0, i).join('/')
+      const ancestor = ensurePageStub(map, ancestorPath, now)
+      upsertPlacementOnPage(ancestor, {
+        treePath: ancestorPath,
+        parentTreePath: ancestorParent,
+        parentPageId: ancestorParent,
+        depth: i,
+        lastSeenAt: now,
+      })
+    }
+  }
+
+  const page = ensurePageStub(map, pageId, now, input.pageSlug)
+  if (input.pageSlug) page.pageSlug = input.pageSlug
+  upsertPlacementOnPage(page, {
+    treePath: derived.treePath,
+    parentTreePath,
+    parentPageId,
+    depth,
+    lastSeenAt: now,
+  })
+
+  const updated = touch(map)
+  scheduleAtlasDocHtmlRewrite(updated)
+  return updated
+}
+
+/** Light doc entry when only usage.screen is known (no CMS presentation). */
+export interface AtlasDocScreen {
+  screen: string
+  components: string[]
+  datasourceIds: string[]
+  lastSeenAt: string
+  /** Relative path under atlas-html, e.g. `screenshots/session__screen.png`. */
+  screenshotPath?: string
+  screenshotSessionId?: string
+  screenshotCapturedAt?: string
+  /** All captures for this screen (early + ready) — Scrub uses capturedAt. */
+  screenshots?: AtlasDocScreenshotRef[]
+}
+
+export interface AtlasDocPrefetch {
+  datasourceId: string;
+  kind?: string;
+  operations: string[];
+  phases: string[];
+  lastSeenAt: string;
+  /** Last hop id for this prefetch datasource. */
+  lastRequestId?: string;
+}
+
+export interface AtlasDocMap {
+  scenario: string
+  updatedAt: string
+  pages: Record<string, AtlasDocPage>
+  screens: Record<string, AtlasDocScreen>
+  prefetches: Record<string, AtlasDocPrefetch>
+}
+
+const docsByScenario = new Map<string, AtlasDocMap>()
+
+function emptyMap(scenario: string): AtlasDocMap {
+  return {
+    scenario: scenario.trim() || 'default',
+    updatedAt: new Date().toISOString(),
+    pages: {},
+    screens: {},
+    prefetches: {},
+  }
+}
+
+/** Empty Atlas doc (network-only Metro stream render). */
+export function createEmptyAtlasDocMap(scenario = 'default'): AtlasDocMap {
+  return emptyMap(scenario)
+}
+
+function touch(map: AtlasDocMap): AtlasDocMap {
+  map.updatedAt = new Date().toISOString()
+  return map
+}
+
+function ensureMap(scenario: string): AtlasDocMap {
+  const key = scenario.trim() || 'default'
+  let map = docsByScenario.get(key)
+  if (!map) {
+    map = emptyMap(key)
+    docsByScenario.set(key, map)
+  }
+  return map
+}
+
+/** Infer a lightweight JSON-ish schema from a value. */
+export function inferValueSchema(value: unknown, depth = 0): AtlasDocSchema {
+  if (depth > 8) return 'unknown'
+  if (value === null) return 'null'
+  if (Array.isArray(value)) {
+    if (value.length === 0) return ['unknown']
+    return [inferValueSchema(value[0], depth + 1)]
+  }
+  switch (typeof value) {
+    case 'string':
+      return 'string'
+    case 'number':
+      return 'number'
+    case 'boolean':
+      return 'boolean'
+    case 'object': {
+      const out: { [key: string]: AtlasDocSchema } = {}
+      for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+        out[k] = inferValueSchema(v, depth + 1)
+      }
+      return out
+    }
+    default:
+      return 'unknown'
+  }
+}
+
+/** Merge schemas so multi-user structure becomes a union. */
+export function mergeSchemas(a: AtlasDocSchema | undefined, b: AtlasDocSchema | undefined): AtlasDocSchema | undefined {
+  if (a === undefined) return b
+  if (b === undefined) return a
+  if (a === b) return a
+  if (a === 'mixed' || b === 'mixed') return 'mixed'
+
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return [mergeSchemas(a[0], b[0]) ?? 'unknown']
+  }
+
+  if (
+    typeof a === 'object' &&
+    !Array.isArray(a) &&
+    typeof b === 'object' &&
+    !Array.isArray(b)
+  ) {
+    const keys = new Set([...Object.keys(a), ...Object.keys(b)])
+    const out: { [key: string]: AtlasDocSchema } = {}
+    for (const k of keys) {
+      out[k] = mergeSchemas(a[k], b[k]) ?? 'unknown'
+    }
+    return out
+  }
+
+  return 'mixed'
+}
+
+function datasourceKey(ds: { datasourceId: string; dataRoot?: string }): string {
+  return `${ds.datasourceId}::${ds.dataRoot ?? ''}`
+}
+
+function mergeDatasourceEdge(
+  existing: AtlasDocDatasourceEdge | undefined,
+  incoming: {
+    datasourceId: string;
+    dataRoot?: string;
+    kind?: string;
+    operation?: string;
+    requestId?: string;
+  }
+): AtlasDocDatasourceEdge {
+  const operations = new Set(existing?.operations ?? []);
+  if (incoming.operation?.trim()) operations.add(incoming.operation.trim());
+  return {
+    datasourceId: incoming.datasourceId,
+    dataRoot: incoming.dataRoot ?? existing?.dataRoot,
+    kind: incoming.kind ?? existing?.kind,
+    operations: [...operations].sort(),
+    lastRequestId: incoming.requestId?.trim() || existing?.lastRequestId,
+  };
+}
+
+export interface UpsertDocPresentationInput {
+  scenario?: string
+  cms: {
+    pageId: string
+    pageSlug?: string
+    nodeId: string
+    type: string
+    path: string
+    parentId?: string | null
+    source?: 'cms' | 'hardcoded'
+    label?: string
+    /** CMS/site tree path for page hierarchy (duplicates via multiple paths OK). */
+    treePath?: string
+    parentPageId?: string | null
+  }
+  datasources?: Array<{
+    datasourceId: string;
+    dataRoot?: string;
+    kind?: string;
+    operation?: string;
+    requestId?: string;
+  }>;
+  shown?: unknown;
+  timestamp?: string;
+}
+
+/** Upsert a CMS/hardcoded surface into the auto-doc map. */
+export function upsertAtlasDocFromPresentation(input: UpsertDocPresentationInput): AtlasDocMap {
+  const scenario = input.scenario?.trim() || 'default'
+  const map = ensureMap(scenario)
+  const now = input.timestamp ?? new Date().toISOString()
+  const pageId = input.cms.pageId.trim() || '_app'
+
+  if (input.cms.treePath?.trim()) {
+    upsertAtlasDocPagePlacement({
+      scenario,
+      pageId,
+      pageSlug: input.cms.pageSlug,
+      treePath: input.cms.treePath,
+      parentPageId: input.cms.parentPageId,
+      timestamp: now,
+    })
+  }
+
+  let page = map.pages[pageId]
+  if (!page) {
+    page = { pageId, pageSlug: input.cms.pageSlug, nodes: {}, lastSeenAt: now, placements: [] }
+    map.pages[pageId] = page
+  } else {
+    if (input.cms.pageSlug) page.pageSlug = input.cms.pageSlug
+    page.lastSeenAt = now
+  }
+
+  const nodeId = input.cms.nodeId.trim() || input.cms.type
+  const prev = page.nodes[nodeId]
+  const byDs = new Map<string, AtlasDocDatasourceEdge>()
+  for (const d of prev?.datasources ?? []) {
+    byDs.set(datasourceKey(d), d)
+  }
+  for (const d of input.datasources ?? []) {
+    if (!d.datasourceId?.trim()) continue
+    const key = datasourceKey(d)
+    byDs.set(key, mergeDatasourceEdge(byDs.get(key), d))
+  }
+
+  const sample = input.shown
+  const schemaFromSample = sample !== undefined ? inferValueSchema(sample) : undefined
+  const linksFromSample =
+    sample !== undefined ? extractAtlasCmsLinkRefs(sample) : undefined
+
+  page.nodes[nodeId] = {
+    nodeId,
+    type: input.cms.type,
+    path: input.cms.path,
+    label: input.cms.label ?? prev?.label,
+    source: input.cms.source ?? prev?.source ?? 'cms',
+    parentId: input.cms.parentId !== undefined ? input.cms.parentId : prev?.parentId,
+    datasources: [...byDs.values()].sort((a, b) =>
+      datasourceKey(a).localeCompare(datasourceKey(b))
+    ),
+    links: mergeAtlasCmsLinkRefs(prev?.links, linksFromSample),
+    propsSchema: mergeSchemas(prev?.propsSchema, schemaFromSample),
+    propsSample: sample !== undefined ? sample : prev?.propsSample,
+    lastSeenAt: now,
+  }
+
+  const updated = touch(map)
+  scheduleAtlasDocHtmlRewrite(updated)
+  return updated
+}
+
+export interface UpsertDocPrefetchInput {
+  scenario?: string;
+  datasourceId: string;
+  kind?: string;
+  operation?: string;
+  phase?: string;
+  requestId?: string;
+  timestamp?: string;
+}
+
+export function upsertAtlasDocFromPrefetch(input: UpsertDocPrefetchInput): AtlasDocMap {
+  const scenario = input.scenario?.trim() || 'default';
+  const map = ensureMap(scenario);
+  const now = input.timestamp ?? new Date().toISOString();
+  const id = input.datasourceId.trim();
+  if (!id) return map;
+
+  const prev = map.prefetches[id];
+  const operations = new Set(prev?.operations ?? []);
+  if (input.operation?.trim()) operations.add(input.operation.trim());
+  const phases = new Set(prev?.phases ?? []);
+  if (input.phase?.trim()) phases.add(input.phase.trim());
+
+  map.prefetches[id] = {
+    datasourceId: id,
+    kind: input.kind ?? prev?.kind,
+    operations: [...operations].sort(),
+    phases: [...phases].sort(),
+    lastSeenAt: now,
+    lastRequestId: input.requestId?.trim() || prev?.lastRequestId,
+  };
+  const updated = touch(map);
+  scheduleAtlasDocHtmlRewrite(updated);
+  return updated;
+}
+
+export interface UpsertDocUsageInput {
+  scenario?: string;
+  screen?: string;
+  component?: string;
+  datasourceId?: string;
+  dataRoot?: string;
+  requestId?: string;
+  cms?: {
+    pageId?: string;
+    nodeId?: string;
+    type?: string;
+    path?: string;
+  };
+  timestamp?: string;
+}
+
+/**
+ * Upsert from usage annotations. CMS-shaped usage reinforces pages without
+ * overwriting a friendlier presentation label; screen-only fills screens map.
+ */
+export function upsertAtlasDocFromUsage(input: UpsertDocUsageInput): AtlasDocMap {
+  const scenario = input.scenario?.trim() || 'default';
+  const map = ensureMap(scenario);
+  const now = input.timestamp ?? new Date().toISOString();
+
+  if (input.cms?.pageId && input.cms.nodeId) {
+    upsertAtlasDocFromPresentation({
+      scenario,
+      timestamp: now,
+      cms: {
+        pageId: input.cms.pageId,
+        nodeId: input.cms.nodeId,
+        type: input.cms.type || input.component || input.cms.nodeId,
+        path: input.cms.path || `${input.cms.pageId}/${input.cms.nodeId}`,
+        // Do not pass label — preserves capturePresentation / tracked-surface labels.
+      },
+      datasources: input.datasourceId
+        ? [
+            {
+              datasourceId: input.datasourceId,
+              dataRoot: input.dataRoot,
+              requestId: input.requestId,
+            },
+          ]
+        : undefined,
+    });
+  }
+
+  const screen = input.screen?.trim();
+  if (screen) {
+    const prev = map.screens[screen];
+    const components = new Set(prev?.components ?? []);
+    if (input.component?.trim()) components.add(input.component.trim());
+    const datasourceIds = new Set(prev?.datasourceIds ?? []);
+    if (input.datasourceId?.trim()) datasourceIds.add(input.datasourceId.trim());
+    map.screens[screen] = {
+      screen,
+      components: [...components].sort(),
+      datasourceIds: [...datasourceIds].sort(),
+      lastSeenAt: now,
+      screenshotPath: prev?.screenshotPath,
+      screenshotSessionId: prev?.screenshotSessionId,
+      screenshotCapturedAt: prev?.screenshotCapturedAt,
+      screenshots: prev?.screenshots,
+    };
+    touch(map);
+  }
+
+  scheduleAtlasDocHtmlRewrite(map);
+  return map;
+}
+
+registerAtlasDocUsageWriter(upsertAtlasDocFromUsage);
+
+export interface SetAtlasDocScreenshotInput {
+  scenario?: string;
+  screen: string;
+  sessionId: string;
+  screenshotPath: string;
+  capturedAt: string;
+  pageId?: string;
+  /** Capture phase — `early` vs `ready` (appended to history). */
+  phase?: string;
+}
+
+function appendScreenshotRef(
+  existing: AtlasDocScreenshotRef[] | undefined,
+  ref: AtlasDocScreenshotRef
+): AtlasDocScreenshotRef[] {
+  const next = [...(existing ?? [])];
+  const idx = next.findIndex(
+    (s) => s.path === ref.path || (ref.phase && s.phase === ref.phase && s.sessionId === ref.sessionId)
+  );
+  if (idx >= 0) {
+    next[idx] = ref;
+  } else {
+    next.push(ref);
+  }
+  next.sort((a, b) => a.capturedAt.localeCompare(b.capturedAt));
+  return next;
+}
+
+/**
+ * Scenario for Atlas doc writes when callers omit it.
+ * Prefer atlas runtime → {@link getCurrentScenario} → `default` (avoid parking screenshots on
+ * `default` while live traffic/`requestAtlasDocsRender` uses `_scratch`).
+ */
+export function resolveAtlasDocWriteScenario(explicit?: string): string {
+  const trimmed = explicit?.trim();
+  if (trimmed) return trimmed;
+  try {
+    // Lazy require: atlas.ts imports atlas-doc (avoid cycle at module init).
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { getAtlasRuntimeScenario } = require('./atlas') as typeof import('./atlas');
+    const runtime = getAtlasRuntimeScenario()?.trim();
+    if (runtime) return runtime;
+  } catch {
+    /* ignore */
+  }
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { getCurrentScenario } = require('./scenario') as typeof import('./scenario');
+    const current = getCurrentScenario()?.trim();
+    if (current) return current;
+  } catch {
+    /* ignore */
+  }
+  return 'default';
+}
+
+/**
+ * Copy screenshot refs from donor maps onto `target` when the target screen/page is missing them.
+ * Used when screenshots were stored under `default` but render resolves `_scratch` (or vice versa).
+ */
+export function mergeAtlasDocScreenshotRefs(
+  target: AtlasDocMap,
+  donors: readonly AtlasDocMap[]
+): AtlasDocMap {
+  const out: AtlasDocMap = structuredClone(target);
+  for (const donor of donors) {
+    if (!donor || donor.scenario === out.scenario) continue;
+    for (const [screenKey, screen] of Object.entries(donor.screens ?? {})) {
+      const hasShot =
+        Boolean(screen.screenshotPath?.trim()) || Boolean(screen.screenshots && screen.screenshots.length);
+      if (!hasShot) continue;
+      const dest = out.screens[screenKey];
+      if (!dest) {
+        out.screens[screenKey] = structuredClone(screen);
+        continue;
+      }
+      if (!dest.screenshotPath?.trim() && screen.screenshotPath?.trim()) {
+        dest.screenshotPath = screen.screenshotPath;
+        dest.screenshotSessionId = screen.screenshotSessionId;
+        dest.screenshotCapturedAt = screen.screenshotCapturedAt;
+      }
+      for (const ref of screen.screenshots ?? []) {
+        dest.screenshots = appendScreenshotRef(dest.screenshots, ref);
+      }
+      if (!dest.screenshotPath?.trim() && dest.screenshots?.length) {
+        const last = dest.screenshots[dest.screenshots.length - 1];
+        dest.screenshotPath = last.path;
+        dest.screenshotSessionId = last.sessionId;
+        dest.screenshotCapturedAt = last.capturedAt;
+      }
+    }
+    for (const [pageId, page] of Object.entries(donor.pages ?? {})) {
+      const hasShot =
+        Boolean(page.screenshotPath?.trim()) || Boolean(page.screenshots && page.screenshots.length);
+      if (!hasShot) continue;
+      const dest = out.pages[pageId];
+      if (!dest) continue;
+      if (!dest.screenshotPath?.trim() && page.screenshotPath?.trim()) {
+        dest.screenshotPath = page.screenshotPath;
+        dest.screenshotSessionId = page.screenshotSessionId;
+        dest.screenshotCapturedAt = page.screenshotCapturedAt;
+      }
+      for (const ref of page.screenshots ?? []) {
+        dest.screenshots = appendScreenshotRef(dest.screenshots, ref);
+      }
+      if (!dest.screenshotPath?.trim() && dest.screenshots?.length) {
+        const last = dest.screenshots[dest.screenshots.length - 1];
+        dest.screenshotPath = last.path;
+        dest.screenshotSessionId = last.sessionId;
+        dest.screenshotCapturedAt = last.capturedAt;
+      }
+    }
+  }
+  return out;
+}
+
+/** Persist screenshot path on screen / page entries after capture. */
+export function setAtlasDocScreenshot(input: SetAtlasDocScreenshotInput): AtlasDocMap {
+  const scenario = resolveAtlasDocWriteScenario(input.scenario);
+  const map = ensureMap(scenario);
+  const screen = input.screen.trim();
+  const now = input.capturedAt;
+  const ref: AtlasDocScreenshotRef = {
+    path: input.screenshotPath,
+    capturedAt: input.capturedAt,
+    sessionId: input.sessionId,
+    phase: input.phase?.trim() || undefined,
+  };
+
+  const prevScreen = map.screens[screen];
+  const screenShots = appendScreenshotRef(prevScreen?.screenshots, ref);
+  map.screens[screen] = {
+    screen,
+    components: prevScreen?.components ?? [],
+    datasourceIds: prevScreen?.datasourceIds ?? [],
+    lastSeenAt: prevScreen?.lastSeenAt ?? now,
+    screenshotPath: input.screenshotPath,
+    screenshotSessionId: input.sessionId,
+    screenshotCapturedAt: input.capturedAt,
+    screenshots: screenShots,
+  };
+
+  const pageId = input.pageId?.trim();
+  if (pageId && map.pages[pageId]) {
+    const page = map.pages[pageId];
+    page.screenshotPath = input.screenshotPath;
+    page.screenshotSessionId = input.sessionId;
+    page.screenshotCapturedAt = input.capturedAt;
+    page.screenshots = appendScreenshotRef(page.screenshots, ref);
+  }
+
+  const updated = touch(map);
+  scheduleAtlasDocHtmlRewrite(updated);
+  return updated;
+}
+
+export function getAtlasDocMap(scenario = 'default'): AtlasDocMap {
+  return structuredClone(ensureMap(scenario))
+}
+
+/** Scenario keys that already have an in-memory Atlas doc map (does not create empties). */
+export function listAtlasDocScenarios(): string[] {
+  return [...docsByScenario.keys()].sort()
+}
+
+/** Peek without creating an empty map via {@link getAtlasDocMap}. */
+export function peekAtlasDocMap(scenario: string): AtlasDocMap | undefined {
+  const key = scenario.trim()
+  if (!key) return undefined
+  const map = docsByScenario.get(key)
+  return map ? structuredClone(map) : undefined
+}
+
+/** Rough size for picking the richest map when scenario is ambiguous. */
+export function atlasDocContentScore(map: AtlasDocMap): number {
+  return (
+    Object.keys(map.pages ?? {}).length +
+    Object.keys(map.screens ?? {}).length +
+    Object.keys(map.prefetches ?? {}).length
+  )
+}
+
+/** Replace or merge an entire map (dashboard hydrate / tests). */
+export function setAtlasDocMap(map: AtlasDocMap): AtlasDocMap {
+  const key = map.scenario.trim() || 'default'
+  const normalized: AtlasDocMap = {
+    ...map,
+    scenario: key,
+    pages: map.pages ?? {},
+    screens: map.screens ?? {},
+    prefetches: map.prefetches ?? {},
+    updatedAt: map.updatedAt || new Date().toISOString(),
+  }
+  docsByScenario.set(key, normalized)
+  return structuredClone(normalized)
+}
+
+/** Apply a partial map upsert from another process (dashboard POST). */
+export function mergeAtlasDocMap(incoming: AtlasDocMap): AtlasDocMap {
+  const scenario = incoming.scenario?.trim() || 'default'
+  for (const pref of Object.values(incoming.prefetches ?? {})) {
+    upsertAtlasDocFromPrefetch({
+      scenario,
+      datasourceId: pref.datasourceId,
+      kind: pref.kind,
+      operation: pref.operations?.[0],
+      phase: pref.phases?.[0],
+      timestamp: pref.lastSeenAt,
+    })
+    const map = ensureMap(scenario)
+    const existing = map.prefetches[pref.datasourceId]
+    if (existing) {
+      const ops = new Set([...existing.operations, ...(pref.operations ?? [])])
+      const phases = new Set([...existing.phases, ...(pref.phases ?? [])])
+      existing.operations = [...ops].sort()
+      existing.phases = [...phases].sort()
+      if (pref.kind) existing.kind = pref.kind
+      if (pref.lastSeenAt > existing.lastSeenAt) existing.lastSeenAt = pref.lastSeenAt
+    }
+  }
+
+  for (const page of Object.values(incoming.pages ?? {})) {
+    for (const placement of page.placements ?? []) {
+      if (!placement.treePath?.trim()) continue
+      upsertAtlasDocPagePlacement({
+        scenario,
+        pageId: page.pageId,
+        pageSlug: page.pageSlug,
+        treePath: placement.treePath,
+        parentPageId: placement.parentPageId,
+        parentTreePath: placement.parentTreePath,
+        ensureAncestors: false,
+        timestamp: placement.lastSeenAt || page.lastSeenAt,
+      })
+    }
+    for (const node of Object.values(page.nodes ?? {})) {
+      upsertAtlasDocFromPresentation({
+        scenario,
+        timestamp: node.lastSeenAt,
+        cms: {
+          pageId: page.pageId,
+          pageSlug: page.pageSlug,
+          nodeId: node.nodeId,
+          type: node.type,
+          path: node.path,
+          parentId: node.parentId,
+          source: node.source,
+          label: node.label,
+        },
+        datasources: node.datasources.map((d) => ({
+          datasourceId: d.datasourceId,
+          dataRoot: d.dataRoot,
+          kind: d.kind,
+          operation: d.operations[0],
+        })),
+        shown: node.propsSample,
+      })
+      // Re-merge full operation unions + schemas
+      const map = ensureMap(scenario)
+      const target = map.pages[page.pageId]?.nodes[node.nodeId]
+      if (target) {
+        target.propsSchema = mergeSchemas(target.propsSchema, node.propsSchema)
+        target.links = mergeAtlasCmsLinkRefs(target.links, node.links)
+        for (const d of node.datasources) {
+          const key = datasourceKey(d)
+          const found = target.datasources.find((x) => datasourceKey(x) === key)
+          if (found) {
+            const ops = new Set([...found.operations, ...d.operations])
+            found.operations = [...ops].sort()
+          } else {
+            target.datasources.push({ ...d, operations: [...d.operations] })
+          }
+        }
+      }
+    }
+  }
+
+  for (const screen of Object.values(incoming.screens ?? {})) {
+    for (const component of screen.components) {
+      upsertAtlasDocFromUsage({
+        scenario,
+        screen: screen.screen,
+        component,
+        timestamp: screen.lastSeenAt,
+      })
+    }
+    for (const datasourceId of screen.datasourceIds) {
+      upsertAtlasDocFromUsage({
+        scenario,
+        screen: screen.screen,
+        datasourceId,
+        timestamp: screen.lastSeenAt,
+      })
+    }
+    if (screen.screenshotPath?.trim() || (screen.screenshots && screen.screenshots.length)) {
+      const shots =
+        screen.screenshots && screen.screenshots.length
+          ? screen.screenshots
+          : [
+              {
+                path: screen.screenshotPath!,
+                capturedAt: screen.screenshotCapturedAt || screen.lastSeenAt,
+                sessionId: screen.screenshotSessionId || 'imported',
+              },
+            ];
+      for (const shot of shots) {
+        if (!shot.path?.trim()) continue;
+        setAtlasDocScreenshot({
+          scenario,
+          screen: screen.screen,
+          sessionId: shot.sessionId || screen.screenshotSessionId || 'imported',
+          screenshotPath: shot.path,
+          capturedAt: shot.capturedAt || screen.screenshotCapturedAt || screen.lastSeenAt,
+          phase: shot.phase,
+        });
+      }
+    }
+  }
+
+  for (const page of Object.values(incoming.pages ?? {})) {
+    if (page.screenshotPath?.trim() || (page.screenshots && page.screenshots.length)) {
+      const map = ensureMap(scenario)
+      const existingPage = map.pages[page.pageId]
+      if (existingPage) {
+        const shots =
+          page.screenshots && page.screenshots.length
+            ? page.screenshots
+            : page.screenshotPath
+              ? [
+                  {
+                    path: page.screenshotPath,
+                    capturedAt: page.screenshotCapturedAt || page.lastSeenAt,
+                    sessionId: page.screenshotSessionId || 'imported',
+                    phase: undefined as string | undefined,
+                  },
+                ]
+              : [];
+        for (const shot of shots) {
+          if (!shot.path?.trim()) continue;
+          existingPage.screenshotPath = shot.path
+          existingPage.screenshotSessionId = shot.sessionId || page.screenshotSessionId || 'imported'
+          existingPage.screenshotCapturedAt = shot.capturedAt || page.lastSeenAt
+          existingPage.screenshots = appendScreenshotRef(existingPage.screenshots, {
+            path: shot.path,
+            capturedAt: shot.capturedAt || page.lastSeenAt,
+            sessionId: shot.sessionId || page.screenshotSessionId || 'imported',
+            phase: shot.phase,
+          })
+        }
+        touch(map)
+      }
+    }
+  }
+
+  return getAtlasDocMap(scenario)
+}
+
+export function clearAtlasDocMap(scenario?: string): void {
+  if (scenario?.trim()) {
+    docsByScenario.delete(scenario.trim())
+    return
+  }
+  docsByScenario.clear()
+}
+
+export function resetAtlasDocRuntime(): void {
+  docsByScenario.clear()
+  resetAtlasDocHtmlRuntime()
+}
+
+/** Pages sorted for display. */
+export function listAtlasDocPages(scenario = 'default'): AtlasDocPage[] {
+  const map = ensureMap(scenario)
+  return Object.values(map.pages).sort((a, b) => a.pageId.localeCompare(b.pageId))
+}
