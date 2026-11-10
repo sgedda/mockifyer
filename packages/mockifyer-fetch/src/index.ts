@@ -1083,9 +1083,8 @@ class MockifyerClass {
 
       if (this.config.failOnMissingMock) {
         const scenario = getCurrentScenario(this.config.mockDataPath, this.config.clientId);
-        // Keep "No mock data found" prefix for backward compatibility with existing tests
         throw new Error(
-          `No mock data found for ${request.method} ${request.url}\n` +
+          `No mock found for ${request.method} ${request.url}\n` +
           `Scenario: ${scenario}\n` +
           `Request key: ${this.generateRequestKey(request)}\n` +
           `\n` +

@@ -256,7 +256,7 @@ describe("Mockifyer Fetch Integration", () => {
     // Try to make request without mock
     await expect(
       httpClient.get("https://api.example.com/nonexistent"),
-    ).rejects.toThrow(/No mock data found/);
+    ).rejects.toThrow(/No mock found/);
   });
 
   it("should record mock, read it, and delete it", async () => {
