@@ -919,7 +919,7 @@ npm test tests/generated
               </p>
             </Link>
 
-            <Link to="/features#date-config" className="p-4 border rounded-md hover:bg-accent transition-colors">
+            <Link to="/date-config" className="p-4 border rounded-md hover:bg-accent transition-colors">
               <div className="flex items-center gap-2 mb-2">
                 <Clock className="h-5 w-5 text-primary" />
                 <h4 className="font-semibold">Date Manipulation</h4>

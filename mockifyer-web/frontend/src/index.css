@@ -22,14 +22,6 @@
 }
 
 @layer base {
-  @font-face {
-    font-family: 'Inter';
-    font-style: normal;
-    font-weight: 100 900;
-    font-display: swap;
-    src: url('/fonts/inter-variable.woff2') format('woff2');
-  }
-
   :root {
     /* Refined zinc-based palette inspired by DevXTools */
     --background: 0 0% 100%;

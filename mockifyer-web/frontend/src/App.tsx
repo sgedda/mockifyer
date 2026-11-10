@@ -2,6 +2,8 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { Toaster } from '@/components/ui/toaster'
 import Navigation from './components/Navigation'
 import { Navigate } from 'react-router-dom'
+import { useEffect } from 'react'
+import { useLocation } from 'react-router-dom'
 import Introduction from './pages/Introduction'
 import DateConfig from './pages/DateConfig'
 import GettingStarted from './pages/GettingStarted'
@@ -20,6 +22,23 @@ import MockDrift from './pages/guides/MockDrift'
 import { ThemeProvider } from './lib/use-theme'
 import PageSeoManager from './components/PageSeoManager'
 
+function HashScrollHandler() {
+  const location = useLocation()
+
+  useEffect(() => {
+    if (location.hash) {
+      const element = document.getElementById(location.hash.substring(1))
+      if (element) {
+        setTimeout(() => {
+          element.scrollIntoView({ behavior: 'smooth' })
+        }, 0)
+      }
+    }
+  }, [location])
+
+  return null
+}
+
 function App() {
   return (
     <ThemeProvider>
@@ -33,6 +52,7 @@ function App() {
       >
         <div className="min-h-screen bg-background">
           <PageSeoManager />
+          <HashScrollHandler />
           <Navigation />
           <main>
             <Routes>

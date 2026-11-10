@@ -97,12 +97,6 @@ export const PAGE_SEO: Record<string, PageSeoConfig> = {
       'Hand-written mocks drift from real APIs. Record real responses, re-record when APIs change, and git diff to catch breaking changes. MSW vs record-replay comparison.',
     path: '/guides/mock-drift',
   },
-  '/guides/nuxt-ssr-fixtures': {
-    title: 'Nuxt SSR Fixtures - Server-Side Fetch Mocking',
-    description:
-      'Record backend responses for flaky Nuxt 3/Nitro CI. Intercept server-side $fetch and ofetch in the Node.js layer where Playwright can\'t reach.',
-    path: '/guides/nuxt-ssr-fixtures',
-  },
 }
 
 export function getPageSeo(pathname: string): PageSeoConfig {
