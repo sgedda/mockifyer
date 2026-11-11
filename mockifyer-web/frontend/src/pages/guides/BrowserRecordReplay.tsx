@@ -2,17 +2,25 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Globe, CheckCircle2, XCircle, Code, Rocket, AlertCircle, Play } from 'lucide-react'
 import CodeBlock from '@/components/CodeBlock'
 import { Link } from 'react-router-dom'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 
 export default function BrowserRecordReplay() {
   const [showStackBlitz, setShowStackBlitz] = useState(false)
   
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('embed') === 'true' && window.crossOriginIsolated) {
+      setShowStackBlitz(true);
+      window.history.replaceState({}, '', '/guides/browser-record-replay');
+    }
+  }, []);
+  
   const handleShowEmbed = () => {
     // If not cross-origin isolated (e.g., user navigated from another page via SPA),
-    // do a full page reload to get the isolation headers
+    // do a full page reload with ?embed=true to restore intent after isolation
     if (typeof window !== 'undefined' && !window.crossOriginIsolated) {
-      window.location.href = '/guides/browser-record-replay';
+      window.location.href = '/guides/browser-record-replay?embed=true';
       return;
     }
     setShowStackBlitz(!showStackBlitz);

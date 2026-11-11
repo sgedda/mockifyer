@@ -46,7 +46,7 @@ app.use(cookieParser());
 // Applied before static file serving so it works for the SPA route
 app.use((req, res, next) => {
   if (req.path === '/guides/browser-record-replay' || req.path === '/guides/browser-record-replay/') {
-    res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless');
+    res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
     res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
   }
   next();
