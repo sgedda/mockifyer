@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mockifyer Browser Test</title>
+</head>
+<body>
+  <h1>Mockifyer Browser Test</h1>
+  <div id="result">Running tests...</div>
+  <pre id="details"></pre>
+  <script type="module" src="./index.js"></script>
+  <script type="module">
+    // Wait for tests to complete
+    const checkResult = setInterval(() => {
+      if (window.mockifyerTestResult) {
+        clearInterval(checkResult);
+        const result = window.mockifyerTestResult;
+        const resultDiv = document.getElementById('result');
+        const detailsPre = document.getElementById('details');
+        
+        if (result.success) {
+          resultDiv.textContent = '✅ All tests passed';
+          resultDiv.style.color = 'green';
+          detailsPre.textContent = JSON.stringify(result.tests, null, 2);
+        } else {
+          resultDiv.textContent = `❌ Tests failed`;
+          resultDiv.style.color = 'red';
+          detailsPre.textContent = result.error;
+        }
+      }
+    }, 100);
+  </script>
+</body>
+</html>
