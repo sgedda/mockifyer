@@ -1,9 +1,14 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Globe, CheckCircle2, XCircle, Code, Rocket, AlertCircle } from 'lucide-react'
+import { Globe, CheckCircle2, XCircle, Code, Rocket, AlertCircle, Play } from 'lucide-react'
 import CodeBlock from '@/components/CodeBlock'
+import RunItButton from '@/components/RunItButton'
 import { Link } from 'react-router-dom'
+import { useState } from 'react'
+import { Button } from '@/components/ui/button'
 
 export default function BrowserRecordReplay() {
+  const [showStackBlitz, setShowStackBlitz] = useState(false)
+  
   return (
     <div className="max-w-[900px] mx-auto space-y-6">
       <div>
@@ -254,6 +259,63 @@ npm run dev
               <code>example-projects/expo-web-demo</code> for a complete Expo web setup.
             </p>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <Rocket className="h-6 w-6" />
+            <div>
+              <CardTitle>Try the Live Example</CardTitle>
+              <CardDescription>
+                Open the browser example in StackBlitz to see Mockifyer running in your browser
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="p-4 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-500/50">
+            <p className="text-sm text-muted-foreground">
+              <strong>Note:</strong> This demo will work once browser support is published in the next release (currently in PR{' '}
+              <a href="https://github.com/sgedda/mockifyer/pull/495" className="text-blue-600 dark:text-blue-400 hover:underline" target="_blank" rel="noopener noreferrer">
+                #495
+              </a>
+              ).
+            </p>
+          </div>
+          
+          <div className="flex gap-3">
+            <a
+              href="https://stackblitz.com/github/sgedda/mockifyer/tree/main/example-projects/browser-vite"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 font-medium text-sm"
+            >
+              <Play className="h-4 w-4" />
+              Open in StackBlitz
+            </a>
+            
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowStackBlitz(!showStackBlitz)}
+            >
+              {showStackBlitz ? 'Hide' : 'Show'} Embedded Preview
+            </Button>
+          </div>
+
+          {showStackBlitz && (
+            <div className="border rounded-lg overflow-hidden" style={{ height: '500px' }}>
+              <iframe
+                src="https://stackblitz.com/github/sgedda/mockifyer/tree/main/example-projects/browser-vite?embed=1&view=preview"
+                className="w-full h-full"
+                title="Mockifyer Browser Example"
+                allow="accelerometer; ambient-light-sensor; camera; encrypted-media; geolocation; gyroscope; hid; microphone; midi; payment; usb; vr; xr-spatial-tracking"
+                sandbox="allow-forms allow-modals allow-popups allow-presentation allow-same-origin allow-scripts"
+              />
+            </div>
+          )}
         </CardContent>
       </Card>
 

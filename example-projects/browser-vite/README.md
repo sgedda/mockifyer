@@ -6,9 +6,15 @@
 
 - ✅ Memory provider with preloaded fixtures
 - ✅ Mocked request (currency rates from fixture)
-- ✅ Unmocked request (test server API call)
+- ✅ Unmocked request (IP lookup from api.ipify.org)
 - ✅ Zero Node.js built-ins in browser bundle
 - ✅ Clean TypeScript setup with Vite
+
+## Run on StackBlitz
+
+[![Open in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz.svg)](https://stackblitz.com/github/sgedda/mockifyer/tree/main/example-projects/browser-vite)
+
+**Note**: Browser support will be available in the next Mockifyer release. The StackBlitz demo will work once published.
 
 ## Run Locally (Development)
 

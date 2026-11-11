@@ -50,9 +50,9 @@ test.describe('Browser Guide Page', () => {
 
   test('should have bundler configuration section', async ({ page }) => {
     await expect(page.getByText(/Bundler Configuration/i)).toBeVisible();
-    await expect(page.getByText(/Vite/i)).toBeVisible();
-    await expect(page.getByText(/Webpack 5/i)).toBeVisible();
-    await expect(page.getByText(/Metro.*Expo.*React Native Web/i)).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Vite' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Webpack 5' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Metro/ })).toBeVisible();
   });
 
   test('should have code examples', async ({ page }) => {
@@ -62,8 +62,8 @@ test.describe('Browser Guide Page', () => {
   });
 
   test('should have navigation links', async ({ page }) => {
-    const gettingStartedLink = page.locator('a[href="/getting-started"]');
-    const configRefLink = page.locator('a[href="/config-reference"]');
+    const gettingStartedLink = page.locator('a[href="/getting-started"]').first();
+    const configRefLink = page.locator('a[href="/config-reference"]').first();
     
     await expect(gettingStartedLink).toBeVisible();
     await expect(configRefLink).toBeVisible();
