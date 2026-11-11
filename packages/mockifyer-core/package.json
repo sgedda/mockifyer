@@ -71,6 +71,10 @@
       "types": "./dist/utils/crypto-digest.d.ts",
       "default": "./dist/utils/crypto-digest.js"
     },
+    "./utils/dashboard-client.browser": {
+      "types": "./dist/utils/dashboard-client.browser.d.ts",
+      "default": "./dist/utils/dashboard-client.browser.js"
+    },
     "./utils/fixture-pool/runtime-cache": {
       "types": "./dist/utils/fixture-pool/runtime-cache.d.ts",
       "default": "./dist/utils/fixture-pool/runtime-cache.js"
