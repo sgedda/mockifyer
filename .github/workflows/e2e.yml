@@ -159,20 +159,33 @@ jobs:
 
       - name: Install Playwright system dependencies with retry
         working-directory: e2e
+        timeout-minutes: 15
         run: |
           set -e
           MAX_ATTEMPTS=3
           BACKOFF=5
+          INSTALL_TIMEOUT=240  # 4 minutes per attempt
 
-          # Configure apt retries
-          echo 'Acquire::Retries "3";' | sudo tee /etc/apt/apt.conf.d/80-retries
+          # Configure apt: lower timeouts and retries
+          sudo tee /etc/apt/apt.conf.d/80-retries > /dev/null <<EOF
+          Acquire::Retries "2";
+          Acquire::http::Timeout "20";
+          Acquire::https::Timeout "20";
+          Acquire::ftp::Timeout "20";
+          EOF
 
           install_deps() {
-            echo "Attempt $1/$MAX_ATTEMPTS: Installing Playwright system dependencies..."
-            if npx playwright install-deps chromium; then
+            echo "Attempt $1/$MAX_ATTEMPTS: Installing Playwright system dependencies (${INSTALL_TIMEOUT}s timeout)..."
+            if timeout ${INSTALL_TIMEOUT}s npx playwright install-deps chromium; then
               echo "✓ Successfully installed Playwright system dependencies"
               return 0
             else
+              local exit_code=$?
+              if [ $exit_code -eq 124 ]; then
+                echo "✗ Timed out after ${INSTALL_TIMEOUT}s"
+              else
+                echo "✗ Failed with exit code $exit_code"
+              fi
               return 1
             fi
           }
@@ -190,6 +203,7 @@ jobs:
           done
 
           # If all attempts fail, switch to main Ubuntu mirrors
+          echo ""
           echo "⚠ All attempts failed with azure.archive.ubuntu.com"
           echo "→ Switching to archive.ubuntu.com and security.ubuntu.com..."
           
@@ -200,15 +214,30 @@ jobs:
             sudo sed -i 's|azure\.archive\.ubuntu\.com|archive.ubuntu.com|g' /etc/apt/apt-mirrors.txt
           fi
           sudo apt-get clean
-          sudo apt-get update -qq || true
+          
+          echo "→ Running apt-get update to refresh package lists..."
+          if timeout 120s sudo apt-get update -qq; then
+            echo "✓ apt-get update succeeded"
+          else
+            echo "⚠ apt-get update failed or timed out, proceeding with cached lists"
+          fi
 
           # Final attempt with fallback mirrors
-          echo "Final attempt with fallback mirrors..."
-          if npx playwright install-deps chromium; then
+          echo ""
+          echo "Final attempt with fallback mirrors (${INSTALL_TIMEOUT}s timeout)..."
+          if timeout ${INSTALL_TIMEOUT}s npx playwright install-deps chromium; then
             echo "✓ Successfully installed with fallback mirrors"
             exit 0
           else
             echo "✗ Failed to install Playwright system dependencies"
+            echo ""
+            echo "Diagnostic info:"
+            echo "Active apt sources:"
+            grep -v '^#' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null | grep -E '^(Types|URIs|Suites)' || echo "  (none found)"
+            if [ -f /etc/apt/apt-mirrors.txt ]; then
+              echo "Mirror list:"
+              cat /etc/apt/apt-mirrors.txt | head -5
+            fi
             exit 1
           fi
 
