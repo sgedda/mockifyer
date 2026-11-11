@@ -8,6 +8,16 @@ import { Button } from '@/components/ui/button'
 export default function BrowserRecordReplay() {
   const [showStackBlitz, setShowStackBlitz] = useState(false)
   
+  const handleShowEmbed = () => {
+    // If not cross-origin isolated (e.g., user navigated from another page via SPA),
+    // do a full page reload to get the isolation headers
+    if (typeof window !== 'undefined' && !window.crossOriginIsolated) {
+      window.location.href = '/guides/browser-record-replay';
+      return;
+    }
+    setShowStackBlitz(!showStackBlitz);
+  };
+  
   return (
     <div className="max-w-[900px] mx-auto space-y-6">
       <div>
@@ -293,7 +303,7 @@ npm run dev
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setShowStackBlitz(!showStackBlitz)}
+              onClick={handleShowEmbed}
             >
               {showStackBlitz ? 'Hide' : 'Show'} Embedded Preview
             </Button>
@@ -302,10 +312,10 @@ npm run dev
           {showStackBlitz && (
             <div className="border rounded-lg overflow-hidden" style={{ height: '500px' }}>
               <iframe
-                src="https://stackblitz.com/github/sgedda/mockifyer/tree/main/example-projects/browser-vite?embed=1&view=preview"
+                src="https://stackblitz.com/github/sgedda/mockifyer/tree/main/example-projects/browser-vite?embed=1&view=preview&corp=1"
                 className="w-full h-full"
                 title="Mockifyer Browser Example"
-                allow="accelerometer; ambient-light-sensor; camera; encrypted-media; geolocation; gyroscope; hid; microphone; midi; payment; usb; vr; xr-spatial-tracking"
+                allow="cross-origin-isolated; accelerometer; ambient-light-sensor; camera; encrypted-media; geolocation; gyroscope; hid; microphone; midi; payment; usb; vr; xr-spatial-tracking"
                 sandbox="allow-forms allow-modals allow-popups allow-presentation allow-same-origin allow-scripts"
               />
             </div>

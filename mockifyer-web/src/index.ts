@@ -42,6 +42,16 @@ app.use(cors({
 app.use(express.json());
 app.use(cookieParser());
 
+// Cross-origin isolation for browser guide page only (needed for StackBlitz WebContainer embed)
+// Applied before static file serving so it works for the SPA route
+app.use((req, res, next) => {
+  if (req.path === '/guides/browser-record-replay' || req.path === '/guides/browser-record-replay/') {
+    res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless');
+    res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+  }
+  next();
+});
+
 // API routes - must be registered BEFORE static file serving
 app.use('/api/weather', weatherRouter);
 app.use('/api/weather-fetch', weatherFetchRouter);
