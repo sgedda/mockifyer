@@ -121,7 +121,7 @@ export default function DateConfigPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-4xl px-4 py-16 space-y-6">
       <Card>
         <CardHeader>
           <CardTitle>Date Configuration</CardTitle>
