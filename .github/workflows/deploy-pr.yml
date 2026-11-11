@@ -5,7 +5,14 @@ on:
         types: [opened, synchronize, reopened]
         branches:
             - main # Only trigger for PRs targeting main (adjust as needed)
+        paths:
+            - 'mockifyer-web/**'
+            - '.github/workflows/deploy-pr.yml'
     workflow_dispatch:
+
+concurrency:
+    group: deploy-pr-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+    cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
     deploy:
