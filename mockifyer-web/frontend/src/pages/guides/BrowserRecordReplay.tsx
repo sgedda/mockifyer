@@ -1,6 +1,5 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Globe, Zap, CheckCircle2, XCircle, Code, Rocket, AlertCircle } from 'lucide-react'
+import { Globe, CheckCircle2, XCircle, Code, Rocket, AlertCircle } from 'lucide-react'
 import CodeBlock from '@/components/CodeBlock'
 import { Link } from 'react-router-dom'
 

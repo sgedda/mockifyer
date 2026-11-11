@@ -2,16 +2,16 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Browser Guide Page', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/browser-guide');
+    await page.goto('/guides/browser-record-replay');
   });
 
   test('should display browser guide heading', async ({ page }) => {
-    await expect(page.getByText(/Run Mockifyer in the Browser.*Expo Web/i)).toBeVisible();
+    await expect(page.getByText(/Record and Replay HTTP in the Browser/i)).toBeVisible();
   });
 
   test('should show browser support status card', async ({ page }) => {
     await expect(page.getByText(/Browser Support Status/i)).toBeVisible();
-    await expect(page.getByText(/@sgedda\/mockifyer-fetch@1\.8\.107\+/)).toBeVisible();
+    await expect(page.getByText(/next release/i)).toBeVisible();
   });
 
   test('should have installation section', async ({ page }) => {
