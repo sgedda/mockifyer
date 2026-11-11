@@ -217,12 +217,12 @@ export default function E2ETutorial() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Terminal className="h-5 w-5" />
-            3. Install Mockifyer packages
+            3. Install Mockifyer
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Install the published npm packages for your runtime (Node.js services or React Native/Expo apps):
+            Install published packages from npm for use in your own services:
           </p>
           
           <div className="space-y-3">
@@ -246,19 +246,21 @@ npx @sgedda/mockifyer-dashboard --provider sqlite --path ./mock-data --port 3002
           </div>
 
           <div className="p-4 border border-blue-500/20 bg-blue-500/5 rounded-md mt-4">
-            <p className="text-sm mb-2">
-              <strong>Try the full demo stack (optional):</strong> To run the WanderWeird example stack shown in the recordings, 
-              clone the repo and follow the setup in the{' '}
-              <a 
-                href="https://github.com/sgedda/mockifyer/tree/main/example-projects/wanderweird-travel"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary hover:underline font-medium"
-              >
-                WanderWeird README
-              </a>. The demo uses <code className="bg-muted px-1 rounded text-xs">file:</code> dependencies 
-              to local package builds for development.
+            <h4 className="font-semibold text-sm mb-2">To run the WanderWeird e2e demo (recordings below)</h4>
+            <p className="text-sm text-muted-foreground mb-2">
+              Clone the repo for the example app and e2e tests. The demo uses <code className="bg-muted px-1 rounded text-xs">file:</code> dependencies 
+              to local package builds (<code className="bg-muted px-1 rounded text-xs">packages/mockifyer-*</code>) for development:
             </p>
+            <CodeBlock code={`git clone https://github.com/sgedda/mockifyer && cd mockifyer
+npm ci
+
+# Build Mockifyer packages (demo and e2e depend on these local builds)
+sh packages/build-all.sh
+
+# Install the example app
+cd example-projects/wanderweird-travel
+npm ci --legacy-peer-deps
+cd apps/mobile && npm ci --legacy-peer-deps`} language="bash" />
           </div>
         </CardContent>
       </Card>
@@ -267,19 +269,16 @@ npx @sgedda/mockifyer-dashboard --provider sqlite --path ./mock-data --port 3002
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Play className="h-5 w-5" />
-            4. Quick start: dashboard and basic setup
+            4. Getting started: basic setup and recording model
           </CardTitle>
-          <CardDescription>
-            Get started with Mockifyer in your own project
-          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
             <h4 className="font-semibold mb-2 text-sm">1. Start the dashboard</h4>
-            <CodeBlock code={`# Start dashboard with sqlite provider
+            <CodeBlock code={`# Start dashboard with sqlite provider (supports tracing)
 npx @sgedda/mockifyer-dashboard --provider sqlite --path ./mock-data --port 3002
 
-# Or filesystem provider (simpler, but no tracing)
+# Or filesystem provider (simpler, no tracing)
 npx @sgedda/mockifyer-dashboard --provider filesystem --path ./mock-data --port 3002`} language="bash" />
           </div>
 
@@ -287,19 +286,18 @@ npx @sgedda/mockifyer-dashboard --provider filesystem --path ./mock-data --port 
             <h4 className="font-semibold mb-2 text-sm">2. Initialize Mockifyer in your service (Node.js + fetch)</h4>
             <CodeBlock code={`import { initMockifyerForDashboardProxy } from '@sgedda/mockifyer-fetch';
 
-// Initialize once at app startup
 await initMockifyerForDashboardProxy({
   dashboardBaseUrl: 'http://127.0.0.1:3002',
   mockDataPath: './mock-data',
   useGlobalFetch: true,
   config: {
     clientId: 'my-service',
-    activationMode: 'always',  // or 'client_id_header' for selective recording
+    activationMode: 'always',  // All requests routed through dashboard
     logging: 'info',
   },
 });
 
-// Now all fetch() calls are routed through the dashboard
+// Now all fetch() calls go through the dashboard proxy
 const response = await fetch('https://api.example.com/data');`} language="typescript" />
             <p className="text-xs text-muted-foreground mt-2">
               For axios, use <code className="bg-muted px-1 rounded">@sgedda/mockifyer-axios</code> with{' '}
@@ -307,43 +305,44 @@ const response = await fetch('https://api.example.com/data');`} language="typesc
             </p>
           </div>
 
-          <div>
-            <h4 className="font-semibold mb-2 text-sm">3. Record selectively (recommended)</h4>
-            <CodeBlock code={`// Option A: Selective recording via client ID header
-await initMockifyerForDashboardProxy({
-  dashboardBaseUrl: 'http://127.0.0.1:3002',
-  mockDataPath: './mock-data',
-  useGlobalFetch: true,
-  config: {
-    activationMode: 'client_id_header',  // Only record when header is present
-    clientId: 'my-service',
-  },
-});
-
-// Then send x-mockifyer-client-id header in requests you want to record:
-fetch('https://api.example.com/data', {
-  headers: { 'x-mockifyer-client-id': 'my-test-lane' }
-});`} language="typescript" />
-            <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
-              <strong>Recording note:</strong> Start with selective recording (per-request or per-endpoint via the 
-              dashboard's "Use saved mock" toggle). Capture-all recording is convenient for quick exploration but 
-              creates large mock directories that are hard to version control.
-            </p>
+          <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-md">
+            <h4 className="font-semibold mb-2 text-blue-900 dark:text-blue-200">Recording model (selective by default)</h4>
+            <div className="text-sm text-muted-foreground space-y-2">
+              <p>
+                <strong className="text-foreground">Default:</strong> Requests are saved as <strong>request-only stubs</strong> into 
+                the <code className="bg-muted px-1 rounded">_scratch</code> scenario and keep going to the live API until you activate them.
+              </p>
+              <p>
+                <strong className="text-foreground">Activate a mock:</strong> Use the dashboard to change a stub from <strong>passthrough</strong> (live) 
+                to <strong>stored</strong>, <strong>refresh-next</strong>, or use domain/path rules. The next matching request captures the response body.
+              </p>
+              <p>
+                <strong className="text-foreground">Capture everything (quick exploration):</strong> Set{' '}
+                <code className="bg-muted px-1 rounded">MOCKIFYER_RECORD_RESPONSES=true</code> env or{' '}
+                <code className="bg-muted px-1 rounded">recordResponses: true</code> config to immediately save full responses. 
+                This creates large mock directories — selective recording is recommended for production.
+              </p>
+            </div>
           </div>
 
-          <div className="p-4 border border-blue-500/20 bg-blue-500/5 rounded-md">
-            <h4 className="font-semibold text-sm mb-2">WanderWeird demo stack (recordings shown above)</h4>
-            <p className="text-sm text-muted-foreground mb-2">
-              The recordings demonstrate a full multi-service stack. To reproduce them:
-            </p>
-            <CodeBlock code={`# Clone and follow the WanderWeird setup
-git clone https://github.com/sgedda/mockifyer
-cd mockifyer/example-projects/wanderweird-travel
+          <div>
+            <h4 className="font-semibold mb-2 text-sm">3. Activation mode (controls which requests are proxied)</h4>
+            <CodeBlock code={`// activationMode: 'always' — all outbound requests routed through dashboard
+config: { activationMode: 'always' }
 
-# See the README for full setup instructions`} language="bash" />
+// activationMode: 'client_id_header' — only requests with x-mockifyer-client-id header
+config: {
+  activationMode: 'client_id_header',
+  clientId: 'my-service',
+}
+
+// Then send header on requests you want proxied:
+fetch('https://api.example.com/data', {
+  headers: { 'x-mockifyer-client-id': 'my-service' }  // matches clientId
+});`} language="typescript" />
             <p className="text-xs text-muted-foreground mt-2">
-              The demo uses local package builds with <code className="bg-muted px-1 rounded">file:</code> dependencies. 
-              For your own projects, install from npm as shown in section 3.
+              <code className="bg-muted px-1 rounded">activationMode</code> controls <strong>which requests are routed through</strong> the 
+              dashboard proxy, not whether responses are captured. Recording is selective by default (request-only stubs).
             </p>
           </div>
         </CardContent>
@@ -351,7 +350,75 @@ cd mockifyer/example-projects/wanderweird-travel
 
       <Card>
         <CardHeader>
-          <CardTitle>5. Walkthrough: one scenario per test</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <Terminal className="h-5 w-5" />
+            5. Run the WanderWeird e2e demo
+          </CardTitle>
+          <CardDescription>
+            Commands to reproduce the recordings shown below
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            After cloning and building (section 3), start the demo stack and run the e2e tests:
+          </p>
+
+          <div>
+            <h4 className="font-semibold mb-2 text-sm">Starting the demo services</h4>
+            <CodeBlock code={`# 1. Dashboard (sqlite) on :3002
+cd example-projects/wanderweird-travel
+npx mockifyer-dashboard --provider sqlite --path ./mock-data --port 3002 --host 127.0.0.1
+
+# 2. WanderWeird services in proxy mode (gateway :4200 ... wander-api :4203)
+npm run dev:proxy:record
+
+# 3. Expo web (Metro) on :8090
+cd apps/mobile
+EXPO_PUBLIC_MOCKIFYER_CLIENT_ID=wanderweird-demo npx expo start --web --port 8090`} language="bash" />
+          </div>
+
+          <div>
+            <h4 className="font-semibold mb-2 text-sm">Running the e2e tests</h4>
+            <CodeBlock code={`cd e2e
+npm ci && npx playwright install chromium
+
+npm test              # everything (API, app and GUI)
+npm run test:gui      # dashboard GUI tests only (always recorded)
+npm run artifacts     # side-by-side mp4 + .md per test, e2e-run-summary.md
+
+# Presentation mode: slow, readable recordings with 2.5s holds
+E2E_PRESENTATION=1 npm run test:gui
+
+npm run report        # Playwright HTML report`} language="bash" />
+          </div>
+
+          <div className="p-4 bg-muted rounded-md text-sm space-y-2">
+            <p>
+              <code className="bg-background px-1 rounded">global-setup.ts</code> stops early if a piece is down. 
+              Override URLs with <code className="bg-background px-1 rounded">APP_URL</code>,{' '}
+              <code className="bg-background px-1 rounded">MOCKIFYER_DASHBOARD_URL</code>, or{' '}
+              <code className="bg-background px-1 rounded">GATEWAY_URL</code>.{' '}
+              <code className="bg-background px-1 rounded">npm run artifacts</code> writes{' '}
+              <code className="bg-background px-1 rounded">gui-videos/&lt;spec&gt;--&lt;test&gt;.mp4</code> (1662×800, ffmpeg{' '}
+              <code className="bg-background px-1 rounded">hstack</code>) plus a Markdown file per test.
+            </p>
+            <p>
+              <strong>Presentation mode</strong> (<code className="bg-background px-1 rounded">E2E_PRESENTATION=1</code>): outlines 
+              changed elements, holds 2.5 s before and after value changes, types at 120 ms per key. Locally, the six GUI tests 
+              take about 45 s with it off and about 5 min with it on.
+            </p>
+            <p>
+              In every GUI test, the dashboard opens on its start screen (Statistics) and reaches each page by clicking. 
+              The app opens at login, signs in as <code className="bg-background px-1 rounded">wanderer</code>, then clicks Discover 
+              and shows <strong>99°</strong>.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>6. Walkthrough: one scenario per test</CardTitle>
           <CardDescription>
             Nine test scenarios demonstrating different features
           </CardDescription>
@@ -366,7 +433,7 @@ cd mockifyer/example-projects/wanderweird-travel
           
           <div className="space-y-4">
             <div className="p-4 border rounded-lg">
-              <h4 className="font-semibold mb-2">5.1 Mock editor: response body edit</h4>
+              <h4 className="font-semibold mb-2">6.1 Mock editor: response body edit</h4>
               <p className="text-sm text-muted-foreground mb-2">
                 <strong>You'll see:</strong> sidebar Mocks, then search{' '}
                 <code className="bg-muted px-1 rounded text-xs">latitude=37.9838</code>, Expand all, and click the 
@@ -396,7 +463,7 @@ cd mockifyer/example-projects/wanderweird-travel
             </div>
 
             <div className="p-4 border rounded-lg">
-              <h4 className="font-semibold mb-2">5.2 Overrides page: field override</h4>
+              <h4 className="font-semibold mb-2">6.2 Overrides page: field override</h4>
               <p className="text-sm text-muted-foreground mb-2">
                 <strong>You'll see:</strong> in Overrides, Add field override{' '}
                 <code className="bg-muted px-1 rounded text-xs">current.temperature_2m</code> = 61 → Save overlays → Open mock.
@@ -424,7 +491,7 @@ cd mockifyer/example-projects/wanderweird-travel
             </div>
 
             <div className="p-4 border rounded-lg">
-              <h4 className="font-semibold mb-2">5.3 Status override 503</h4>
+              <h4 className="font-semibold mb-2">6.3 Status override 503</h4>
               <p className="text-sm text-muted-foreground mb-2">
                 <strong>You'll see:</strong> mock editor → Status Override = 503. The app shows <strong>18°</strong>.
               </p>
@@ -450,7 +517,7 @@ cd mockifyer/example-projects/wanderweird-travel
             </div>
 
             <div className="p-4 border rounded-lg">
-              <h4 className="font-semibold mb-2">5.4 Settings: client lane</h4>
+              <h4 className="font-semibold mb-2">6.4 Settings: client lane</h4>
               <p className="text-sm text-muted-foreground mb-2">
                 <strong>You'll see:</strong> Settings → Client lanes, where the lane scenario goes heatwave → 
                 rainy-weekend → guide-demo-2. The app shows <strong>44° → 11° → 99°</strong>.
@@ -477,7 +544,7 @@ cd mockifyer/example-projects/wanderweird-travel
             </div>
 
             <div className="p-4 border rounded-lg">
-              <h4 className="font-semibold mb-2">5.5 Header scenario picker (strict lanes)</h4>
+              <h4 className="font-semibold mb-2">6.5 Header scenario picker (strict lanes)</h4>
               <p className="text-sm text-muted-foreground mb-2">
                 <strong>You'll see:</strong> the lane is removed and the header picker is set to heatwave. 
                 The app keeps showing <strong>live</strong> weather, not 44°. Ticking "Lane global fallback" 
@@ -506,7 +573,7 @@ cd mockifyer/example-projects/wanderweird-travel
             </div>
 
             <div className="p-4 border rounded-lg">
-              <h4 className="font-semibold mb-2">5.6 Network view</h4>
+              <h4 className="font-semibold mb-2">6.6 Network view</h4>
               <p className="text-sm text-muted-foreground mb-2">
                 <strong>You'll see:</strong> the lane and header are both set to heatwave. Network is filtered 
                 to the lane, then Clear and an app reload. The app shows <strong>44°</strong>.
@@ -534,7 +601,7 @@ cd mockifyer/example-projects/wanderweird-travel
             </div>
 
             <div className="p-4 border rounded-lg">
-              <h4 className="font-semibold mb-2">5.7 From scratch: mock only Open-Meteo</h4>
+              <h4 className="font-semibold mb-2">6.7 From scratch: mock only Open-Meteo</h4>
               <p className="text-sm text-muted-foreground mb-3">
                 4 min 27 s in presentation mode. It uses its own empty dashboard on :3022.
               </p>
@@ -597,7 +664,7 @@ cd mockifyer/example-projects/wanderweird-travel
             </div>
 
             <div className="p-4 border rounded-lg">
-              <h4 className="font-semibold mb-2">5.8 Tracing walkthrough</h4>
+              <h4 className="font-semibold mb-2">6.8 Tracing walkthrough</h4>
               <p className="text-sm text-muted-foreground mb-3">
                 4 min 23 s in presentation mode.
               </p>
@@ -647,7 +714,7 @@ cd mockifyer/example-projects/wanderweird-travel
             </div>
 
             <div className="p-4 border rounded-lg">
-              <h4 className="font-semibold mb-2">5.9 Delay and status override on one endpoint</h4>
+              <h4 className="font-semibold mb-2">6.9 Delay and status override on one endpoint</h4>
               <p className="text-sm text-muted-foreground mb-3">
                 3 min 7 s in presentation mode. The test is in{' '}
                 <code className="bg-muted px-1 rounded text-xs">dashboard-gui.spec.ts</code>, which runs the test{' '}
@@ -697,7 +764,7 @@ cd mockifyer/example-projects/wanderweird-travel
 
       <Card>
         <CardHeader>
-          <CardTitle>6. How to reproduce: demo helpers vs Mockifyer features</CardTitle>
+          <CardTitle>7. How to reproduce: demo helpers vs Mockifyer features</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
@@ -780,93 +847,82 @@ cd mockifyer/example-projects/wanderweird-travel
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <CheckCircle className="h-5 w-5" />
-            7. Key takeaways: using Mockifyer in your stack
+            8. Conclusion: what this shows for multi-service, nested setups
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            The recordings above demonstrate what's possible with Mockifyer in a multi-service setup. Here's what you can 
-            apply to your own project:
-          </p>
-
           <ul className="space-y-3 text-sm text-muted-foreground">
             <li className="flex items-start gap-2">
               <span className="text-green-600 dark:text-green-400 mt-1">•</span>
               <div>
-                <strong className="text-foreground">Per-endpoint control with no code changes.</strong> Mock, edit, override or 
-                delay individual API calls from the dashboard UI. Your services stay unchanged and keep running. Install 
-                <code className="bg-muted px-1 rounded ml-1">@sgedda/mockifyer-fetch</code> or{' '}
-                <code className="bg-muted px-1 rounded">@sgedda/mockifyer-axios</code>, initialize at startup, and all HTTP 
-                calls route through the dashboard.
+                <strong className="text-foreground">Per-endpoint control with no code changes.</strong> One upstream 
+                call three levels deep (app → gateway → wander-api → Open-Meteo) is mocked, edited, overridden or 
+                delayed from the dashboard UI. The services stay unchanged and keep running.
               </div>
             </li>
             <li className="flex items-start gap-2">
               <span className="text-green-600 dark:text-green-400 mt-1">•</span>
               <div>
-                <strong className="text-foreground">Scenarios shared across services.</strong> Use client IDs and lanes to 
-                coordinate mock data across multiple services. One lane switch (e.g., <code className="bg-muted px-1 rounded">normal</code> → 
-                <code className="bg-muted px-1 rounded ml-1">error-scenario</code>) moves your entire stack to that scenario.
+                <strong className="text-foreground">Scenarios shared across services through the client id.</strong> One 
+                lane switch moves the whole chain (99 → 44 → 11), because every service resolves the same{' '}
+                <code className="bg-muted px-1 rounded">x-mockifyer-client-id</code> to the same scenario.
               </div>
             </li>
             <li className="flex items-start gap-2">
               <span className="text-green-600 dark:text-green-400 mt-1">•</span>
               <div>
-                <strong className="text-foreground">Selective recording.</strong> Start with{' '}
-                <code className="bg-muted px-1 rounded">activationMode: 'client_id_header'</code> and only record requests 
-                that carry the client ID header. Or use the dashboard's per-endpoint "Use saved mock" toggle to capture specific 
-                responses. This keeps your mock directory manageable.
+                <strong className="text-foreground">Surgical failure injection.</strong> A 503 or a 2500 ms delay 
+                on the Open-Meteo hop only exercises wander-api's real fallback path (18°). Sibling calls such as 
+                countries stay live, fast and at 200, and other mocks and scenarios keep their settings.
               </div>
             </li>
             <li className="flex items-start gap-2">
               <span className="text-green-600 dark:text-green-400 mt-1">•</span>
               <div>
-                <strong className="text-foreground">Failure injection.</strong> Use status overrides (503, 500, 404) and 
-                response delays to test error paths, timeouts, and retry logic without modifying the upstream service or your 
-                code. Changes apply immediately.
+                <strong className="text-foreground">Mixed mock and live in one request.</strong> The from-scratch 
+                test ends with one mocked host and everything else live, and the trace marks each hop{' '}
+                <code className="bg-muted px-1 rounded">Mock</code> or{' '}
+                <code className="bg-muted px-1 rounded">Upstream</code>.
               </div>
             </li>
             <li className="flex items-start gap-2">
               <span className="text-green-600 dark:text-green-400 mt-1">•</span>
               <div>
-                <strong className="text-foreground">Mixed mock and live.</strong> Mock only what you need. Leave other endpoints 
-                live or configure specific scenarios per API. The dashboard Network trace shows which calls are mocked and which 
-                are live.
+                <strong className="text-foreground">A trace across services.</strong> The Network trace nests the 
+                Open-Meteo hop under <code className="bg-muted px-1 rounded">GET /discover</code> under{' '}
+                <code className="bg-muted px-1 rounded">GET /api/discover</code>, with the lane, status, duration 
+                and bodies, so you can see which hop was mocked and why the app shows what it shows.
               </div>
             </li>
             <li className="flex items-start gap-2">
               <span className="text-green-600 dark:text-green-400 mt-1">•</span>
               <div>
-                <strong className="text-foreground">Request tracing.</strong> The dashboard logs every request with parent/child 
-                relationships (via <code className="bg-muted px-1 rounded">X-Mockifyer-Request-Id</code> headers). See which 
-                service called which API, when, and with what result — all in the Network and Hops views.
+                <strong className="text-foreground">Checked end to end.</strong> Each GUI test ends on the value 
+                in the app's Temperature tile, not only on the dashboard state.
               </div>
             </li>
           </ul>
 
-          <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-md mt-6">
-            <h4 className="font-semibold mb-2 text-blue-900 dark:text-blue-200">
-              Next steps
+          <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-md mt-6">
+            <h4 className="font-semibold mb-2 text-amber-900 dark:text-amber-200">
+              Current limits
             </h4>
-            <ul className="text-sm text-muted-foreground space-y-2">
+            <ul className="text-sm text-muted-foreground space-y-1 list-disc pl-5">
               <li>
-                📦 <strong className="text-foreground">Install:</strong> Start with{' '}
-                <code className="bg-muted px-1 rounded">npm install @sgedda/mockifyer-core @sgedda/mockifyer-fetch</code> 
-                (or axios) in your service.
+                The demo and e2e use local package builds (<code className="bg-muted px-1 rounded">file:</code> dependencies). 
+                For your own services, install Mockifyer from npm (section 3).
               </li>
               <li>
-                🚀 <strong className="text-foreground">Initialize:</strong> Call{' '}
-                <code className="bg-muted px-1 rounded">initMockifyerForDashboardProxy</code> at startup with your dashboard URL 
-                and client ID.
+                The tests drive the Expo <strong>web</strong> build, not native React Native code paths. The suite 
+                isn't hermetic: it needs a live stack, runs serially and calls real public APIs where nothing is mocked.
               </li>
               <li>
-                🎯 <strong className="text-foreground">Record selectively:</strong> Use{' '}
-                <code className="bg-muted px-1 rounded">activationMode: 'client_id_header'</code> and send the{' '}
-                <code className="bg-muted px-1 rounded">x-mockifyer-client-id</code> header only in requests you want to capture.
+                Only 503 is tested for failure injection. wander-api falls back on any non-2xx answer, so other status 
+                codes would look the same in the app.
               </li>
               <li>
-                📊 <strong className="text-foreground">Dashboard:</strong> Run{' '}
-                <code className="bg-muted px-1 rounded">npx @sgedda/mockifyer-dashboard --provider sqlite --path ./mock-data</code> 
-                and explore the UI at <code className="bg-muted px-1 rounded">http://localhost:3002</code>.
+                Lanes are strict by default: a client with a client id but no lane doesn't follow the global 
+                scenario unless you turn on "Lane global fallback".
               </li>
             </ul>
           </div>
