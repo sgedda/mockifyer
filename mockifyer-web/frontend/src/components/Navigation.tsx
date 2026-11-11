@@ -31,7 +31,7 @@ export default function Navigation() {
   }
 
   const isGuidesActive = () => {
-    return location.pathname.startsWith('/guides/')
+    return location.pathname.startsWith('/guides')
   }
 
   return (
