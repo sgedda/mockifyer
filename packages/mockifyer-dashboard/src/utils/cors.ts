@@ -32,16 +32,22 @@ export const DASHBOARD_CORS_ALLOW_HEADERS = [
 /**
  * Parse allowed origins from env.
  * Returns null for disabled CORS, array of origins for enabled.
+ * Default: allow all origins (*) for backward compatibility.
  */
 function parseAllowedOrigins(): string[] | null {
   const env = process.env.MOCKIFYER_DASHBOARD_CORS;
-  if (!env || env.trim().toLowerCase() === 'off' || env.trim().toLowerCase() === 'false') {
+  
+  // Explicitly disabled
+  if (env && (env.trim().toLowerCase() === 'off' || env.trim().toLowerCase() === 'false')) {
     return null; // CORS disabled
   }
-  if (env.trim() === '*' || env.trim().toLowerCase() === 'on' || env.trim().toLowerCase() === 'true') {
-    return ['*']; // Allow all origins
+  
+  // Not set or explicitly enabled - allow all origins (default)
+  if (!env || env.trim() === '*' || env.trim().toLowerCase() === 'on' || env.trim().toLowerCase() === 'true') {
+    return ['*']; // Allow all origins (backward compatible default)
   }
-  // Comma-separated list of origins
+  
+  // Comma-separated list of specific origins
   return env
     .split(',')
     .map((o) => o.trim())
