@@ -27,7 +27,7 @@ export default function ReactNativeWithoutMSW() {
         <div className="flex gap-2">
           <AlertTriangle className="h-5 w-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
           <div className="text-blue-900 dark:text-blue-200 text-sm">
-            <strong>About MSW:</strong> MSW supports React Native via <code className="bg-muted px-1 rounded">msw/native</code> with polyfills. 
+            <strong>About MSW:</strong> MSW supports React Native via <code className="bg-muted px-1 rounded">@msw/react-native</code>, which intercepts both fetch and XHR. 
             It uses in-code handlers you write. Mockifyer is a different approach: record real API responses once, store JSON mocks in your repo, 
             switch scenarios, and optionally use Maestro launch arguments to pick scenarios per test. Choose based on your workflow.
           </div>
@@ -42,7 +42,7 @@ export default function ReactNativeWithoutMSW() {
         <div className="grid md:grid-cols-2 gap-6">
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">MSW (msw/native)</CardTitle>
+              <CardTitle className="text-lg">MSW</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <p className="text-sm text-muted-foreground">
@@ -130,12 +130,16 @@ module.exports = configureMetroForMockifyer(config);`}
             <CodeBlock 
               language="typescript" 
               code={`// mockifyer-setup.ts
-import { setupMockifyerForReactNative } from '@sgedda/mockifyer-fetch';
+import { setupMockifyerForReactNative } from '@sgedda/mockifyer-fetch/react-native';
 
-setupMockifyerForReactNative({
+await setupMockifyerForReactNative({
+  isDev: __DEV__,
   mockDataPath: './mock-data',
+  bundledDataPath: './assets/mock-data',
   recordMode: __DEV__ && process.env.EXPO_PUBLIC_MOCKIFYER_RECORD === 'true',
-  useGlobalFetch: true,
+  config: {
+    useGlobalFetch: true,
+  },
 });`} 
             />
             <p className="text-sm text-muted-foreground mt-3">
@@ -196,13 +200,19 @@ export default function App() {
               </p>
               <CodeBlock 
                 language="typescript" 
-                code={`process.env.MOCKIFYER_RECORD_RESPONSES = 'true';
-process.env.MOCKIFYER_RECORD_DEFAULT_ALWAYS_USE_REAL_API = 'false';
+                code={`// Use env vars or config to enable full-response recording
+// EXPO_PUBLIC_MOCKIFYER_RECORD_RESPONSES=true (set at build time)
+// MOCKIFYER_RECORD_DEFAULT_ALWAYS_USE_REAL_API=false (Node env only)
 
-setupMockifyerForReactNative({
+await setupMockifyerForReactNative({
+  isDev: __DEV__,
   mockDataPath: './mock-data',
   recordMode: true,
-  domainPathRulesMode: 'record_all'
+  config: {
+    domainPathRulesMode: 'record_all',
+    // Note: body capture also needs MOCKIFYER_RECORD_RESPONSES env or
+    // per-path rules with recordResponses: true in dashboard-proxy mode
+  },
 });`} 
               />
               <p className="text-sm text-muted-foreground">

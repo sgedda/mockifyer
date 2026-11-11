@@ -82,9 +82,18 @@ Outbound headers: `x-mockifyer-request-id`, `x-mockifyer-parent-request-id` for 
 - [Stable React Native E2E Tests](https://mockifyer.dev/guides/stable-react-native-e2e): Lock scenarios with launch arguments, freeze dates, and make Detox, Appium, and Maestro tests deterministic.
 - [Stop Mock Drift](https://mockifyer.dev/guides/mock-drift): Record real responses, re-record when APIs change, and git diff to catch breaking changes.
 - [React Native: Handlers vs Recording](https://mockifyer.dev/guides/react-native-without-msw): Compare MSW and Mockifyer for React Native. Recording works on device with no service worker.
+- [React Native and Expo with Mockifyer](https://mockifyer.dev/guides/react-native-expo): Set up Mockifyer in React Native and Expo apps with Metro sync and device storage.
+- [Selective HTTP Recording, Not Capture-All](https://mockifyer.dev/guides/selective-recording): Requests land as stubs in _scratch and stay live until you activate them.
+- [Record and Replay with Mockifyer](https://mockifyer.dev/guides/record-replay): Record real axios or fetch calls in Node, keep JSON mocks in your repo, and replay in tests.
+- [Mock APIs in Maestro and Detox E2E](https://mockifyer.dev/guides/maestro-detox-mocks): Lock a React Native E2E run to a recorded scenario with launch arguments.
+- [Switch Mock Scenarios for Test Data](https://mockifyer.dev/guides/scenarios): Keep empty, many and error states as scenario folders and switch between them.
 
 ### Comparisons
-
+- [Mockifyer vs MSW (Mock Service Worker)](https://mockifyer.dev/comparisons/msw): Hand-written handlers vs recorded JSON. MSW for GraphQL and browser tests, Mockifyer for scenarios and React Native.
+- [Mockifyer vs Polly.js](https://mockifyer.dev/comparisons/pollyjs): Polly.js pioneered record/replay for JavaScript. Mockifyer adds dashboard, scenarios, and selective recording.
+- [Mockifyer vs Nock](https://mockifyer.dev/comparisons/nock): Nock for assertion-heavy Node unit tests. Mockifyer for recorded JSON scenarios in dev, E2E and React Native.
+- [Mockifyer vs WireMock](https://mockifyer.dev/comparisons/wiremock): WireMock is a standalone, language-agnostic server. Mockifyer runs in-process and records real traffic.
+- [Mockifyer vs Mockoon](https://mockifyer.dev/comparisons/mockoon): Mockoon is a desktop app for designing mock APIs. Mockifyer records a JS app's real traffic. They complement each other.
 
 ## Links
 

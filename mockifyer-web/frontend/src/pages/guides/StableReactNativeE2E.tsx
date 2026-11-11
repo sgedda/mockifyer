@@ -237,16 +237,24 @@ const client = await wdio.remote(opts);
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <h4 className="font-semibold mb-2">Option 1: Per-Scenario Date Config</h4>
-              <CodeBlock language="json" code={`// mock-data/trips-with-data/date-config.json
-{
-  "dateManipulation": {
-    "fixedDate": "2024-12-20T00:00:00Z",
-    "timezone": "America/New_York"
+              <h4 className="font-semibold mb-2">Option 1: Date Config in Setup</h4>
+              <CodeBlock language="typescript" code={`await setupMockifyerForReactNative({
+  isDev: __DEV__,
+  mockDataPath: './mock-data',
+  bundledDataPath: './assets/mock-data',
+  config: {
+    dateManipulation: {
+      fixedDate: "2024-12-20T00:00:00Z",
+      timezone: "America/New_York"
+    }
   }
-}
+});
 
-// getCurrentDate() now returns Dec 20, 2024 for this scenario`} />
+// getCurrentDate() now returns Dec 20, 2024`} />
+              <p className="text-sm text-muted-foreground mt-2">
+                You can also use per-scenario <code className="text-xs bg-muted px-1 rounded">date-config.json</code> files, but they require 
+                setting <code className="text-xs bg-muted px-1 rounded">disableDateConfigFileFallback: false</code> in config (it defaults to true).
+              </p>
             </div>
 
             <div>
@@ -267,7 +275,7 @@ const now = Date.now();
 import { getCurrentDate } from '@sgedda/mockifyer-core';
 const now = getCurrentDate().getTime();
 
-// With date-config.json or MOCKIFYER_DATE, this returns the frozen date
+// With dateManipulation.fixedDate or MOCKIFYER_DATE, this returns the frozen date
 // When not set, it returns the real current time`} />
             </div>
           </CardContent>
@@ -302,8 +310,8 @@ await setupMockifyerForReactNative({
 
 // That's it! Launch arguments control everything else:
 // - scenario: which mocks to use
-// - mockifyerDate: fixed date (optional)
-// - mockifyerClientId: client lane (optional)`} />
+// - mockifyerClientId: client lane (optional)
+// For dates, use dateManipulation in config or MOCKIFYER_DATE env var`} />
           </CardContent>
         </Card>
       </section>

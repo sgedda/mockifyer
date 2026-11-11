@@ -28,6 +28,16 @@ const StableReactNativeE2E = lazy(() => import('./pages/guides/StableReactNative
 const MockDrift = lazy(() => import('./pages/guides/MockDrift'))
 const ReactNativeWithoutMSW = lazy(() => import('./pages/guides/ReactNativeWithoutMSW'))
 const BrowserRecordReplay = lazy(() => import('./pages/guides/BrowserRecordReplay'))
+const ReactNativeExpo = lazy(() => import('./pages/guides/ReactNativeExpo'))
+const SelectiveRecording = lazy(() => import('./pages/guides/SelectiveRecording'))
+const RecordReplay = lazy(() => import('./pages/guides/RecordReplay'))
+const MaestroDetoxMocks = lazy(() => import('./pages/guides/MaestroDetoxMocks'))
+const Scenarios = lazy(() => import('./pages/guides/Scenarios'))
+const Msw = lazy(() => import('./pages/comparisons/Msw'))
+const Pollyjs = lazy(() => import('./pages/comparisons/Pollyjs'))
+const Nock = lazy(() => import('./pages/comparisons/Nock'))
+const Wiremock = lazy(() => import('./pages/comparisons/Wiremock'))
+const Mockoon = lazy(() => import('./pages/comparisons/Mockoon'))
 const Guides = lazy(() => import('./pages/Guides'))
 const NotFound = lazy(() => import('./pages/NotFound'))
 
@@ -96,6 +106,18 @@ function App() {
               <Route path="/guides/mock-drift" element={<MockDrift />} />
               <Route path="/guides/react-native-without-msw" element={<ReactNativeWithoutMSW />} />
               <Route path="/guides/browser-record-replay" element={<BrowserRecordReplay />} />
+              <Route path="/guides/react-native-expo" element={<ReactNativeExpo />} />
+              <Route path="/guides/selective-recording" element={<SelectiveRecording />} />
+              <Route path="/guides/record-replay" element={<RecordReplay />} />
+              <Route path="/guides/maestro-detox-mocks" element={<MaestroDetoxMocks />} />
+              <Route path="/guides/scenarios" element={<Scenarios />} />
+              
+              {/* Comparisons */}
+              <Route path="/comparisons/msw" element={<Msw />} />
+              <Route path="/comparisons/pollyjs" element={<Pollyjs />} />
+              <Route path="/comparisons/nock" element={<Nock />} />
+              <Route path="/comparisons/wiremock" element={<Wiremock />} />
+              <Route path="/comparisons/mockoon" element={<Mockoon />} />
               
               {/* Redirects for removed pages */}
               <Route path="/playground" element={<Navigate to="/getting-started" replace />} />
