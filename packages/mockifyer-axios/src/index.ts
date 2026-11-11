@@ -187,17 +187,11 @@ class MockifyerClass {
       return config;
     }
 
-    // Resolve recordResponses to boolean for dashboard proxy
-    const recordResponsesValue = proxy?.recordResponses ?? false;
-    const resolvedRecordResponses = typeof recordResponsesValue === 'boolean'
-      ? recordResponsesValue
-      : recordResponsesValue.length > 0;
-    
     return attachDashboardProxyAxiosAdapter(config, {
       proxyBaseUrl,
       proxyScenario: proxy?.scenario,
       proxyRecordOnMiss: proxy?.recordOnMiss,
-      proxyRecordResponses: resolvedRecordResponses,
+      proxyRecordResponses: proxy?.recordResponses ?? false,
       strictLaneScenario: resolveProxyStrictLaneScenario(this.config),
       upstreamTlsInsecure: resolveProxyUpstreamTlsInsecure(this.config),
       clientId: this.config.clientId,
@@ -2359,7 +2353,9 @@ class MockifyerClass {
           requestId: hopIds.requestId,
           parentRequestId: hopIds.parentRequestId,
           parentRequestIds: hopIds.parentRequestIds,
-          ...(newRecordingUsesAlwaysUseRealApi() || !recordBodies
+          // Allowlisted URLs (recordBodies=true) should NOT have alwaysUseRealApi
+          // so they replay immediately. Request-only stubs need alwaysUseRealApi.
+          ...(!recordBodies
             ? { alwaysUseRealApi: true as const }
             : {}),
         },

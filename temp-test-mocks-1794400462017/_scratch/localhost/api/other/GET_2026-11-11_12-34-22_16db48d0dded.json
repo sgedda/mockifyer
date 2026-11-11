@@ -1,0 +1,29 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "http://localhost:33927/api/other",
+    "headers": {
+      "Accept": "application/json, text/plain, */*",
+      "x-mockifyer-client-id": "app-default-0.0.0-0",
+      "x-mockifyer-request-id": "e850a016-e3ba-4b50-82df-a9a02e4090bb",
+      "x-mockifyer-parent-request-id": "99709ae2-9419-42fb-ab50-55d39e3facad",
+      "User-Agent": "axios/1.20.0",
+      "Accept-Encoding": "gzip, compress, deflate, br"
+    }
+  },
+  "response": {
+    "status": 0,
+    "data": null,
+    "headers": {}
+  },
+  "timestamp": "2026-11-11T12:34:22.076Z",
+  "responsePending": true,
+  "alwaysUseRealApi": true,
+  "duration": 6,
+  "sessionId": "session-1794400462050-8punbhy4r",
+  "requestId": "e850a016-e3ba-4b50-82df-a9a02e4090bb",
+  "parentRequestId": "99709ae2-9419-42fb-ab50-55d39e3facad",
+  "parentRequestIds": [
+    "99709ae2-9419-42fb-ab50-55d39e3facad"
+  ]
+}

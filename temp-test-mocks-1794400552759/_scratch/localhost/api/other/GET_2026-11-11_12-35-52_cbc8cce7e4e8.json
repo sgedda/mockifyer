@@ -1,0 +1,37 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "http://localhost:35529/api/other",
+    "headers": {
+      "Accept": "application/json, text/plain, */*",
+      "x-mockifyer-client-id": "app-default-0.0.0-0",
+      "x-mockifyer-request-id": "b124f10c-832c-4d57-bf99-f60ac4ca612d",
+      "x-mockifyer-parent-request-id": "f6e3ca63-46d7-4e9a-ad55-01cf15095c95",
+      "User-Agent": "axios/1.20.0",
+      "Accept-Encoding": "gzip, compress, deflate, br"
+    }
+  },
+  "response": {
+    "status": 200,
+    "data": {
+      "version": 1,
+      "endpoint": "other"
+    },
+    "headers": {
+      "x-mockifyer-request-id": "b124f10c-832c-4d57-bf99-f60ac4ca612d",
+      "content-type": "application/json",
+      "date": "Wed, 11 Nov 2026 12:35:52 GMT",
+      "connection": "keep-alive",
+      "keep-alive": "timeout=5",
+      "transfer-encoding": "chunked"
+    }
+  },
+  "timestamp": "2026-11-11T12:35:52.819Z",
+  "duration": 7,
+  "sessionId": "session-1794400552793-4p6s9z77u",
+  "requestId": "b124f10c-832c-4d57-bf99-f60ac4ca612d",
+  "parentRequestId": "f6e3ca63-46d7-4e9a-ad55-01cf15095c95",
+  "parentRequestIds": [
+    "f6e3ca63-46d7-4e9a-ad55-01cf15095c95"
+  ]
+}

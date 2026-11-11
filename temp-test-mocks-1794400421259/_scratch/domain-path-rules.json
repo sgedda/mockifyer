@@ -1,0 +1,10 @@
+{
+  "localhost:41245": {
+    "recordResponses": true,
+    "autoMock": false
+  },
+  "localhost:41245/api/other": {
+    "recordResponses": true,
+    "autoMock": false
+  }
+}

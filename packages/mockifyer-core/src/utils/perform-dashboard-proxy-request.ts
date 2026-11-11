@@ -59,7 +59,7 @@ export interface PerformDashboardProxyRequestParams {
   parentRequestId: string | undefined;
   scenario: string | undefined;
   recordOnMiss: boolean | undefined;
-  recordResponses: boolean;
+  recordResponses: boolean | Array<string | RegExp>;
   strictLaneScenario: boolean;
   upstreamTlsInsecure: boolean;
   /** Original request config (attached to the returned response). */

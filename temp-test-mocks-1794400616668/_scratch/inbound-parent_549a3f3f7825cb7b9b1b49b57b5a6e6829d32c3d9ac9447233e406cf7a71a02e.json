@@ -1,0 +1,23 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "mockifyer://inbound-parent/9987c27e-9f73-41c9-b46c-58fed00f68ea",
+    "headers": {},
+    "data": null,
+    "queryParams": {}
+  },
+  "response": {
+    "status": 0,
+    "data": null,
+    "headers": {}
+  },
+  "timestamp": "2026-11-11T12:36:56.728Z",
+  "responsePending": true,
+  "alwaysUseRealApi": true,
+  "requestId": "9987c27e-9f73-41c9-b46c-58fed00f68ea",
+  "inboundParentStub": true,
+  "inboundParentDisplay": {
+    "method": "GET",
+    "url": "mockifyer://inbound-parent/9987c27e-9f73-41c9-b46c-58fed00f68ea"
+  }
+}
