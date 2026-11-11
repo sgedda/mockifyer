@@ -20,13 +20,18 @@ on:
       - 'packages/mockifyer-fetch/**'
       - 'packages/mockifyer-axios/**'
       - 'packages/mockifyer-mcp/**'
+      - 'packages/mockifyer-test-helper/**'
       - 'example-projects/wanderweird-travel/**'
       - 'e2e/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig*.json'
+      - 'jest.config.js'
       - '.github/workflows/e2e.yml'
 
 concurrency:
-  group: e2e-${{ github.ref }}
-  cancel-in-progress: true
+  group: e2e-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   e2e:
