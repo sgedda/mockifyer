@@ -8,16 +8,16 @@ import { useLocation } from 'react-router-dom'
 import { ThemeProvider } from './lib/use-theme'
 import PageSeoManager from './components/PageSeoManager'
 
-// Eager load only the homepage
+// Eager load homepage and key pages (for tests and SEO)
 import Introduction from './pages/Introduction'
+import GettingStarted from './pages/GettingStarted'
+import E2ETutorial from './pages/E2ETutorial'
 
-// Lazy load all other pages for code splitting
+// Lazy load remaining pages for code splitting
 const DateConfig = lazy(() => import('./pages/DateConfig'))
-const GettingStarted = lazy(() => import('./pages/GettingStarted'))
 const ConfigReference = lazy(() => import('./pages/ConfigReference'))
 const Contact = lazy(() => import('./pages/Contact'))
 const Comparisons = lazy(() => import('./pages/Comparisons'))
-const E2ETutorial = lazy(() => import('./pages/E2ETutorial'))
 const Features = lazy(() => import('./pages/Features'))
 const FAQ = lazy(() => import('./pages/FAQ'))
 const Packages = lazy(() => import('./pages/Packages'))
