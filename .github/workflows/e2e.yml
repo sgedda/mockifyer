@@ -193,8 +193,12 @@ jobs:
           echo "⚠ All attempts failed with azure.archive.ubuntu.com"
           echo "→ Switching to archive.ubuntu.com and security.ubuntu.com..."
           
-          sudo sed -i 's|http://azure.archive.ubuntu.com|http://archive.ubuntu.com|g' /etc/apt/sources.list
-          sudo sed -i 's|http://security.ubuntu.com|http://security.ubuntu.com|g' /etc/apt/sources.list
+          # Ubuntu 24.04 uses DEB822 format in sources.list.d/ubuntu.sources
+          sudo sed -i 's|azure\.archive\.ubuntu\.com|archive.ubuntu.com|g' /etc/apt/sources.list.d/ubuntu.sources
+          # Also update the mirror file used by GitHub-hosted runners
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            sudo sed -i 's|azure\.archive\.ubuntu\.com|archive.ubuntu.com|g' /etc/apt/apt-mirrors.txt
+          fi
           sudo apt-get clean
           sudo apt-get update -qq || true
 
