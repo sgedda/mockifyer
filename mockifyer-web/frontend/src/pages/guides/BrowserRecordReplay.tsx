@@ -4,13 +4,13 @@ import { Globe, Zap, CheckCircle2, XCircle, Code, Rocket, AlertCircle } from 'lu
 import CodeBlock from '@/components/CodeBlock'
 import { Link } from 'react-router-dom'
 
-export default function BrowserGuide() {
+export default function BrowserRecordReplay() {
   return (
     <div className="max-w-[900px] mx-auto space-y-6">
       <div>
         <div className="flex items-center gap-3 mb-2">
           <Globe className="h-8 w-8" />
-          <h1 className="text-3xl font-bold">Run Mockifyer in the Browser / Expo Web</h1>
+          <h1 className="text-3xl font-bold">Record and Replay HTTP in the Browser</h1>
         </div>
         <p className="text-muted-foreground">
           Use Mockifyer in browsers and Expo web apps with the memory provider and preloaded fixtures — zero Node.js dependencies
@@ -26,7 +26,7 @@ export default function BrowserGuide() {
         </CardHeader>
         <CardContent>
           <p className="text-sm">
-            Browser and Expo web support will be available in the next release (<strong>@sgedda/mockifyer-fetch@1.8.108+</strong>, currently in PR <a href="https://github.com/sgedda/mockifyer/pull/495" className="text-blue-600 dark:text-blue-400 hover:underline" target="_blank" rel="noopener noreferrer">#495</a>).
+            Browser and Expo web support will be available in the next release (currently in PR <a href="https://github.com/sgedda/mockifyer/pull/495" className="text-blue-600 dark:text-blue-400 hover:underline" target="_blank" rel="noopener noreferrer">#495</a>).
             Install the latest published version, or use the example from the repository to test unreleased features.
           </p>
         </CardContent>

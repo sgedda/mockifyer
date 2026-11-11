@@ -6,7 +6,7 @@
 
 - ✅ Memory provider with preloaded fixtures
 - ✅ Mocked request (currency rates from fixture)
-- ✅ Unmocked request (IP lookup from network)
+- ✅ Unmocked request (test server API call)
 - ✅ Zero Node.js built-ins in browser bundle
 - ✅ Clean TypeScript setup with Vite
 
