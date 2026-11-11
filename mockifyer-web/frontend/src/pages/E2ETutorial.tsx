@@ -55,17 +55,6 @@ export default function E2ETutorial() {
             </a>
           </div>
           
-          <div className="p-4 border border-amber-500/50 bg-amber-500/10 rounded-md">
-            <div className="flex gap-2">
-              <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-              <div className="text-amber-900 dark:text-amber-200 text-sm">
-                <strong>Branch note:</strong> The GUI tests, <code className="bg-muted px-1 rounded">E2E_PRESENTATION</code>, 
-                <code className="bg-muted px-1 rounded ml-1">npm run artifacts</code>, the from-scratch test and the tracing and 
-                delay tests are on PR #487 (<code className="bg-muted px-1 rounded">cursor/e2e-dashboard-gui-videos-7d37</code>). 
-                Until #487 merges, check out that branch.
-              </div>
-            </div>
-          </div>
         </CardContent>
       </Card>
 
@@ -223,7 +212,6 @@ export default function E2ETutorial() {
         </CardHeader>
         <CardContent className="space-y-4">
           <CodeBlock code={`git clone https://github.com/sgedda/mockifyer && cd mockifyer
-git checkout cursor/e2e-dashboard-gui-videos-7d37   # until #487 is merged
 npm ci
 
 # Build the Mockifyer packages (same as the CI step)
@@ -804,7 +792,7 @@ dev@wanderweird:~/mockifyer/e2e$ npm run report        # Playwright HTML report`
 
           <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-md mt-6">
             <h4 className="font-semibold mb-2 text-amber-900 dark:text-amber-200">
-              Limits (as of #487)
+              Current limits
             </h4>
             <ul className="text-sm text-muted-foreground space-y-1 list-disc pl-5">
               <li>

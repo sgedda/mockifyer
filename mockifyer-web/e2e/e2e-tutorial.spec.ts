@@ -14,11 +14,6 @@ test.describe('E2E Tutorial Page', () => {
     await expect(page.getByText(/Disclosure.*Mockifyer is my own open-source project/i)).toBeVisible();
   });
 
-  test('should display branch note callout', async ({ page }) => {
-    await expect(page.getByText(/Branch note.*PR #487/i)).toBeVisible();
-    await expect(page.getByText(/cursor\/e2e-dashboard-gui-videos-7d37/i).first()).toBeVisible();
-  });
-
   test('should display all major sections', async ({ page }) => {
     await expect(page.getByRole('heading', { name: /What you'll build and see/i })).toBeVisible();
     await expect(page.getByRole('heading', { name: /Prerequisites/i })).toBeVisible();
@@ -73,7 +68,7 @@ test.describe('E2E Tutorial Page', () => {
   });
 
   test('should display limits section', async ({ page }) => {
-    await expect(page.getByText(/Limits.*as of #487/i)).toBeVisible();
+    await expect(page.getByText(/Current limits/i)).toBeVisible();
     await expect(page.getByText(/Atlas's live trace/i)).toBeVisible();
     await expect(page.getByText(/The tests drive the Expo.*web.*build/i)).toBeVisible();
   });
