@@ -15,7 +15,7 @@ test.describe('Guides Dropdown After Scroll', () => {
     const nav = page.locator('nav.sticky');
     
     // Header should still be visible after scroll (sticky behavior)
-    await expect(nav).toBeVisible();
+    await expect(nav).toBeInViewport();
     
     // Click Guides button
     const guidesButton = page.getByRole('button', { name: 'Guides' });
@@ -26,7 +26,7 @@ test.describe('Guides Dropdown After Scroll', () => {
     await page.waitForTimeout(500);
     
     // Header should STILL be visible after opening dropdown
-    await expect(nav).toBeVisible();
+    await expect(nav).toBeInViewport();
     
     // Dropdown should be open with all guide items visible
     await expect(page.getByRole('menuitem', { name: 'Mock at the Network Edge' })).toBeVisible();
@@ -50,7 +50,7 @@ test.describe('Guides Dropdown After Scroll', () => {
     const nav = page.locator('nav.sticky');
     
     // Header should still be visible after scroll (sticky behavior)
-    await expect(nav).toBeVisible();
+    await expect(nav).toBeInViewport();
     
     // Open mobile menu first
     const menuButton = page.getByRole('button', { name: /menu/i });
@@ -62,7 +62,7 @@ test.describe('Guides Dropdown After Scroll', () => {
     await expect(page.locator('nav.lg\\:hidden')).toBeVisible();
     
     // Header should STILL be visible
-    await expect(nav).toBeVisible();
+    await expect(nav).toBeInViewport();
     
     // Check that Guides section and links are visible in mobile menu
     await expect(page.locator('nav.lg\\:hidden').getByText('Guides', { exact: true })).toBeVisible();
