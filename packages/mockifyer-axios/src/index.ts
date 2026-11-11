@@ -1190,7 +1190,7 @@ class MockifyerClass {
       }
 
       if (this.config.failOnMissingMock) {
-        const hasUsableMock = cachedMock && !cachedMock.mockData.alwaysUseRealApi && !cachedMock.mockData.responsePending;
+        const hasUsableMock = cachedMock && !cachedMock.mockData.alwaysUseRealApi && !cachedMock.mockData.responsePending && !cachedMock.mockData.refreshOnNextRequest && !cachedMock.mockData.alwaysRefreshFromLive;
         if (!hasUsableMock) {
           throw new Error(`No mock data found for request: ${this.generateRequestKey(request)}`);
         }
@@ -2346,7 +2346,8 @@ class MockifyerClass {
       );
 
       // Use URL-aware resolution for selective recording
-      const configValue = this.config.proxy?.recordResponses ?? this.config.recordResponses;
+      // Prefer local config over proxy config
+      const configValue = this.config.recordResponses ?? this.config.proxy?.recordResponses;
       const baseUrlForPatternMatch = response.config.baseURL || this.config.baseUrl;
       const recordBodies = resolveLocalRecordResponsesForUrl(request.url, configValue, baseUrlForPatternMatch);
       const mockData = buildLocalRecordingMockData({
@@ -2630,7 +2631,8 @@ class MockifyerClass {
 
   /** True when new recordings include response bodies (not request-only stubs). */
   public isRecordResponses(): boolean {
-    const configValue = this.config.proxy?.recordResponses ?? this.config.recordResponses;
+    // Prefer local config over proxy config
+    const configValue = this.config.recordResponses ?? this.config.proxy?.recordResponses;
     const resolved = resolveRecordResponsesConfig(configValue);
     
     // Return true if boolean true or non-empty array
