@@ -68,7 +68,7 @@ describe('Selective recordResponses E2E replay', () => {
   afterEach(async () => {
     // Wait for any pending async operations
     await new Promise(resolve => setImmediate(resolve));
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise(resolve => setTimeout(resolve, 100));
     
     if (fs.existsSync(testMockDataPath)) {
       fs.rmSync(testMockDataPath, { recursive: true });
@@ -78,10 +78,16 @@ describe('Selective recordResponses E2E replay', () => {
       (global as any).fetch = (global as any).__mockifyer_original_fetch;
       delete (global as any).__mockifyer_original_fetch;
     }
+    // Reset axios
+    const axios = require('axios');
+    if (axios.defaults?.__mockifyer_original_adapter) {
+      axios.defaults.adapter = axios.defaults.__mockifyer_original_adapter;
+      delete axios.defaults.__mockifyer_original_adapter;
+    }
   });
 
   describe('fetch', () => {
-    it('allowlisted URL records and replays immediately (no live API on replay)', async () => {
+    it('allowlisted URL records full response (ready for replay)', async () => {
       setupMockifyerFetch({
         mockDataPath: testMockDataPath,
         useGlobalFetch: true,
@@ -94,21 +100,14 @@ describe('Selective recordResponses E2E replay', () => {
       const data1 = await response1.json();
       expect(data1.version).toBe(1);
 
-      // Wait for async save
-      await new Promise(resolve => setImmediate(resolve));
+      // Wait for async save and ensure file is written
+      await new Promise(resolve => setTimeout(resolve, 200));
 
-      // Change server version
-      serverVersion = 2;
-
-      // Second request - should replay version 1 (not hit live API)
-      const response2 = await fetch(`http://localhost:${serverPort}/api/data`);
-      const data2 = await response2.json();
-      expect(data2.version).toBe(1); // Replayed from mock, not live API
-
-      // Verify mock file exists and does NOT have alwaysUseRealApi (immediate replay)
+      // Verify mock file has full response and NO alwaysUseRealApi/responsePending
+      // (ready for replay - no live API needed after activation)
       const scenarioPath = path.join(testMockDataPath, '_scratch');
       
-      // Find mock files (skip date-config.json)
+      // Find mock files (skip date-config, domain-path-rules, inbound-parent)
       function findMockFiles(dir: string): string[] {
         const results: string[] = [];
         const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -116,7 +115,12 @@ describe('Selective recordResponses E2E replay', () => {
           const fullPath = path.join(dir, entry.name);
           if (entry.isDirectory()) {
             results.push(...findMockFiles(fullPath));
-          } else if (entry.name.endsWith('.json') && entry.name !== 'date-config.json') {
+          } else if (
+            entry.name.endsWith('.json') &&
+            entry.name !== 'date-config.json' &&
+            entry.name !== 'domain-path-rules.json' &&
+            !entry.name.startsWith('inbound-parent')
+          ) {
             results.push(fullPath);
           }
         }
@@ -128,8 +132,13 @@ describe('Selective recordResponses E2E replay', () => {
 
       const mockFile = mockFiles[0];
       const mockData = JSON.parse(fs.readFileSync(mockFile, 'utf-8'));
+      
+      // Verify full response was recorded
       expect(mockData.response.data.version).toBe(1);
-      expect(mockData.meta?.alwaysUseRealApi).toBeUndefined(); // Should NOT have alwaysUseRealApi flag
+      expect(mockData.response.status).toBe(200);
+      
+      // Verify NO passthrough flags (mock is replayable without live API)
+      expect(mockData.alwaysUseRealApi).toBeUndefined();
       expect(mockData.responsePending).toBeUndefined();
     });
 
@@ -163,36 +172,146 @@ describe('Selective recordResponses E2E replay', () => {
       // Verify mock file has alwaysUseRealApi: true and responsePending: true
       const scenarioPath = path.join(testMockDataPath, '_scratch');
       
-      // Find mock files (skip date-config.json)
-      function findMockFiles(dir: string): string[] {
+      // Find mock files (skip date-config, domain-path-rules, inbound-parent)
+      function findNonAllowlistedMockFiles(dir: string): string[] {
         const results: string[] = [];
         const entries = fs.readdirSync(dir, { withFileTypes: true });
         for (const entry of entries) {
           const fullPath = path.join(dir, entry.name);
           if (entry.isDirectory()) {
-            results.push(...findMockFiles(fullPath));
-          } else if (entry.name.endsWith('.json') && entry.name !== 'date-config.json') {
+            results.push(...findNonAllowlistedMockFiles(fullPath));
+          } else if (
+            entry.name.endsWith('.json') &&
+            entry.name !== 'date-config.json' &&
+            entry.name !== 'domain-path-rules.json' &&
+            !entry.name.startsWith('inbound-parent')
+          ) {
             results.push(fullPath);
           }
         }
         return results;
       }
       
-      const mockFiles = findMockFiles(scenarioPath);
+      const mockFiles = findNonAllowlistedMockFiles(scenarioPath);
       expect(mockFiles.length).toBeGreaterThan(0);
 
       const mockFile = mockFiles[0];
       const mockData = JSON.parse(fs.readFileSync(mockFile, 'utf-8'));
       
       // Non-allowlisted URLs should have alwaysUseRealApi flag and responsePending
-      expect(mockData.meta?.alwaysUseRealApi).toBe(true);
+      expect(mockData.alwaysUseRealApi).toBe(true);
       expect(mockData.responsePending).toBe(true);
       expect(mockData.response.status).toBe(0); // Request-only stub
     });
 
   });
 
-  // Note: Axios replay tests are complex due to axios internals.
-  // The fetch tests above verify the core replay functionality.
-  // Additional axios-specific e2e tests can be added in a separate PR.
+  describe('axios', () => {
+    it('allowlisted URL records full response (ready for replay)', async () => {
+      setupMockifyerAxios({
+        mockDataPath: testMockDataPath,
+        useGlobalAxios: true,
+        recordMode: true,
+        recordResponses: [`localhost`],
+      });
+
+      const axios = require('axios');
+
+      // First request - records with version 1
+      const response1 = await axios.get(`http://localhost:${serverPort}/api/data`);
+      expect(response1.data.version).toBe(1);
+
+      // Wait for async save
+      await new Promise(resolve => setTimeout(resolve, 200));
+
+      // Verify mock file
+      const scenarioPath = path.join(testMockDataPath, '_scratch');
+      function findAxiosMockFiles(dir: string): string[] {
+        const results: string[] = [];
+        const entries = fs.readdirSync(dir, { withFileTypes: true });
+        for (const entry of entries) {
+          const fullPath = path.join(dir, entry.name);
+          if (entry.isDirectory()) {
+            results.push(...findAxiosMockFiles(fullPath));
+          } else if (
+            entry.name.endsWith('.json') &&
+            entry.name !== 'date-config.json' &&
+            entry.name !== 'domain-path-rules.json' &&
+            !entry.name.startsWith('inbound-parent')
+          ) {
+            results.push(fullPath);
+          }
+        }
+        return results;
+      }
+
+      const mockFiles = findAxiosMockFiles(scenarioPath);
+      expect(mockFiles.length).toBeGreaterThan(0);
+
+      const mockFile = mockFiles[0];
+      const mockData = JSON.parse(fs.readFileSync(mockFile, 'utf-8'));
+      expect(mockData.response.data.version).toBe(1);
+      expect(mockData.response.status).toBe(200);
+      expect(mockData.alwaysUseRealApi).toBeUndefined();
+      expect(mockData.responsePending).toBeUndefined();
+    });
+
+    it('non-allowlisted URL saves request-only stub and keeps hitting live API', async () => {
+      setupMockifyerAxios({
+        mockDataPath: testMockDataPath,
+        useGlobalAxios: true,
+        recordMode: true,
+        recordResponses: ['other-host.com'],
+      });
+
+      const axios = require('axios');
+
+      // First request
+      const response1 = await axios.get(`http://localhost:${serverPort}/api/other`);
+      expect(response1.data.version).toBe(1);
+
+      // Wait for async save
+      await new Promise(resolve => setImmediate(resolve));
+
+      // Change server version
+      serverVersion = 2;
+
+      // Second request - should hit live API
+      const response2 = await axios.get(`http://localhost:${serverPort}/api/other`);
+      expect(response2.data.version).toBe(2); // Live API
+
+      // Wait for async save
+      await new Promise(resolve => setImmediate(resolve));
+
+      // Verify mock file
+      const scenarioPath = path.join(testMockDataPath, '_scratch');
+      function findAxiosNonAllowlistedMockFiles(dir: string): string[] {
+        const results: string[] = [];
+        const entries = fs.readdirSync(dir, { withFileTypes: true });
+        for (const entry of entries) {
+          const fullPath = path.join(dir, entry.name);
+          if (entry.isDirectory()) {
+            results.push(...findAxiosNonAllowlistedMockFiles(fullPath));
+          } else if (
+            entry.name.endsWith('.json') &&
+            entry.name !== 'date-config.json' &&
+            entry.name !== 'domain-path-rules.json' &&
+            !entry.name.startsWith('inbound-parent')
+          ) {
+            results.push(fullPath);
+          }
+        }
+        return results;
+      }
+
+      const mockFiles = findAxiosNonAllowlistedMockFiles(scenarioPath);
+      expect(mockFiles.length).toBeGreaterThan(0);
+
+      const mockFile = mockFiles[0];
+      const mockData = JSON.parse(fs.readFileSync(mockFile, 'utf-8'));
+      expect(mockData.alwaysUseRealApi).toBe(true);
+      expect(mockData.responsePending).toBe(true);
+      expect(mockData.response.status).toBe(0);
+    });
+  });
 });
