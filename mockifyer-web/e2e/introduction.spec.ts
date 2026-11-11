@@ -109,5 +109,34 @@ test.describe('Introduction Page', () => {
     await expect(thumbnails.nth(2)).toHaveAttribute('aria-pressed', 'true');
     await expect(thumbnails.nth(1)).toHaveAttribute('aria-pressed', 'false');
   });
+
+  test('should load all thumbnail posters in gallery', async ({ page }) => {
+    await page.goto('/');
+    
+    // Wait for page to load
+    await page.waitForLoadState('networkidle');
+    
+    // Find all thumbnail videos (inside buttons with aria-pressed)
+    const thumbnailButtons = page.locator('button[aria-pressed]');
+    await expect(thumbnailButtons).toHaveCount(3);
+    
+    // Check each thumbnail has a loaded poster
+    for (let i = 0; i < 3; i++) {
+      const thumbnailVideo = thumbnailButtons.nth(i).locator('video');
+      
+      // Verify video element exists
+      await expect(thumbnailVideo).toBeVisible();
+      
+      // Get poster attribute
+      const poster = await thumbnailVideo.getAttribute('poster');
+      expect(poster).toBeTruthy();
+      expect(poster).toContain('.jpg');
+      
+      // Verify poster image loads by checking it via fetch
+      const response = await page.request.get(poster!);
+      expect(response.ok()).toBeTruthy();
+      expect(response.status()).toBe(200);
+    }
+  });
 });
 
