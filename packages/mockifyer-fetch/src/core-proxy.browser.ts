@@ -1,5 +1,5 @@
 /**
- * Browser stub for core-proxy - proxy functionality requires Node.js
+ * Browser implementation for core-proxy - exports browser-compatible dashboard proxy via fetch
  */
 
 export function applyProxyRecordOnMissEnv(config: any): any {
@@ -10,15 +10,13 @@ export function mirrorProxyRecordingToClient(): void {
   // Browser: no-op
 }
 
-export function performDashboardProxyRequest(): Promise<never> {
-  return Promise.reject(new Error(
-    '[Mockifyer Browser] Dashboard proxy requires Node.js. ' +
-    'Use databaseProvider: { type: "memory", options: { fixtures: [...] } } for browser builds.'
-  ));
-}
+// Export browser implementation of dashboard proxy (uses fetch instead of Node http)
+export { performDashboardProxyRequest } from '@sgedda/mockifyer-core/utils/perform-dashboard-proxy-request';
 
 export function initMockifyerForDashboardProxy(): Promise<never> {
-  return Promise.reject(new Error('[Mockifyer Browser] Dashboard proxy requires Node.js'));
+  return Promise.reject(new Error(
+    '[Mockifyer Browser] Use setupMockifyer from browser entry instead of initMockifyerForDashboardProxy'
+  ));
 }
 
 export function initMockifyerForLocalFilesystem(): never {
@@ -26,7 +24,9 @@ export function initMockifyerForLocalFilesystem(): never {
 }
 
 export function initMockifyerForDashboardProxyClients(): Promise<never> {
-  return Promise.reject(new Error('[Mockifyer Browser] Dashboard proxy requires Node.js'));
+  return Promise.reject(new Error(
+    '[Mockifyer Browser] Use setupMockifyer from browser entry instead of initMockifyerForDashboardProxyClients'
+  ));
 }
 
 export function initMockifyerForLocalFilesystemClients(): never {
