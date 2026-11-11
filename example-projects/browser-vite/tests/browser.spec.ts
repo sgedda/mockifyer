@@ -7,35 +7,30 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
 test.describe('Browser Mockifyer Example', () => {
-  test.skip('should display mocked and live results correctly', async ({ page }) => {
-    // TODO: Dev server test needs investigation (timing/resolution issue)
-    // Production bundle test below verifies browser compatibility
-    // Capture console logs to debug
+  test('should display mocked and live results correctly', async ({ page }) => {
+    // Capture console logs
     const consoleLogs: string[] = []
     page.on('console', msg => {
       consoleLogs.push(`[${msg.type()}] ${msg.text()}`)
     })
 
-    // Block the live API call and stub it for hermetic testing
-    await page.route('https://api.ipify.org*', route => {
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ ip: '203.0.113.42' })
-      })
-    })
-
-    await page.goto('/', { waitUntil: 'networkidle' })
+    await page.goto('/?test=true')
     
-    // Wait for both cards to show non-loading content
+    // Wait for both requests to complete and UI to update
     await page.waitForFunction(() => {
+      const mockedBadge = document.getElementById('mocked-badge')?.textContent || ''
+      const liveBadge = document.getElementById('live-badge')?.textContent || ''
       const mockedData = document.getElementById('mocked-data')?.textContent || ''
       const liveData = document.getElementById('live-data')?.textContent || ''
-      return !mockedData.includes('Loading') && !liveData.includes('Loading') && 
-             !mockedData.includes('Fetching') && !liveData.includes('Fetching')
+      
+      // Both must have loaded (not Loading/Fetching) and live must have test-server data
+      return !mockedData.includes('Loading') && !mockedData.includes('Fetching') &&
+             !liveData.includes('Loading') && !liveData.includes('Fetching') &&
+             (liveBadge === 'LIVE' || liveBadge === 'ERROR') &&  // Must be resolved
+             liveData.includes('test-server')  // Must have actual data
     }, { timeout: 15000 })
 
-    // Check mocked request card
+    // Verify mocked request (uses preloaded fixture)
     const mockedBadge = await page.textContent('#mocked-badge')
     expect(mockedBadge).toBe('MOCKED')
 
@@ -48,30 +43,32 @@ test.describe('Browser Mockifyer Example', () => {
     expect(mockedData).toContain('"date": "2024-01-15"')
     expect(mockedData).toContain('"EUR": 0.92')
 
-    // Check live request card
+    // Verify live request (no fixture, goes to real API)
     const liveBadge = await page.textContent('#live-badge')
-    const liveStatus = await page.textContent('#live-status')
-    const liveData = await page.textContent('#live-data')
-    
-    // Log for debugging
-    console.log('Live badge:', liveBadge)
-    console.log('Live status:', liveStatus)
-    console.log('Live data:', liveData)
-    
     expect(liveBadge).toBe('LIVE')
+
+    const liveStatus = await page.textContent('#live-status')
     expect(liveStatus).toContain('200')
     expect(liveStatus).toContain('network')
-    expect(liveData).toContain('"ip"')
-    expect(liveData).toContain('203.0.113.42')
 
-    // Verify console logs were captured
+    const liveData = await page.textContent('#live-data')
+    
+    // Verify live request went to test server (proves no fixture was used)
+    expect(liveData).toContain('"source"')
+    expect(liveData).toContain('test-server')
+    expect(liveData).toContain('"timestamp"')
+    
+    // Verify it's different from fixture data
+    expect(liveData).not.toContain('USD')
+    expect(liveData).not.toContain('EUR')
+    expect(liveData).not.toContain('2024-01-15')
+
+    // Verify Mockifyer initialized
     const mockifyerLog = consoleLogs.find(log => log.includes('[Mockifyer] Initialized'))
     expect(mockifyerLog).toBeTruthy()
     
-    // Log all console messages for debugging if test fails
-    if (consoleLogs.length > 0) {
-      console.log('Console logs:', consoleLogs.join('\n'))
-    }
+    console.log('✓ Mocked request returned fixture data')
+    console.log('✓ Live request returned test server data (no fixture used)')
   })
 
   test('production bundle should have no Node built-ins', async ({ page }) => {

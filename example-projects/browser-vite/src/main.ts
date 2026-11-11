@@ -53,7 +53,11 @@ async function testMockedRequest() {
 async function testLiveRequest() {
   try {
     console.log('[Mockifyer] Fetching live request...')
-    const response = await fetch('https://api.ipify.org?format=json')
+    // Use localhost test server in test mode, real API otherwise
+    const testMode = new URLSearchParams(window.location.search).get('test') === 'true'
+    const url = testMode ? 'http://localhost:8765/test-api' : 'https://api.ipify.org?format=json'
+    
+    const response = await fetch(url)
     const data = await response.json()
     
     console.log('[Mockifyer] Live response:', data)
