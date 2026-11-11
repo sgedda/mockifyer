@@ -6,12 +6,12 @@ test.describe('Browser Guide Page', () => {
   });
 
   test('should display browser guide heading', async ({ page }) => {
-    await expect(page.getByText(/Record and Replay HTTP in the Browser/i)).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Record and Replay HTTP in the Browser/i })).toBeVisible();
   });
 
   test('should show browser support status card', async ({ page }) => {
-    await expect(page.getByText(/Browser Support Status/i)).toBeVisible();
-    await expect(page.getByText(/next release/i)).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Browser Support Status/i })).toBeVisible();
+    await expect(page.getByText(/next release/i).first()).toBeVisible();
   });
 
   test('should have installation section', async ({ page }) => {
@@ -20,9 +20,9 @@ test.describe('Browser Guide Page', () => {
   });
 
   test('should have setup with memory provider section', async ({ page }) => {
-    await expect(page.getByText(/Setup with Memory Provider/i)).toBeVisible();
-    await expect(page.getByText(/Prepare Your Fixtures/i)).toBeVisible();
-    await expect(page.getByText(/Initialize Mockifyer/i)).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Setup with Memory Provider/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Prepare Your Fixtures/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Initialize Mockifyer/i })).toBeVisible();
   });
 
   test('should show what works in browser', async ({ page }) => {
