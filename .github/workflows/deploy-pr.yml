@@ -62,8 +62,10 @@ jobs:
                   cd ..
                   test -f public/index.html
                   test -d public/assets
+                  echo "Compiling prerender script..."
+                  ./frontend/node_modules/.bin/tsc scripts/prerender-static.ts --outDir scripts --module commonjs --target es2020 --esModuleInterop --skipLibCheck || true
                   echo "Running static HTML generation for SEO..."
-                  npx ts-node scripts/prerender-static.ts
+                  node scripts/prerender-static.js
                   echo "Verifying per-route HTML files..."
                   test -f public/features.html
                   test -f public/faq.html
