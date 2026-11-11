@@ -23,12 +23,14 @@ npm run dev
 
 ## After Release
 
-Once `@sgedda/mockifyer-fetch@1.8.107+` is published with browser support, this example will work on StackBlitz:
+Once `@sgedda/mockifyer-fetch@1.8.108+` is published with browser support, this example will work on StackBlitz and CodeSandbox using published packages:
 
 ```bash
-npm install @sgedda/mockifyer-core @sgedda/mockifyer-fetch
+npm install @sgedda/mockifyer-core@latest @sgedda/mockifyer-fetch@latest
 npm run dev
 ```
+
+The browser-optimized build will be automatically selected via the `browser` field in package.json.
 
 ## How It Works
 

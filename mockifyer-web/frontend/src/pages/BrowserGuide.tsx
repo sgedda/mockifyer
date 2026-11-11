@@ -26,8 +26,8 @@ export default function BrowserGuide() {
         </CardHeader>
         <CardContent>
           <p className="text-sm">
-            Browser and Expo web support ships in <strong>@sgedda/mockifyer-fetch@1.8.107+</strong> (currently in PR <a href="https://github.com/sgedda/mockifyer/pull/495" className="text-blue-600 dark:text-blue-400 hover:underline" target="_blank" rel="noopener noreferrer">#495</a>).
-            This guide shows the API that will be available after the next release.
+            Browser and Expo web support will be available in the next release (<strong>@sgedda/mockifyer-fetch@1.8.108+</strong>, currently in PR <a href="https://github.com/sgedda/mockifyer/pull/495" className="text-blue-600 dark:text-blue-400 hover:underline" target="_blank" rel="noopener noreferrer">#495</a>).
+            Install the latest published version, or use the example from the repository to test unreleased features.
           </p>
         </CardContent>
       </Card>
