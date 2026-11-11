@@ -198,11 +198,11 @@ async function prerender() {
   let count = 0;
   for (const [routePath, seoConfig] of Object.entries(PAGE_SEO)) {
     // Use the original baseHtml for all routes (not the modified one)
-    const html = generateHtml(routePath, seoConfig, baseHtml);
+    const generatedHtml = generateHtml(routePath, seoConfig, baseHtml);
     
     if (routePath === '/') {
       // Homepage is index.html
-      fs.writeFileSync(indexPath, html, 'utf-8');
+      fs.writeFileSync(indexPath, generatedHtml, 'utf-8');
       console.log(`  ✓ / → index.html`);
       count++;
       continue;
@@ -218,8 +218,7 @@ async function prerender() {
     }
     
     const outputPath = path.join(publicDir, `${routePathClean}.html`);
-    const html = generateHtml(routePath, seoConfig, baseHtml);
-    fs.writeFileSync(outputPath, html, 'utf-8');
+    fs.writeFileSync(outputPath, generatedHtml, 'utf-8');
     console.log(`  ✓ ${routePath} → ${routePathClean}.html`);
     count++;
   }
