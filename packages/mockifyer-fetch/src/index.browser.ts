@@ -44,7 +44,7 @@ export {
 
 // Import MockifyerClass and browser capabilities
 import { MockifyerClass } from './mockifyer-class';
-import { browserCapabilities } from './node-capabilities.browser';
+import { nodeCapabilities } from './node-capabilities.browser';
 
 // MockifyerInstance interface
 export interface MockifyerInstance extends HTTPClient {
@@ -106,7 +106,7 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
   }
 
   // Create with browser capabilities (no Node fs/path/crypto)
-  const mockifyer = new MockifyerClass(config, browserCapabilities);
+  const mockifyer = new MockifyerClass(config, nodeCapabilities);
   
   // Get HTTP client
   const httpClient = mockifyer.getHTTPClient();
