@@ -111,6 +111,72 @@ const PAGE_SEO: Record<string, { title: string; description: string; path: strin
       'Compare Mockifyer with MSW, Polly.js, and Nock. Learn when record-replay fits better than in-code handlers for API testing.',
     path: '/comparisons',
   },
+  '/guides': {
+    title: 'Mockifyer Guides | Mockifyer',
+    description:
+      'In-depth guides for testing patterns, React Native mocking, E2E stability, and API drift prevention with Mockifyer.',
+    path: '/guides',
+  },
+  '/guides/react-native-expo': {
+    title: 'React Native Expo Mocking Guide | Mockifyer',
+    description:
+      'Mock HTTP calls in Expo apps with Mockifyer. Works on device, Expo Go, and web builds without service workers.',
+    path: '/guides/react-native-expo',
+  },
+  '/guides/selective-recording': {
+    title: 'Selective Recording - Record Only What You Need | Mockifyer',
+    description:
+      'Selective recording by default: record only specific requests, skip others. Control recording granularly with match patterns.',
+    path: '/guides/selective-recording',
+  },
+  '/guides/record-replay': {
+    title: 'Record and Replay HTTP Mocks | Mockifyer',
+    description:
+      'Record real HTTP responses and replay them in tests. Switch between record and replay modes for deterministic testing.',
+    path: '/guides/record-replay',
+  },
+  '/guides/maestro-detox-mocks': {
+    title: 'Maestro & Detox Mocking - E2E Testing | Mockifyer',
+    description:
+      'Mock HTTP calls in Maestro and Detox E2E tests. Control scenarios via launch arguments for stable, repeatable test runs.',
+    path: '/guides/maestro-detox-mocks',
+  },
+  '/guides/scenarios': {
+    title: 'Scenarios - Multiple Mock States | Mockifyer',
+    description:
+      'Switch between mock scenarios for different test states: success, error, empty data, edge cases. One scenario per test.',
+    path: '/guides/scenarios',
+  },
+  '/comparisons/msw': {
+    title: 'Mockifyer vs MSW | Mockifyer',
+    description:
+      'Compare Mockifyer and MSW for API mocking. MSW uses in-code handlers; Mockifyer records real responses for React Native and Node.',
+    path: '/comparisons/msw',
+  },
+  '/comparisons/pollyjs': {
+    title: 'Mockifyer vs Polly.js | Mockifyer',
+    description:
+      'Compare Mockifyer and Polly.js for HTTP recording. Polly.js targets browsers; Mockifyer supports React Native and Node.',
+    path: '/comparisons/pollyjs',
+  },
+  '/comparisons/nock': {
+    title: 'Mockifyer vs Nock | Mockifyer',
+    description:
+      'Compare Mockifyer and Nock for Node.js HTTP mocking. Nock uses programmatic matchers; Mockifyer records real API responses.',
+    path: '/comparisons/nock',
+  },
+  '/comparisons/wiremock': {
+    title: 'Mockifyer vs WireMock | Mockifyer',
+    description:
+      'Compare Mockifyer and WireMock for API mocking. WireMock runs as a separate server; Mockifyer integrates at the HTTP client level.',
+    path: '/comparisons/wiremock',
+  },
+  '/comparisons/mockoon': {
+    title: 'Mockifyer vs Mockoon | Mockifyer',
+    description:
+      'Compare Mockifyer and Mockoon for API mocking. Mockoon provides local mock servers; Mockifyer records and replays at the HTTP client level.',
+    path: '/comparisons/mockoon',
+  },
 };
 
 const SITE_URL = 'https://mockifyer.dev';
