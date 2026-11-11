@@ -564,6 +564,7 @@ const HTML_ROUTES = [
   '/guides/stable-react-native-e2e',
   '/guides/mock-drift',
   '/guides/react-native-without-msw',
+  '/guides/browser-record-replay',
 ];
 
 // Fallback to index.html for SPA routing (GET requests only)
