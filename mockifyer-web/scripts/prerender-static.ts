@@ -167,7 +167,7 @@ function generateHtml(routePath: string, seoConfig: typeof PAGE_SEO[string], bas
 }
 
 async function prerender() {
-  const publicDir = path.join(__dirname, '../../public');
+  const publicDir = path.join(__dirname, '../public');
   const indexPath = path.join(publicDir, 'index.html');
   
   if (!fs.existsSync(indexPath)) {
