@@ -32,6 +32,7 @@ export * from './utils/launch-arguments-client-id';
 export * from './utils/launch-arguments-scenario';
 export * from './utils/activation-mode';
 export * from './utils/outbound-header';
+export * from './utils/hop-context';
 // hop-identity imports crypto-digest - EXCLUDED
 // export * from './utils/hop-identity';
 // inline-trace imports crypto-digest + network-body-spill - EXCLUDED
@@ -305,6 +306,32 @@ export function configureAtlas(_config?: any, _context?: any): void {
 
 export function setFlightRecorderRuntimeContext(_context?: any): void {
   // Browser: no-op (runtime context)
+}
+
+// Browser-safe mockifyer-trace functions
+export interface MockifyerTraceMeta {
+  requestId: string;
+  parentRequestId?: string;
+}
+
+function headerValue(headers: Record<string, string> | undefined, name: string): string | undefined {
+  if (!headers) return undefined;
+  const lower = name.toLowerCase();
+  for (const [key, value] of Object.entries(headers)) {
+    if (key.toLowerCase() === lower && value != null && String(value).trim() !== '') {
+      return String(value).trim();
+    }
+  }
+  return undefined;
+}
+
+export function resolveMockifyerTraceFromHeaders(
+  headers: Record<string, string> | undefined
+): MockifyerTraceMeta | undefined {
+  const requestId = headerValue(headers, 'x-mockifyer-request-id');
+  if (!requestId) return undefined;
+  const parentRequestId = headerValue(headers, 'x-mockifyer-parent-request-id');
+  return parentRequestId ? { requestId, parentRequestId } : { requestId };
 }
 
 // Browser-safe DomainPathRulesSession stub (real version requires fs)

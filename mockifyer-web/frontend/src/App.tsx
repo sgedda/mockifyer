@@ -11,6 +11,7 @@ import Settings from './pages/Settings'
 import Contact from './pages/Contact'
 import Comparisons from './pages/Comparisons'
 import E2ETutorial from './pages/E2ETutorial'
+import BrowserGuide from './pages/BrowserGuide'
 import { ThemeProvider } from './lib/use-theme'
 import PageSeoManager from './components/PageSeoManager'
 
@@ -39,6 +40,7 @@ function App() {
               <Route path="/config-reference" element={<ConfigReference />} />
               <Route path="/comparisons" element={<Comparisons />} />
               <Route path="/e2e-tutorial" element={<E2ETutorial />} />
+              <Route path="/browser-guide" element={<BrowserGuide />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/contact" element={<Contact />} />
             </Routes>

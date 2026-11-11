@@ -11,6 +11,7 @@ const navItems = [
   { href: '/timeline', label: 'Timeline' },
   { href: '/comparisons', label: 'Comparisons' },
   { href: '/e2e-tutorial', label: 'E2E Tutorial' },
+  { href: '/browser-guide', label: 'Browser Guide' },
   { href: '/settings', label: 'Settings' },
   { href: '/contact', label: 'Contact' },
 ]

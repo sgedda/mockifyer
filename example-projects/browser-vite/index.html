@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mockifyer Browser Example</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 2rem;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    .header {
+      background: white;
+      border-radius: 12px;
+      padding: 2rem;
+      margin-bottom: 2rem;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    h1 {
+      color: #333;
+      margin-bottom: 0.5rem;
+    }
+    .subtitle {
+      color: #666;
+      font-size: 1rem;
+    }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 2rem;
+    }
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 1.5rem;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    .card h2 {
+      font-size: 1.25rem;
+      margin-bottom: 1rem;
+      color: #333;
+    }
+    .badge {
+      display: inline-block;
+      padding: 0.25rem 0.75rem;
+      border-radius: 9999px;
+      font-size: 0.875rem;
+      font-weight: 600;
+      margin-bottom: 1rem;
+    }
+    .badge-mocked {
+      background: #10b981;
+      color: white;
+    }
+    .badge-live {
+      background: #3b82f6;
+      color: white;
+    }
+    .badge-error {
+      background: #ef4444;
+      color: white;
+    }
+    .status {
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+    .data {
+      background: #f3f4f6;
+      border-radius: 8px;
+      padding: 1rem;
+      font-family: 'Courier New', monospace;
+      font-size: 0.875rem;
+      overflow-x: auto;
+    }
+    .loading {
+      color: #666;
+      font-style: italic;
+    }
+    button {
+      background: #667eea;
+      color: white;
+      border: none;
+      padding: 0.75rem 1.5rem;
+      border-radius: 8px;
+      font-size: 1rem;
+      cursor: pointer;
+      font-weight: 600;
+      transition: background 0.2s;
+    }
+    button:hover {
+      background: #5568d3;
+    }
+    button:disabled {
+      background: #9ca3af;
+      cursor: not-allowed;
+    }
+    .info-box {
+      background: white;
+      border-radius: 12px;
+      padding: 1.5rem;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    .info-box h3 {
+      margin-bottom: 0.5rem;
+      color: #333;
+    }
+    .info-box p {
+      color: #666;
+      line-height: 1.6;
+    }
+    .info-box code {
+      background: #f3f4f6;
+      padding: 0.125rem 0.375rem;
+      border-radius: 4px;
+      font-size: 0.875rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🎭 Mockifyer Browser Example</h1>
+      <p class="subtitle">Demonstrating browser-native mocking with memory provider</p>
+    </div>
+
+    <div class="cards">
+      <div class="card">
+        <span class="badge badge-mocked" id="mocked-badge">MOCKED</span>
+        <h2>Mocked Request</h2>
+        <div class="status" id="mocked-status">Loading...</div>
+        <div class="data loading" id="mocked-data">Fetching preloaded fixture...</div>
+      </div>
+
+      <div class="card">
+        <span class="badge badge-live" id="live-badge">LIVE</span>
+        <h2>Unmocked Request</h2>
+        <div class="status" id="live-status">Loading...</div>
+        <div class="data loading" id="live-data">Fetching from network...</div>
+      </div>
+    </div>
+
+    <div class="info-box">
+      <h3>How it works</h3>
+      <p>
+        This example uses <code>@sgedda/mockifyer-fetch</code> with the <strong>memory provider</strong>. 
+        The currency rates request uses a preloaded fixture (mocked), while the IP lookup goes to 
+        the real API (live). Both run entirely in the browser with <strong>zero Node.js built-ins</strong>.
+      </p>
+    </div>
+  </div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
