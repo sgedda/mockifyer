@@ -59,6 +59,106 @@ const response = await fetch('https://api.frankfurter.dev/v1/latest');
 console.log(await response.json());
 ```
 
+## Dashboard Connection (Optional)
+
+Connect your browser client to a running Mockifyer dashboard to:
+- **Sync scenarios**: Automatically follow scenario changes from the dashboard
+- **Report traffic**: See browser requests in the dashboard's Network view alongside backend hops
+- **Client lanes**: Isolate browser sessions with unique client IDs
+
+### Setup
+
+1. Start the dashboard with CORS enabled:
+
+```bash
+# Allow all origins (development only)
+MOCKIFYER_DASHBOARD_CORS=* npx mockifyer-dashboard --port 3002
+
+# Or allow specific origins
+MOCKIFYER_DASHBOARD_CORS=http://localhost:5174,http://localhost:3000 npx mockifyer-dashboard --port 3002
+```
+
+2. Configure the browser client:
+
+```ts
+import { setupMockifyer } from '@sgedda/mockifyer-fetch';
+
+const mockifyer = setupMockifyer({
+  mockDataPath: './mock-data',
+  databaseProvider: {
+    type: 'memory',
+    options: { fixtures: [...] }
+  },
+  dashboard: {
+    dashboardBaseUrl: 'http://localhost:3002',
+    clientId: 'web-app', // Optional: for client lane isolation
+    enableScenarioSync: true, // Default true
+    enableNetworkEvents: true, // Default true
+    pollIntervalMs: 2000, // Default 2000ms
+  }
+});
+```
+
+### Configuration Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `dashboardBaseUrl` | `string` | required | Dashboard URL (e.g. `http://localhost:3002`) |
+| `clientId` | `string` | undefined | Client lane ID for multi-client isolation |
+| `auth` | `{ user, password }` | undefined | HTTP Basic Auth credentials |
+| `enableScenarioSync` | `boolean` | `true` | Poll dashboard for scenario changes |
+| `enableNetworkEvents` | `boolean` | `true` | Report traffic to dashboard Network view |
+| `pollIntervalMs` | `number` | `2000` | Scenario poll interval (ms) |
+
+### CORS Configuration
+
+The dashboard must allow browser origins via the `MOCKIFYER_DASHBOARD_CORS` environment variable:
+
+- `off` or `false`: CORS disabled (dashboard not accessible from browsers)
+- `*`, `on`, or `true`: Allow all origins (development only)
+- `http://localhost:5174,http://example.com`: Comma-separated allowed origins
+
+**Auth with CORS**: When HTTP Basic Auth is enabled (`MOCKIFYER_DASHBOARD_AUTH_USER`), specific origins must be listed (not `*`) and the dashboard will set `Access-Control-Allow-Credentials: true`.
+
+### Client Lanes
+
+Use `clientId` to isolate browser sessions when the dashboard runs with `--provider redis` or `--provider sqlite`:
+
+```ts
+const mockifyer = setupMockifyer({
+  // ...
+  dashboard: {
+    dashboardBaseUrl: 'http://localhost:3002',
+    clientId: `web-${sessionId}`, // Unique per browser session
+  }
+});
+```
+
+Each client gets its own scenario lane in the dashboard Settings panel. Switch scenarios per-client without affecting other sessions.
+
+### Example: Vite + Dashboard
+
+```ts
+// src/mockifyer-setup.ts
+import { setupMockifyer } from '@sgedda/mockifyer-fetch';
+import ratesFixture from '../mock-data/default/api.example.com/GET_rates.json';
+
+const mockifyer = setupMockifyer({
+  mockDataPath: './mock-data',
+  databaseProvider: {
+    type: 'memory',
+    options: { fixtures: [ratesFixture] }
+  },
+  useGlobalFetch: true,
+  dashboard: {
+    dashboardBaseUrl: import.meta.env.VITE_MOCKIFYER_DASHBOARD_URL || 'http://localhost:3002',
+    clientId: `web-${crypto.randomUUID()}`,
+  }
+});
+
+export default mockifyer;
+```
+
 ## Recorded JSON Format
 
 The MemoryProvider accepts the same format the FilesystemProvider writes:

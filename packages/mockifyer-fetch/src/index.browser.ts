@@ -45,8 +45,34 @@ export {
 // Import MockifyerClass and browser capabilities
 import { MockifyerClass } from './mockifyer-class';
 import { browserCapabilities } from './node-capabilities.browser';
+import { BrowserDashboardSync } from './browser-dashboard-sync';
+import { BrowserDashboardClient } from '@sgedda/mockifyer-core/dist/utils/dashboard-client.browser';
+
+// Re-export dashboard client
+export { BrowserDashboardSync } from './browser-dashboard-sync';
+export { BrowserDashboardClient } from '@sgedda/mockifyer-core/dist/utils/dashboard-client.browser';
 
 // MockifyerInstance interface
+export interface BrowserDashboardConfig {
+  /** Dashboard base URL (e.g. 'http://localhost:3002') */
+  dashboardBaseUrl: string;
+  /** Optional HTTP Basic Auth credentials */
+  auth?: { user: string; password: string };
+  /** Client ID for lane-based scenario isolation */
+  clientId?: string;
+  /** Poll interval for scenario changes (ms, default 2000) */
+  pollIntervalMs?: number;
+  /** Enable automatic scenario sync from dashboard (default true) */
+  enableScenarioSync?: boolean;
+  /** Enable network event reporting to dashboard (default true) */
+  enableNetworkEvents?: boolean;
+}
+
+export interface BrowserMockifyerConfig extends MockifyerConfig {
+  /** Dashboard connection config (optional) */
+  dashboard?: BrowserDashboardConfig;
+}
+
 export interface MockifyerInstance extends HTTPClient {
   reloadMockData: (syncFromProject?: boolean) => Promise<void>;
   clearStaleCacheEntries: () => number;
@@ -60,6 +86,9 @@ export interface MockifyerInstance extends HTTPClient {
   enableMockifyer: () => void;
   disableMockifyer: () => void;
   isMockifyerEnabled: () => boolean;
+  getScenario: () => string;
+  setScenario: (scenario: string) => Promise<void>;
+  getDashboardSync: () => BrowserDashboardSync | null;
 }
 
 /**
@@ -68,8 +97,9 @@ export interface MockifyerInstance extends HTTPClient {
  * **Browser-specific constraints:**
  * - Only `memory` provider is supported (filesystem/redis/sqlite need Node.js)
  * - Preload fixtures via `databaseProvider.options.fixtures: MockData[]`
+ * - Dashboard connection is optional for scenario sync and network event reporting
  * 
- * @example
+ * @example Basic (in-memory only):
  * ```ts
  * import { setupMockifyer } from '@sgedda/mockifyer-fetch';
  * import rates from './mock-data/api.frankfurter.dev/v1/latest.json';
@@ -87,8 +117,22 @@ export interface MockifyerInstance extends HTTPClient {
  *   useGlobalFetch: true
  * });
  * ```
+ * 
+ * @example With dashboard connection:
+ * ```ts
+ * const mockifyer = setupMockifyer({
+ *   mockDataPath: './mock-data',
+ *   databaseProvider: { type: 'memory', options: { fixtures: [...] } },
+ *   dashboard: {
+ *     dashboardBaseUrl: 'http://localhost:3002',
+ *     clientId: 'web-client',
+ *     enableScenarioSync: true,
+ *     enableNetworkEvents: true
+ *   }
+ * });
+ * ```
  */
-export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
+export function setupMockifyer(config: BrowserMockifyerConfig): MockifyerInstance {
   // Validate browser-safe config
   if (config.databaseProvider && config.databaseProvider.type && config.databaseProvider.type !== 'memory') {
     throw new Error(
@@ -110,6 +154,41 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
   
   // Get HTTP client
   const httpClient = mockifyer.getHTTPClient();
+  
+  // Initialize dashboard sync if configured
+  let dashboardSync: BrowserDashboardSync | null = null;
+  if (config.dashboard) {
+    const dashboardClient = new BrowserDashboardClient({
+      dashboardBaseUrl: config.dashboard.dashboardBaseUrl,
+      auth: config.dashboard.auth,
+      clientId: config.dashboard.clientId ?? mockifyer.getClientId(),
+    });
+
+    const enableScenarioSync = config.dashboard.enableScenarioSync !== false;
+    const enableNetworkEvents = config.dashboard.enableNetworkEvents !== false;
+
+    dashboardSync = new BrowserDashboardSync({
+      dashboardClient,
+      onScenarioChange: enableScenarioSync
+        ? (scenario) => {
+            console.log(`[Mockifyer] Dashboard scenario changed: ${scenario}`);
+            // TODO: Reload mocks for new scenario
+          }
+        : undefined,
+      pollIntervalMs: config.dashboard.pollIntervalMs,
+    });
+
+    if (enableScenarioSync) {
+      dashboardSync.start();
+      console.log(
+        `[Mockifyer] Dashboard sync started (${config.dashboard.dashboardBaseUrl}${
+          config.dashboard.clientId ? `, lane: ${config.dashboard.clientId}` : ''
+        })`
+      );
+    }
+
+    // TODO: Hook up network event emission after interceptor execution
+  }
   
   // Patch global fetch if useGlobalFetch is true
   if (config.useGlobalFetch) {
@@ -158,6 +237,24 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
   extendedClient.enableMockifyer = () => mockifyer.enableMockifyer();
   extendedClient.disableMockifyer = () => mockifyer.disableMockifyer();
   extendedClient.isMockifyerEnabled = () => mockifyer.isMockifyerEnabled();
+  extendedClient.getScenario = () => {
+    if (typeof config.scenarios === 'string') {
+      return config.scenarios;
+    }
+    return 'default';
+  };
+  extendedClient.setScenario = async (scenario: string) => {
+    (config as any).scenarios = scenario;
+    if (dashboardSync) {
+      const client = (dashboardSync as any).client as BrowserDashboardClient;
+      if (client.clientId) {
+        await client.setClientLaneScenario(client.clientId, scenario);
+      } else {
+        await client.setScenario(scenario);
+      }
+    }
+  };
+  extendedClient.getDashboardSync = () => dashboardSync;
   
   return extendedClient;
 }

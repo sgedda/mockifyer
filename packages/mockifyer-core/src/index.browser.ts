@@ -120,6 +120,17 @@ export * from './providers/types';
 export * from './providers/memory-provider';
 export { MemoryProvider } from './providers/memory-provider';
 
+// Browser-safe dashboard client
+export {
+  BrowserDashboardClient,
+  type DashboardClientConfig,
+  type ScenarioConfigResponse,
+  type SetScenarioResponse,
+  type ClientLane,
+  type ClientLanesResponse,
+  type NetworkEvent as BrowserNetworkEvent,
+} from './utils/dashboard-client.browser';
+
 import { DatabaseProvider, DatabaseProviderConfig } from './providers/types';
 import { MemoryProvider } from './providers/memory-provider';
 
