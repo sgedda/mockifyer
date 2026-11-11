@@ -1,7 +1,6 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Globe, CheckCircle2, XCircle, Code, Rocket, AlertCircle, Play } from 'lucide-react'
 import CodeBlock from '@/components/CodeBlock'
-import RunItButton from '@/components/RunItButton'
 import { Link } from 'react-router-dom'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
@@ -30,8 +29,7 @@ export default function BrowserRecordReplay() {
         </CardHeader>
         <CardContent>
           <p className="text-sm">
-            Browser and Expo web support will be available in the next release (currently in PR <a href="https://github.com/sgedda/mockifyer/pull/495" className="text-blue-600 dark:text-blue-400 hover:underline" target="_blank" rel="noopener noreferrer">#495</a>).
-            Install the latest published version, or use the example from the repository to test unreleased features.
+            Browser and Expo web support will be available in the next release. Until then, try the example from the repository to test these features.
           </p>
         </CardContent>
       </Card>
