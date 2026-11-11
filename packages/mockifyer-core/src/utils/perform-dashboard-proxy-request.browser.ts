@@ -3,9 +3,13 @@
  * Matches the Node version's signature but uses fetch instead of http module.
  */
 
-import type { HTTPRequestConfig, HTTPResponse } from '../types/http-client';
+import type { HTTPRequestConfig, HTTPResponse, MockifyerProxyRecordingMeta } from '../types/http-client';
 import { buildDashboardProxyEnvelope } from './dashboard-proxy-envelope';
 import { joinProxyDashboardApiUrl } from './join-proxy-dashboard-api-url';
+import { serializeProxyRequestBody } from './serialize-proxy-request-body';
+import { mapProxyPayloadSourceToNetworkSource } from './inline-trace';
+import { resolveMockifyerTraceFromProxyPayload } from './mockifyer-trace';
+import type { MockData } from '../types';
 
 const MOCKIFYER_ORIGINAL_FETCH_KEY = '__mockifyer_original_fetch';
 
@@ -72,12 +76,13 @@ export async function performDashboardProxyRequest(
     fetchFn,
   } = params;
 
+  const serializedBody = await serializeProxyRequestBody(body, headers);
   const proxyUrl = joinProxyDashboardApiUrl(proxyBaseUrl, '/api/proxy');
   const envelope = buildDashboardProxyEnvelope({
     url,
     method,
     headers,
-    body,
+    body: serializedBody,
     lane,
     deviceId,
     requestId,
@@ -108,41 +113,80 @@ export async function performDashboardProxyRequest(
 
     const payload = await response.json();
 
-    // Build HTTPResponse with all required fields
-    const responseHeaders: Record<string, string> = payload.headers || {};
-    
-    // Add x-mockifyer header for mock hits
-    const networkSource = payload?.source;
+    const outerProxyHeaders: Record<string, string> = {};
+    response.headers.forEach((value: string, key: string) => {
+      outerProxyHeaders[key.toLowerCase()] = value;
+    });
+
+    const proxyResponseBody = payload.response as
+      | { data?: unknown; status?: number; headers?: Record<string, string> }
+      | undefined;
+    const data = proxyResponseBody?.data;
+    const status = proxyResponseBody?.status ?? 200;
+    const responseHeaders: Record<string, string> = { ...(proxyResponseBody?.headers ?? {}) };
+
+    const networkSource = mapProxyPayloadSourceToNetworkSource(
+      typeof payload?.source === 'string' ? payload.source : undefined
+    );
     if (networkSource === 'mock-hit') {
       responseHeaders['x-mockifyer'] = 'true';
     }
 
-    // Ensure config has __mockifyer_skip_save to prevent re-saving proxy responses
+    const mockifyerTrace = resolveMockifyerTraceFromProxyPayload(
+      payload,
+      outerProxyHeaders,
+      responseHeaders
+    );
+
     const responseConfig: HTTPRequestConfig = {
       ...(config || {}),
       __mockifyer_skip_save: true,
     };
 
-    // Adopt request/parent IDs from dashboard if provided
-    if (payload.mockifyerTrace?.requestId) {
-      (responseConfig as any).__mockifyer_requestId = payload.mockifyerTrace.requestId;
+    const adoptedRequestId = mockifyerTrace?.requestId ?? requestId;
+    const adoptedParentRequestId =
+      mockifyerTrace != null ? mockifyerTrace.parentRequestId : parentRequestId;
+    if (adoptedRequestId) {
+      (responseConfig as any).__mockifyer_requestId = adoptedRequestId;
     }
-    if (payload.mockifyerTrace?.parentRequestId) {
-      (responseConfig as any).__mockifyer_parentRequestId = payload.mockifyerTrace.parentRequestId;
+    if (adoptedParentRequestId) {
+      (responseConfig as any).__mockifyer_parentRequestId = adoptedParentRequestId;
+    } else {
+      delete (responseConfig as any).__mockifyer_parentRequestId;
     }
 
+    const scenarioResolution = payload?.scenarioResolution as { scenario?: string | null } | undefined;
+    const scenarioName =
+      typeof scenarioResolution?.scenario === 'string' && scenarioResolution.scenario.trim()
+        ? scenarioResolution.scenario.trim()
+        : undefined;
+
+    const mockifyerProxyRecording =
+      payload?.recordedToStore === true && payload?.storedMock
+        ? {
+            recordedToStore: true as const,
+            storedMock: payload.storedMock as MockData,
+            hash: typeof payload.hash === 'string' ? payload.hash : undefined,
+            scenarioName,
+          }
+        : undefined;
+
+    const effectiveTrace =
+      mockifyerTrace ??
+      (adoptedRequestId
+        ? adoptedParentRequestId
+          ? { requestId: adoptedRequestId, parentRequestId: adoptedParentRequestId }
+          : { requestId: adoptedRequestId }
+        : undefined);
+
     return {
-      data: payload.data,
-      status: payload.statusCode || response.status,
-      statusText: payload.statusText || response.statusText || '',
+      data,
+      status,
+      statusText: String(status),
       headers: responseHeaders,
       config: responseConfig,
-      ...(payload.mockifyerProxyRecording && {
-        mockifyerProxyRecording: payload.mockifyerProxyRecording,
-      }),
-      ...(payload.mockifyerTrace && {
-        mockifyerTrace: payload.mockifyerTrace,
-      }),
+      mockifyerProxyRecording,
+      ...(effectiveTrace ? { mockifyerTrace: effectiveTrace } : {}),
     };
   } catch (error) {
     throw new Error(
