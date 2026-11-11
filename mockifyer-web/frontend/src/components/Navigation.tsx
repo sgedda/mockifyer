@@ -4,6 +4,7 @@ import { Menu, Moon, Sun, Github, ChevronDown } from 'lucide-react'
 import { useState } from 'react'
 import Logo from './Logo'
 import { useTheme } from '@/lib/use-theme'
+import { GUIDE_ITEMS } from '@/lib/product-docs'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,14 +18,6 @@ const navItems = [
   { href: '/dashboard', label: 'Dashboard' },
   { href: '/packages', label: 'Packages' },
   { href: '/faq', label: 'FAQ' },
-]
-
-const guideItems = [
-  { href: '/guides/mock-at-the-network-edge', label: 'Mock at the Network Edge' },
-  { href: '/guides/reproduce-tester-bugs', label: 'Reproduce Tester Bugs' },
-  { href: '/guides/stable-react-native-e2e', label: 'Stable React Native E2E' },
-  { href: '/guides/mock-drift', label: 'Stop Mock Drift' },
-  { href: '/guides/react-native-without-msw', label: 'React Native: Handlers vs Recording' },
 ]
 
 export default function Navigation() {
@@ -79,7 +72,7 @@ export default function Navigation() {
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
-              {guideItems.map((guide) => (
+              {GUIDE_ITEMS.map((guide) => (
                 <DropdownMenuItem key={guide.href} asChild>
                   <Link to={guide.href} className="cursor-pointer">
                     {guide.label}
@@ -171,7 +164,7 @@ export default function Navigation() {
           <div className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
             Guides
           </div>
-          {guideItems.map((guide) => (
+          {GUIDE_ITEMS.map((guide) => (
             <Link
               key={guide.href}
               to={guide.href}

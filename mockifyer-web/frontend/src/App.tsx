@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { Toaster } from '@/components/ui/toaster'
 import Navigation from './components/Navigation'
+import Footer from './components/Footer'
 import { Navigate } from 'react-router-dom'
 import { useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
@@ -81,7 +82,7 @@ function App() {
               {/* Redirects for removed pages */}
               <Route path="/playground" element={<Navigate to="/getting-started" replace />} />
               <Route path="/timeline" element={<Navigate to="/dashboard#network" replace />} />
-              <Route path="/settings" element={<Navigate to="/#date-freezing" replace />} />
+              <Route path="/settings" element={<Navigate to="/date-config" replace />} />
               
               <Route path="/date-config" element={<DateConfig />} />
               <Route path="/getting-started" element={<GettingStarted />} />
@@ -91,6 +92,7 @@ function App() {
               <Route path="/contact" element={<Contact />} />
             </Routes>
           </main>
+          <Footer />
           <Toaster />
         </div>
       </BrowserRouter>

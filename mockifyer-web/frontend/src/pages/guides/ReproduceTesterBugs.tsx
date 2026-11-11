@@ -44,7 +44,7 @@ export default function ReproduceTesterBugs() {
         <ol className="space-y-3 text-muted-foreground list-decimal list-inside">
           <li><strong>View the Network trace</strong> in the dashboard — see every request they made</li>
           <li><strong>Follow request chains</strong> across services via <code className="bg-muted px-1 rounded">x-mockifyer-request-id</code> headers</li>
-          <li><strong>Export as curl</strong> to test the backend directly from your terminal</li>
+          <li><strong>Export as curl</strong> from the mock editor or Atlas to test the backend directly from your terminal</li>
           <li><strong>Save as a scenario</strong> and replay it locally so the bug reproduces every time</li>
         </ol>
       </section>
@@ -63,7 +63,7 @@ export default function ReproduceTesterBugs() {
       <section id="network-trace">
         <h2 className="text-3xl font-semibold tracking-tight mb-4">1. View the Network Trace</h2>
         <p className="text-muted-foreground mb-4">
-          The dashboard's <strong>Network</strong> page shows every HTTP request, with filtering by client, scenario, and time range.
+          The dashboard's <strong>Network</strong> page shows every HTTP request, with filtering by client and scenario.
         </p>
 
         <Card>
@@ -80,7 +80,6 @@ export default function ReproduceTesterBugs() {
             <ul className="text-sm text-muted-foreground space-y-2">
               <li>• <strong>Client ID</strong>: The tester's device (e.g. <code className="bg-muted px-1 rounded">tester-iphone-13</code>)</li>
               <li>• <strong>Scenario</strong>: The test scenario they were running</li>
-              <li>• <strong>Time</strong>: When the bug occurred</li>
             </ul>
             <p className="text-sm text-muted-foreground mt-4">
               Each row shows the HTTP method, URL, status code, duration, and whether it was a <strong>Hit</strong> (served from mock) 
@@ -124,7 +123,7 @@ export default function ReproduceTesterBugs() {
       <section id="export-as-curl">
         <h2 className="text-3xl font-semibold tracking-tight mb-4">3. Export as curl</h2>
         <p className="text-muted-foreground mb-4">
-          Copy any request as a curl command to test the backend directly from your terminal. This is useful for:
+          Open a mock in the dashboard's mock editor or view it in Atlas, then copy it as a curl command to test the backend directly from your terminal. This is useful for:
         </p>
         <ul className="text-muted-foreground space-y-2 mb-4">
           <li>• Verifying the backend's current behavior</li>
@@ -181,8 +180,8 @@ export default function ReproduceTesterBugs() {
             <div>
               <h4 className="font-semibold mb-2">3. Save to a scenario folder</h4>
               <CodeBlock language="bash" code={`mkdir -p mock-data/bug-trip-wrong-price
-cp mock-data/default/trips_123_GET.json \\
-   mock-data/bug-trip-wrong-price/
+cp -r mock-data/default/demo.devxtools.dev/ \\
+      mock-data/bug-trip-wrong-price/
 
 # Edit the JSON to match what the tester saw`} />
             </div>
@@ -222,7 +221,7 @@ cp mock-data/default/trips_123_GET.json \\
               <li>• <strong>curl export</strong>: Copy any request as a curl command</li>
             </ul>
             <p className="text-sm text-muted-foreground mt-4">
-              Atlas runs in your Metro bundler (not on the device), so it works even if the tester doesn't have access to the dashboard.
+              Atlas runs in your Metro bundler. It works for devices connected to your Metro during development.
             </p>
           </CardContent>
         </Card>

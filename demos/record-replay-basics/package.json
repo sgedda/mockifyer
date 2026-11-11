@@ -9,8 +9,8 @@
     "record": "node record.js"
   },
   "dependencies": {
-    "@sgedda/mockifyer-core": "^1.8.37",
-    "@sgedda/mockifyer-fetch": "^1.8.31"
+    "@sgedda/mockifyer-core": "^1.10.190",
+    "@sgedda/mockifyer-fetch": "^1.8.106"
   },
   "devDependencies": {
     "vitest": "^2.0.0"

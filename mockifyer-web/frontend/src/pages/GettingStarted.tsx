@@ -877,7 +877,7 @@ npm test tests/generated
               A simpler example showing Mockifyer with Express.js, TypeScript, and both Axios and Fetch.
             </p>
             <a 
-              href="https://github.com/sgedda/mockifyer/tree/main/example-projects/express-api-mock"
+              href="https://github.com/sgedda/mockifyer/tree/main/example-projects/simple-examples"
               target="_blank"
               rel="noopener noreferrer"
             >

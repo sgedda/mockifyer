@@ -138,12 +138,28 @@ test('shows trips', async () => {
             <div>
               <h4 className="font-semibold mb-2">1. Enable recording mode</h4>
               <CodeBlock language="bash" code={`MOCKIFYER_RECORD=true npm run dev`} />
+              <p className="text-sm text-muted-foreground mt-2">
+                Requests land as request-only stubs in <code className="text-xs bg-muted px-1 py-0.5 rounded">_scratch/</code> and keep hitting the live API until you activate them. Choose which requests to record via domain-path rules or by unticking "Always use live API" in the dashboard for each mock.
+              </p>
             </div>
 
             <div>
               <h4 className="font-semibold mb-2">2. Use the app to trigger real API calls</h4>
               <p className="text-sm text-muted-foreground mb-2">
-                Click through your app normally. Each HTTP request is saved to <code className="bg-muted px-1 rounded">mock-data/default/</code> as JSON.
+                Click through your app normally. Each fetch/axios request is captured as a request-only stub in <code className="bg-muted px-1 rounded">_scratch/</code>. Open the dashboard, find the requests, and activate the ones you want to replay by unticking "Always use live API."
+              </p>
+            </div>
+
+            <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-md mt-4">
+              <h4 className="font-semibold mb-2 text-blue-400">💡 Quick Demo: Capture Everything</h4>
+              <p className="text-sm text-muted-foreground mb-2">
+                For demos or quick experiments, you can record all responses immediately (heavy):
+              </p>
+              <CodeBlock language="bash" code={`MOCKIFYER_RECORD_RESPONSES=true \\
+MOCKIFYER_RECORD_DEFAULT_ALWAYS_USE_REAL_API=false \\
+npm run dev`} />
+              <p className="text-sm text-muted-foreground mt-2">
+                Or in code: <code className="text-xs bg-muted px-1 py-0.5 rounded">recordResponses: true</code> and <code className="text-xs bg-muted px-1 py-0.5 rounded">domainPathRulesMode: 'record_all'</code>. See <code className="text-xs bg-muted px-1 py-0.5 rounded">demos/record-replay-basics/record.js</code> for an example.
               </p>
             </div>
 
@@ -224,7 +240,7 @@ describe('TripList', () => {
             <CardTitle>Setup Example (React Native / Expo)</CardTitle>
           </CardHeader>
           <CardContent>
-            <CodeBlock language="typescript" code={`import { setupMockifyerForReactNative } from '@sgedda/mockifyer-fetch';
+            <CodeBlock language="typescript" code={`import { setupMockifyerForReactNative } from '@sgedda/mockifyer-fetch/react-native';
 
 // In app startup (App.tsx or _layout.tsx)
 await setupMockifyerForReactNative({

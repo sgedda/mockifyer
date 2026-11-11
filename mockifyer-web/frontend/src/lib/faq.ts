@@ -27,12 +27,12 @@ export const HOME_FAQ: FaqItem[] = [
   {
     question: 'What is MOCKIFYER_MODE vs MOCKIFYER_ACTIVATION_MODE?',
     answer:
-      'MOCKIFYER_MODE (on | launch_client | off) gates React Native fetch patching at startup. MOCKIFYER_ACTIVATION_MODE (always | client_id_header | off) controls per-request interception on Node axios/fetch — use client_id_header with X-Mockifyer-Client-Id for multi-service setups.',
+      'MOCKIFYER_MODE (on | launch_client | manual | off) gates React Native fetch patching at startup: on = always active, launch_client = only when scenario/mockifyerClientId launch args are present, manual = programmatically controlled (aliases: e2e/maestro for manual, gui/toggle), off = disabled. MOCKIFYER_ACTIVATION_MODE (always | client_id_header | off) controls per-request interception on Node axios/fetch — use client_id_header with X-Mockifyer-Client-Id for multi-service setups.',
   },
   {
     question: 'What are the dashboard and MCP packages for?',
     answer:
-      '@sgedda/mockifyer-dashboard is a local UI/CLI to browse and edit mocks, switch scenarios, and run a Redis proxy with client lanes. @sgedda/mockifyer-mcp exposes search, AI context, and field overrides to Cursor or Claude Desktop while the dashboard is running.',
+      '@sgedda/mockifyer-dashboard is a local UI/CLI to browse and edit mocks, switch scenarios, and run a Redis proxy with client lanes. The MCP server (in packages/mockifyer-mcp, not on npm) exposes 42 tools including search, AI context, field overrides, and explain_value to Cursor or Claude Desktop while the dashboard is running. Build from source.',
   },
   {
     question: 'Where is the official documentation?',

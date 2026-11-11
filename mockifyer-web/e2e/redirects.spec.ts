@@ -13,8 +13,9 @@ test.describe('Redirects', () => {
     await expect(page.getByRole('heading', { name: /Dashboard/i }).first()).toBeVisible();
   });
 
-  test('should redirect /settings to home with date-freezing anchor', async ({ page }) => {
+  test('should redirect /settings to Date Config page', async ({ page }) => {
     await page.goto('/settings');
-    await expect(page).toHaveURL('/#date-freezing');
+    await expect(page).toHaveURL('/date-config');
+    await expect(page.getByRole('heading', { name: /Date Configuration/i })).toBeVisible();
   });
 });
