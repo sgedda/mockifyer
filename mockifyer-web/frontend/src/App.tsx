@@ -27,6 +27,7 @@ const ReproduceTesterBugs = lazy(() => import('./pages/guides/ReproduceTesterBug
 const StableReactNativeE2E = lazy(() => import('./pages/guides/StableReactNativeE2E'))
 const MockDrift = lazy(() => import('./pages/guides/MockDrift'))
 const ReactNativeWithoutMSW = lazy(() => import('./pages/guides/ReactNativeWithoutMSW'))
+const BrowserRecordReplay = lazy(() => import('./pages/guides/BrowserRecordReplay'))
 const NotFound = lazy(() => import('./pages/NotFound'))
 
 function HashScrollHandler() {
@@ -101,11 +102,13 @@ function App() {
               <Route path="/guides/stable-react-native-e2e" element={<StableReactNativeE2E />} />
               <Route path="/guides/mock-drift" element={<MockDrift />} />
               <Route path="/guides/react-native-without-msw" element={<ReactNativeWithoutMSW />} />
+              <Route path="/guides/browser-record-replay" element={<BrowserRecordReplay />} />
               
               {/* Redirects for removed pages */}
               <Route path="/playground" element={<Navigate to="/getting-started" replace />} />
               <Route path="/timeline" element={<Navigate to="/dashboard#network" replace />} />
               <Route path="/settings" element={<Navigate to="/date-config" replace />} />
+              <Route path="/browser-guide" element={<Navigate to="/guides/browser-record-replay" replace />} />
               
               <Route path="/date-config" element={<DateConfig />} />
               <Route path="/getting-started" element={<GettingStarted />} />

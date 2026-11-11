@@ -28,7 +28,10 @@ export default function Packages() {
       </section>
 
       <section className="space-y-6">
-        <h2 className="text-2xl font-semibold">Build from Source (Not on npm)</h2>
+        <div>
+          <h2 className="text-2xl font-semibold">Not Published to npm</h2>
+          <p className="text-muted-foreground mt-2">These packages are only available by building from source in the monorepo.</p>
+        </div>
         {REPO_ONLY_PACKAGES.map((pkg) => (
           <Card key={pkg.name}>
             <CardHeader>
@@ -37,16 +40,16 @@ export default function Packages() {
                   <Folder className="h-5 w-5 text-muted-foreground" />
                   <div>
                     <CardTitle className="text-xl">{pkg.name}</CardTitle>
-                    <CardDescription className="mt-1">v{pkg.version}</CardDescription>
+                    <CardDescription className="mt-1">v{pkg.version} • Not on npm</CardDescription>
                   </div>
                 </div>
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
               <p className="text-muted-foreground">{pkg.role}</p>
-              <div className="text-sm">
-                <strong>Build:</strong>{' '}
-                <code className="bg-muted px-1 py-0.5 rounded text-xs">
+              <div className="bg-muted/50 rounded-lg p-3 border border-border space-y-1">
+                <p className="text-sm font-medium">Build from source:</p>
+                <code className="block text-xs font-mono bg-background/50 px-2 py-1 rounded">
                   cd {pkg.buildPath} && npm install && npm run build
                 </code>
               </div>

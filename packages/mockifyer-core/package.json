@@ -1,16 +1,30 @@
 {
   "name": "@sgedda/mockifyer-core",
-  "version": "1.10.191",
+  "version": "1.10.192",
   "description": "Core utilities and types for Mockifyer",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "react-native": "./dist/index.react-native.js",
+  "browser": {
+    "./dist/index.js": "./dist/index.browser.js",
+    "./index.js": "./index.browser.js",
+    "./dist/utils/crypto-digest.js": "./dist/utils/crypto-digest.browser.js",
+    "./dist/utils/scenario.js": "./dist/utils/scenario.browser.js",
+    "./dist/utils/network-body-spill.js": "./dist/utils/network-body-spill.browser.js",
+    "./dist/utils/mirror-proxy-recording-to-client.js": "./dist/utils/mirror-proxy-recording-to-client.browser.js",
+    "./dist/utils/serialize-proxy-request-body.js": "./dist/utils/serialize-proxy-request-body.browser.js",
+    "./dist/utils/atlas-doc-html.js": "./dist/utils/atlas-doc-html.browser.js",
+    "./dist/utils/atlas-screenshot.js": "./dist/utils/atlas-screenshot.browser.js",
+    "./dist/utils/hop-context.js": "./dist/utils/hop-context.browser.js"
+  },
   "exports": {
     ".": {
+      "browser": "./dist/index.browser.js",
       "react-native": "./dist/index.react-native.js",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./dist/index.browser.js": "./dist/index.browser.js",
     "./utils/build-utils": {
       "types": "./dist/utils/build-utils.d.ts",
       "default": "./dist/utils/build-utils.js"
@@ -51,6 +65,11 @@
     "./utils/build-proxy-upstream-body-init": {
       "types": "./dist/utils/build-proxy-upstream-body-init.d.ts",
       "default": "./dist/utils/build-proxy-upstream-body-init.js"
+    },
+    "./utils/crypto-digest": {
+      "browser": "./dist/utils/crypto-digest.browser.js",
+      "types": "./dist/utils/crypto-digest.d.ts",
+      "default": "./dist/utils/crypto-digest.js"
     },
     "./utils/fixture-pool/runtime-cache": {
       "types": "./dist/utils/fixture-pool/runtime-cache.d.ts",
