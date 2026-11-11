@@ -275,11 +275,7 @@ npm run dev
         <CardContent className="space-y-4">
           <div className="p-4 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-500/50">
             <p className="text-sm text-muted-foreground">
-              <strong>Note:</strong> This demo will work once browser support is published in the next release (currently in PR{' '}
-              <a href="https://github.com/sgedda/mockifyer/pull/495" className="text-blue-600 dark:text-blue-400 hover:underline" target="_blank" rel="noopener noreferrer">
-                #495
-              </a>
-              ).
+              <strong>Note:</strong> This demo will work once browser support is published in the next release.
             </p>
           </div>
           
