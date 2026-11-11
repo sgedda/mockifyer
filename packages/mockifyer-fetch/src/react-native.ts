@@ -259,8 +259,10 @@ export async function setupMockifyerForReactNative(
   } = options;
 
   const proxyShouldRecordOnMiss = proxyRecordOnMiss ?? recordMode;
-  // recordResponses can be boolean or array; store as-is for URL-aware resolution
-  const proxyShouldRecordResponses = proxyRecordResponses ?? userConfig.proxy?.recordResponses ?? false;
+  const recordResponsesConfig = proxyRecordResponses ?? userConfig.proxy?.recordResponses;
+  const proxyShouldRecordResponses = resolveRecordResponses(
+    typeof recordResponsesConfig === 'boolean' ? recordResponsesConfig : false
+  );
 
   const launchClientIdKey =
     launchArgumentClientIdKey ?? MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY;

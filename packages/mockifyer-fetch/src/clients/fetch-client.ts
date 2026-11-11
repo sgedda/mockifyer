@@ -107,8 +107,11 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
     this.proxyBaseUrl = config?.proxy?.baseUrl;
     this.proxyScenario = config?.proxy?.scenario;
     this.proxyRecordOnMiss = config?.proxy?.recordOnMiss;
-    // Store recordResponses as-is; URL-aware resolution happens in dashboard-proxy-envelope
-    this.proxyRecordResponses = config?.proxy?.recordResponses ?? false;
+    // Resolve recordResponses to boolean for internal storage (proxy doesn't support patterns yet)
+    const recordResponsesValue = config?.proxy?.recordResponses ?? false;
+    this.proxyRecordResponses = typeof recordResponsesValue === 'boolean'
+      ? recordResponsesValue
+      : false;
     this.getClientId = config?.getClientId;
     this.getStrictLaneScenario = config?.getStrictLaneScenario;
     this.getUpstreamTlsInsecure = config?.getUpstreamTlsInsecure;

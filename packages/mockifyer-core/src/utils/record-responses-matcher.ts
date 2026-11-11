@@ -59,13 +59,19 @@ function pathMatchesGlob(requestPath: string, glob: string): boolean {
 /**
  * Check if a URL matches a single pattern.
  */
-function urlMatchesPattern(url: string, pattern: RecordResponsesPattern): boolean {
+function urlMatchesPattern(url: string, pattern: RecordResponsesPattern, baseUrl?: string): boolean {
   if (pattern instanceof RegExp) {
     return pattern.test(url);
   }
   
   try {
-    const parsedUrl = new URL(url);
+    // Resolve relative URLs with baseUrl if provided
+    let absoluteUrl = url;
+    if (baseUrl && !/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(url)) {
+      absoluteUrl = new URL(url, baseUrl).href;
+    }
+    
+    const parsedUrl = new URL(absoluteUrl);
     const { host, pathGlob } = parseStringPattern(pattern);
     
     if (!hostMatches(parsedUrl.hostname, host)) {
@@ -88,9 +94,10 @@ function urlMatchesPattern(url: string, pattern: RecordResponsesPattern): boolea
  */
 export function urlMatchesRecordResponsesPatterns(
   url: string,
-  patterns: Array<RecordResponsesPattern>
+  patterns: Array<RecordResponsesPattern>,
+  baseUrl?: string
 ): boolean {
-  return patterns.some(pattern => urlMatchesPattern(url, pattern));
+  return patterns.some(pattern => urlMatchesPattern(url, pattern, baseUrl));
 }
 
 /**
@@ -168,12 +175,14 @@ export function resolveRecordResponsesConfig(
  * @param url - The request URL to check
  * @param configValue - The `recordResponses` config value
  * @param env - Optional environment variables (defaults to process.env)
+ * @param baseUrl - Optional base URL for resolving relative URLs
  * @returns `true` if full response body should be recorded
  */
 export function shouldRecordResponseForUrl(
   url: string,
   configValue: boolean | Array<RecordResponsesPattern> | undefined,
-  env?: NodeJS.ProcessEnv
+  env?: NodeJS.ProcessEnv,
+  baseUrl?: string
 ): boolean {
   const resolved = resolveRecordResponsesConfig(configValue, env);
   
@@ -182,5 +191,5 @@ export function shouldRecordResponseForUrl(
   }
   
   // Array of patterns - check if URL matches
-  return urlMatchesRecordResponsesPatterns(url, resolved);
+  return urlMatchesRecordResponsesPatterns(url, resolved, baseUrl);
 }

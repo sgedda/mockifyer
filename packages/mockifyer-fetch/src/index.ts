@@ -131,6 +131,7 @@ import {
   type InitMockifyerForLocalFilesystemOptions,
 } from './core-proxy';
 import { resolveProxyUpstreamTlsInsecure } from '@sgedda/mockifyer-core/utils/proxy-upstream-tls-insecure';
+import { resolveRecordResponsesConfig } from '@sgedda/mockifyer-core/utils/record-responses-matcher';
 
 import { FetchHTTPClient } from './clients/fetch-client';
 import { bodyInitForFetchResponse } from './utils/fetch-response-body';
@@ -1534,7 +1535,7 @@ class MockifyerClass {
         this.recordResponsesOverride ??
         this.config.proxy?.recordResponses ??
         this.config.recordResponses;
-      const recordBodies = resolveLocalRecordResponsesForUrl(storedRequest.url, configValue);
+      const recordBodies = resolveLocalRecordResponsesForUrl(storedRequest.url, configValue, this.config.baseUrl);
       
       const mockData = buildLocalRecordingMockData({
         request: storedRequest,
@@ -1971,13 +1972,14 @@ class MockifyerClass {
       (this.config.proxy?.baseUrl 
         ? this.config.proxy.recordResponses 
         : this.config.recordResponses);
+    const resolved = resolveRecordResponsesConfig(configValue);
     
     // Return true if boolean true or non-empty array
-    if (typeof configValue === 'boolean') {
-      return configValue;
+    if (typeof resolved === 'boolean') {
+      return resolved;
     }
-    if (Array.isArray(configValue)) {
-      return configValue.length > 0;
+    if (Array.isArray(resolved)) {
+      return resolved.length > 0;
     }
     return false;
   }

@@ -80,6 +80,7 @@ import {
   isMockRecordingSidecarDir,
 } from '@sgedda/mockifyer-core';
 import { resolveProxyUpstreamTlsInsecure } from '@sgedda/mockifyer-core/utils/proxy-upstream-tls-insecure';
+import { resolveRecordResponsesConfig } from '@sgedda/mockifyer-core/utils/record-responses-matcher';
 import { AxiosHTTPClient } from './clients/axios-client';
 import { attachDashboardProxyAxiosAdapter, resolveAxiosRequestUrl } from './dashboard-proxy-axios-adapter';
 import { HTTPClient, HTTPResponse } from '@sgedda/mockifyer-core';
@@ -187,11 +188,17 @@ class MockifyerClass {
       return config;
     }
 
+    // Resolve recordResponses to boolean for dashboard proxy (proxy doesn't support patterns yet)
+    const recordResponsesValue = proxy?.recordResponses ?? false;
+    const resolvedRecordResponses = typeof recordResponsesValue === 'boolean'
+      ? recordResponsesValue
+      : false;
+    
     return attachDashboardProxyAxiosAdapter(config, {
       proxyBaseUrl,
       proxyScenario: proxy?.scenario,
       proxyRecordOnMiss: proxy?.recordOnMiss,
-      proxyRecordResponses: proxy?.recordResponses ?? false,
+      proxyRecordResponses: resolvedRecordResponses,
       strictLaneScenario: resolveProxyStrictLaneScenario(this.config),
       upstreamTlsInsecure: resolveProxyUpstreamTlsInsecure(this.config),
       clientId: this.config.clientId,
@@ -2337,7 +2344,8 @@ class MockifyerClass {
 
       // Use URL-aware resolution for selective recording
       const configValue = this.config.proxy?.recordResponses ?? this.config.recordResponses;
-      const recordBodies = resolveLocalRecordResponsesForUrl(request.url, configValue);
+      const baseUrlForPatternMatch = response.config.baseURL || this.config.baseUrl;
+      const recordBodies = resolveLocalRecordResponsesForUrl(request.url, configValue, baseUrlForPatternMatch);
       const mockData = buildLocalRecordingMockData({
         request,
         response: storedResponse,
@@ -2615,13 +2623,14 @@ class MockifyerClass {
   /** True when new recordings include response bodies (not request-only stubs). */
   public isRecordResponses(): boolean {
     const configValue = this.config.proxy?.recordResponses ?? this.config.recordResponses;
+    const resolved = resolveRecordResponsesConfig(configValue);
     
     // Return true if boolean true or non-empty array
-    if (typeof configValue === 'boolean') {
-      return configValue;
+    if (typeof resolved === 'boolean') {
+      return resolved;
     }
-    if (Array.isArray(configValue)) {
-      return configValue.length > 0;
+    if (Array.isArray(resolved)) {
+      return resolved.length > 0;
     }
     return false;
   }

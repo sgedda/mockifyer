@@ -287,7 +287,7 @@ export async function buildDashboardProxyConfig(
   const recordResponsesConfig = options.recordResponses ?? extra.proxy?.recordResponses;
   const recordResponses = typeof recordResponsesConfig === 'boolean' 
     ? resolveRecordResponses(recordResponsesConfig)
-    : resolveRecordResponses(Array.isArray(recordResponsesConfig) || recordResponsesConfig === true);
+    : resolveRecordResponses(false);
 
   const useCentralProxy =
     options.skipDashboardRedisHealthCheck === true ||

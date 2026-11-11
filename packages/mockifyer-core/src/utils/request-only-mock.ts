@@ -55,13 +55,15 @@ export function resolveLocalRecordResponses(explicit?: boolean): boolean {
  * 
  * @param url - The request URL
  * @param configValue - The `recordResponses` config value (boolean or pattern array)
+ * @param baseUrl - Optional base URL for resolving relative URLs
  * @returns `true` if full response body should be recorded for this URL
  */
 export function resolveRecordResponsesForUrl(
   url: string,
-  configValue: boolean | Array<RecordResponsesPattern> | undefined
+  configValue: boolean | Array<RecordResponsesPattern> | undefined,
+  baseUrl?: string
 ): boolean {
-  return shouldRecordResponseForUrl(url, configValue);
+  return shouldRecordResponseForUrl(url, configValue, undefined, baseUrl);
 }
 
 /**
@@ -70,9 +72,10 @@ export function resolveRecordResponsesForUrl(
  */
 export function resolveLocalRecordResponsesForUrl(
   url: string,
-  configValue: boolean | Array<RecordResponsesPattern> | undefined
+  configValue: boolean | Array<RecordResponsesPattern> | undefined,
+  baseUrl?: string
 ): boolean {
-  return shouldRecordResponseForUrl(url, configValue);
+  return shouldRecordResponseForUrl(url, configValue, undefined, baseUrl);
 }
 
 /** Placeholder mock: visible in dashboard, always live API until response is captured. */
