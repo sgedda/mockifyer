@@ -65,9 +65,17 @@ export class BrowserDashboardSync {
   private async poll(): Promise<void> {
     try {
       const clientId = this.client.clientId;
-      const scenario = clientId
-        ? await this.client.pollClientLaneScenario(clientId)
-        : await this.client.pollScenario();
+      let scenario: string | null = null;
+      
+      if (clientId) {
+        scenario = await this.client.pollClientLaneScenario(clientId);
+        // Fall back to global scenario if lanes are disabled
+        if (!scenario) {
+          scenario = await this.client.pollScenario();
+        }
+      } else {
+        scenario = await this.client.pollScenario();
+      }
 
       if (scenario && scenario !== this.lastScenario) {
         this.lastScenario = scenario;

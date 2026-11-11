@@ -47,6 +47,7 @@ import { MockifyerClass } from './mockifyer-class';
 import { browserCapabilities } from './node-capabilities.browser';
 import { BrowserDashboardSync } from './browser-dashboard-sync';
 import { BrowserDashboardClient } from '@sgedda/mockifyer-core/dist/utils/dashboard-client.browser';
+import { isMockifyerDashboardPlumbingApiUrl } from '@sgedda/mockifyer-core';
 
 // Re-export dashboard client
 export { BrowserDashboardSync } from './browser-dashboard-sync';
@@ -155,8 +156,25 @@ export function setupMockifyer(config: BrowserMockifyerConfig): MockifyerInstanc
   // Get HTTP client
   const httpClient = mockifyer.getHTTPClient();
   
+  // Store original fetch before patching (needed for dashboard client)
+  let originalFetch: typeof fetch;
+  if ((globalThis as any).__mockifyer_original_fetch) {
+    originalFetch = (globalThis as any).__mockifyer_original_fetch;
+  } else {
+    originalFetch = globalThis.fetch;
+    (globalThis as any).__mockifyer_original_fetch = originalFetch;
+  }
+  
+  // Set original fetch on HTTP client so dashboard calls don't recurse
+  const fetchClient = httpClient as any;
+  if (fetchClient && typeof fetchClient.performRequest === 'function') {
+    fetchClient._originalFetch = originalFetch;
+  }
+  
   // Initialize dashboard sync if configured
   let dashboardSync: BrowserDashboardSync | null = null;
+  const enableNetworkEvents = config.dashboard?.enableNetworkEvents !== false;
+  
   if (config.dashboard) {
     const dashboardClient = new BrowserDashboardClient({
       dashboardBaseUrl: config.dashboard.dashboardBaseUrl,
@@ -165,14 +183,14 @@ export function setupMockifyer(config: BrowserMockifyerConfig): MockifyerInstanc
     });
 
     const enableScenarioSync = config.dashboard.enableScenarioSync !== false;
-    const enableNetworkEvents = config.dashboard.enableNetworkEvents !== false;
 
     dashboardSync = new BrowserDashboardSync({
       dashboardClient,
       onScenarioChange: enableScenarioSync
         ? (scenario) => {
             console.log(`[Mockifyer] Dashboard scenario changed: ${scenario}`);
-            // TODO: Reload mocks for new scenario
+            (config as any).scenarios = scenario;
+            browserCapabilities.getCurrentScenario = () => scenario;
           }
         : undefined,
       pollIntervalMs: config.dashboard.pollIntervalMs,
@@ -186,21 +204,25 @@ export function setupMockifyer(config: BrowserMockifyerConfig): MockifyerInstanc
         })`
       );
     }
-
-    // TODO: Hook up network event emission after interceptor execution
   }
   
   // Patch global fetch if useGlobalFetch is true
   if (config.useGlobalFetch) {
-    const originalFetch = globalThis.fetch;
+    const originalFetchForPatched = (globalThis as any).__mockifyer_original_fetch || originalFetch;
     const mockifyerInstance = mockifyer;
     
     globalThis.fetch = async function(input: string | Request | URL, init?: RequestInit): Promise<Response> {
       if (!mockifyerInstance.isMockifyerEnabled()) {
-        return await originalFetch(input, init);
+        return await originalFetchForPatched(input, init);
       }
       
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      
+      // Skip dashboard plumbing URLs to avoid recursion
+      if (isMockifyerDashboardPlumbingApiUrl(url)) {
+        return await originalFetchForPatched(input, init);
+      }
+      
       const method = (init?.method || 'GET').toUpperCase();
       
       // Perform the request through mockifyer
@@ -210,6 +232,20 @@ export function setupMockifyer(config: BrowserMockifyerConfig): MockifyerInstanc
         headers: init?.headers as Record<string, string> || {},
         data: init?.body,
       });
+      
+      // Report network event if enabled
+      if (enableNetworkEvents && dashboardSync) {
+        const networkEvent = {
+          transport: 'fetch' as const,
+          method,
+          url,
+          status: response.status,
+          source: (response as any).mockifyerTrace?.source || 'mock-hit' as const,
+          requestHeaders: init?.headers as Record<string, string>,
+          responseHeaders: response.headers,
+        };
+        dashboardSync.postNetworkEvent(networkEvent);
+      }
       
       // Convert mockifyer response to fetch Response
       return new Response(
