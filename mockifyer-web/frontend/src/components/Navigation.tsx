@@ -72,6 +72,11 @@ export default function Navigation() {
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
+              <DropdownMenuItem asChild>
+                <Link to="/guides" className="cursor-pointer font-medium">
+                  All guides
+                </Link>
+              </DropdownMenuItem>
               {GUIDE_ITEMS.map((guide) => (
                 <DropdownMenuItem key={guide.href} asChild>
                   <Link to={guide.href} className="cursor-pointer">
@@ -164,6 +169,17 @@ export default function Navigation() {
           <div className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
             Guides
           </div>
+          <Link
+            to="/guides"
+            onClick={() => setMobileMenuOpen(false)}
+            className={`block px-3 py-2 ml-2 rounded-lg text-sm font-semibold ${
+              isActive('/guides')
+                ? 'text-foreground bg-muted'
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
+            }`}
+          >
+            All guides
+          </Link>
           {GUIDE_ITEMS.map((guide) => (
             <Link
               key={guide.href}

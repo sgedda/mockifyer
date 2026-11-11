@@ -28,6 +28,7 @@ const StableReactNativeE2E = lazy(() => import('./pages/guides/StableReactNative
 const MockDrift = lazy(() => import('./pages/guides/MockDrift'))
 const ReactNativeWithoutMSW = lazy(() => import('./pages/guides/ReactNativeWithoutMSW'))
 const BrowserRecordReplay = lazy(() => import('./pages/guides/BrowserRecordReplay'))
+const Guides = lazy(() => import('./pages/Guides'))
 const NotFound = lazy(() => import('./pages/NotFound'))
 
 function HashScrollHandler() {
@@ -97,6 +98,7 @@ function App() {
               <Route path="/dashboard" element={<Dashboard />} />
               
               {/* Guides */}
+              <Route path="/guides" element={<Guides />} />
               <Route path="/guides/mock-at-the-network-edge" element={<MockAtTheNetworkEdge />} />
               <Route path="/guides/reproduce-tester-bugs" element={<ReproduceTesterBugs />} />
               <Route path="/guides/stable-react-native-e2e" element={<StableReactNativeE2E />} />

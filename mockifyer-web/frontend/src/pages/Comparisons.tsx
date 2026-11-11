@@ -1,5 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { ExternalLink } from 'lucide-react'
+import { ExternalLink, ArrowRight } from 'lucide-react'
+import { getExistingContent, COMPARISONS } from '@/lib/content-registry'
+import { Link } from 'react-router-dom'
 
 interface ComparisonTool {
   name: string
@@ -9,6 +11,12 @@ interface ComparisonTool {
 }
 
 const alternatives: ComparisonTool[] = [
+  {
+    name: 'Keploy',
+    github: 'https://github.com/keploy/keploy',
+    description: 'eBPF-based record and replay for backend integration tests. Captures network traffic at the kernel level for API and database calls.',
+    whenToChoose: 'When you need backend integration testing with automatic recording of API calls and database queries via eBPF. Best for Go, Java, Node.js backend services and microservices where you want infrastructure-level capture without changing application code.',
+  },
   {
     name: 'MSW (Mock Service Worker)',
     github: 'https://github.com/mswjs/msw',
@@ -56,6 +64,7 @@ const alternatives: ComparisonTool[] = [
 const featureMatrix: {
   feature: string
   mockifyer: boolean | string
+  keploy: boolean | string
   msw: boolean | string
   polly: boolean | string
   nock: boolean | string
@@ -67,6 +76,7 @@ const featureMatrix: {
   {
     feature: 'In-app record from real APIs',
     mockifyer: true,
+    keploy: 'eBPF kernel-level',
     msw: false,
     polly: true,
     nock: false,
@@ -78,6 +88,7 @@ const featureMatrix: {
   {
     feature: 'JSON recordings in repo',
     mockifyer: true,
+    keploy: 'YAML testcases',
     msw: false,
     polly: 'Disk/localStorage',
     nock: false,
@@ -89,6 +100,7 @@ const featureMatrix: {
   {
     feature: 'Scenarios (switchable worlds)',
     mockifyer: true,
+    keploy: false,
     msw: false,
     polly: false,
     nock: false,
@@ -100,6 +112,7 @@ const featureMatrix: {
   {
     feature: 'Client lanes (multi-user isolation)',
     mockifyer: 'Redis/SQLite',
+    keploy: false,
     msw: false,
     polly: false,
     nock: false,
@@ -111,6 +124,7 @@ const featureMatrix: {
   {
     feature: 'Axios support',
     mockifyer: true,
+    keploy: 'Any client',
     msw: true,
     polly: true,
     nock: 'http module',
@@ -122,6 +136,7 @@ const featureMatrix: {
   {
     feature: 'Fetch / React Native',
     mockifyer: 'fetch + RN',
+    keploy: false,
     msw: 'Browser + Node + RN (msw/native)',
     polly: 'Browser + Node',
     nock: false,
@@ -133,6 +148,7 @@ const featureMatrix: {
   {
     feature: 'Date/time control',
     mockifyer: true,
+    keploy: false,
     msw: false,
     polly: 'Speed up/slow down',
     nock: false,
@@ -144,6 +160,7 @@ const featureMatrix: {
   {
     feature: 'GraphQL-aware matching',
     mockifyer: true,
+    keploy: false,
     msw: true,
     polly: false,
     nock: false,
@@ -155,6 +172,7 @@ const featureMatrix: {
   {
     feature: 'Live tracing UI (nested hops)',
     mockifyer: 'Atlas (t key)',
+    keploy: 'UI traces',
     msw: false,
     polly: false,
     nock: false,
@@ -166,6 +184,7 @@ const featureMatrix: {
   {
     feature: 'Dashboard / UI',
     mockifyer: 'Local web UI',
+    keploy: 'Web UI',
     msw: false,
     polly: false,
     nock: false,
@@ -177,6 +196,7 @@ const featureMatrix: {
   {
     feature: 'Deterministic E2E (launch args)',
     mockifyer: 'Maestro',
+    keploy: false,
     msw: false,
     polly: false,
     nock: false,
@@ -188,6 +208,7 @@ const featureMatrix: {
   {
     feature: 'Runtime toggle (opt-in/out)',
     mockifyer: true,
+    keploy: false,
     msw: false,
     polly: false,
     nock: false,
@@ -199,6 +220,7 @@ const featureMatrix: {
   {
     feature: 'AI integration (MCP)',
     mockifyer: 'Experimental',
+    keploy: false,
     msw: false,
     polly: false,
     nock: false,
@@ -233,6 +255,8 @@ const packages = [
 ]
 
 export default function Comparisons() {
+  const existingComparisons = getExistingContent(COMPARISONS)
+
   return (
     <div className="mx-auto max-w-5xl px-4 py-16 space-y-8">
       <header className="text-center">
@@ -293,6 +317,7 @@ export default function Comparisons() {
                 <tr className="border-b">
                   <th className="text-left p-3 font-semibold">Feature</th>
                   <th className="text-left p-3 font-semibold bg-primary/5">Mockifyer</th>
+                  <th className="text-left p-3 font-semibold">Keploy</th>
                   <th className="text-left p-3 font-semibold">MSW</th>
                   <th className="text-left p-3 font-semibold">Polly.js</th>
                   <th className="text-left p-3 font-semibold">Nock</th>
@@ -307,6 +332,7 @@ export default function Comparisons() {
                   <tr key={idx} className="border-b hover:bg-accent/50">
                     <td className="p-3 font-medium">{row.feature}</td>
                     <td className="p-3 bg-primary/5">{renderCell(row.mockifyer)}</td>
+                    <td className="p-3">{renderCell(row.keploy)}</td>
                     <td className="p-3">{renderCell(row.msw)}</td>
                     <td className="p-3">{renderCell(row.polly)}</td>
                     <td className="p-3">{renderCell(row.nock)}</td>
@@ -595,10 +621,41 @@ export default function Comparisons() {
             If you need a simple code-first mocking solution without file persistence, 
             consider MSW or Nock. For prototyping with an in-memory ORM, Mirage JS excels. 
             For JVM ecosystems or standalone mock servers, WireMock is battle-tested. 
-            For GUI-driven mocking, Mockoon offers a polished desktop experience.
+            For GUI-driven mocking, Mockoon offers a polished desktop experience. For backend 
+            integration testing with eBPF-level capture, Keploy provides infrastructure-level recording.
           </p>
         </CardContent>
       </Card>
+
+      {existingComparisons.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Detailed Comparisons</CardTitle>
+            <CardDescription>
+              In-depth head-to-head comparisons with specific tools
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 md:grid-cols-2">
+              {existingComparisons.map((comparison) => (
+                <Link
+                  key={comparison.path}
+                  to={comparison.path}
+                  className="p-4 border rounded-lg hover:border-primary/50 transition-colors group"
+                >
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-semibold group-hover:text-primary transition-colors">
+                      {comparison.title}
+                    </h4>
+                    <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-2">{comparison.summary}</p>
+                </Link>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

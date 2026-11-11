@@ -6,12 +6,12 @@
 
 | Package | Version | Purpose |
 |---------|---------|---------|
-| `@sgedda/mockifyer-core` | 1.10.190 | Types, matching, scenarios, dates, activation, AI context |
-| `@sgedda/mockifyer-axios` | 1.10.35 | `setupMockifyer` for Axios |
-| `@sgedda/mockifyer-fetch` | 1.8.106 | fetch, React Native, dashboard proxy |
-| `@sgedda/mockifyer-dashboard` | 1.5.93 | CLI + UI, Redis proxy, client lanes |
-| `@sgedda/mockifyer-mcp` | 0.1.5 | 42 MCP tools for Cursor/Claude (not on npm — build from `packages/mockifyer-mcp`) |
-| `@sgedda/mockifyer-test-helper` | 1.8.9 | Test utilities (not on npm — build from `packages/mockifyer-test-helper`) |
+| `@sgedda/mockifyer-core` | 1.10.190 | Mocks, scenarios, client lanes, date control, activation modes, providers |
+| `@sgedda/mockifyer-axios` | 1.10.35 | Axios integration for Node and backend services |
+| `@sgedda/mockifyer-fetch` | 1.8.106 | fetch, React Native, Metro sync, Atlas tracing (t key in Metro) |
+| `@sgedda/mockifyer-dashboard` | 1.5.93 | Web UI, Redis/SQLite, Network view, scenario/lane management, Date Config |
+| `@sgedda/mockifyer-mcp` | 0.1.5 | 42 MCP tools for Cursor/Claude (search, AI context, field overrides, explain_value) (not on npm — build from `packages/mockifyer-mcp`) |
+| `@sgedda/mockifyer-test-helper` | 1.8.9 | Test utilities and auto-setup for realistic mock data in tests (not on npm — build from `packages/mockifyer-test-helper`) |
 
 ## Setup (axios)
 
@@ -74,10 +74,24 @@ Dashboard mock API also exposes `/api/mocks/:file/ai-context` for lightweight fi
 
 Outbound headers: `x-mockifyer-request-id`, `x-mockifyer-parent-request-id` for multi-hop tracing.
 
+## Content Pages
+
+### Guides
+- [Mock at the Network Edge](https://mockifyer.dev/guides/mock-at-the-network-edge): Stop mocking hooks and components. Test what users see by mocking HTTP at the network edge.
+- [Reproduce Tester Bugs Locally](https://mockifyer.dev/guides/reproduce-tester-bugs): Capture API calls from tester devices and replay bugs locally with full tracing.
+- [Stable React Native E2E Tests](https://mockifyer.dev/guides/stable-react-native-e2e): Lock scenarios with launch arguments, freeze dates, and make Detox, Appium, and Maestro tests deterministic.
+- [Stop Mock Drift](https://mockifyer.dev/guides/mock-drift): Record real responses, re-record when APIs change, and git diff to catch breaking changes.
+- [React Native: Handlers vs Recording](https://mockifyer.dev/guides/react-native-without-msw): Compare MSW and Mockifyer for React Native. Recording works on device with no service worker.
+
+### Comparisons
+
+
 ## Links
 
 - https://mockifyer.dev
 - https://mockifyer.dev/getting-started.md
 - https://mockifyer.dev/config-reference.md
 - https://mockifyer.dev/e2e-tutorial
+- https://mockifyer.dev/packages
+- https://mockifyer.dev/guides
 - https://github.com/sgedda/mockifyer
