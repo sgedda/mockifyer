@@ -3,8 +3,8 @@ import fs from 'fs';
 import path from 'path';
 
 async function optimizeOgImage() {
-  const inputPath = path.join(__dirname, '../frontend/public/og-image.png');
-  const outputPath = path.join(__dirname, '../frontend/public/og-image-optimized.png');
+  const inputPath = path.join(__dirname, '../public/og-image.png');
+  const outputPath = path.join(__dirname, '../public/og-image-optimized.png');
   
   console.log('Optimizing og-image.png...');
   
@@ -38,8 +38,8 @@ async function optimizeOgImage() {
 }
 
 async function createFavicon() {
-  const svgPath = path.join(__dirname, '../frontend/public/favicon.svg');
-  const icoPath = path.join(__dirname, '../frontend/public/favicon.ico');
+  const svgPath = path.join(__dirname, '../public/favicon.svg');
+  const icoPath = path.join(__dirname, '../public/favicon.ico');
   
   console.log('\nGenerating favicon.ico from favicon.svg...');
   

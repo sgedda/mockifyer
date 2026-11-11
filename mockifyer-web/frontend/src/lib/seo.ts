@@ -2,7 +2,7 @@ export const SITE_URL = 'https://mockifyer.dev'
 export const SITE_NAME = 'Mockifyer'
 
 export const DEFAULT_TITLE =
-  'Mockifyer — Record & Replay HTTP API Mocks for Node.js'
+  'Mockifyer — Record & Replay HTTP API Mocks'
 
 export const DEFAULT_DESCRIPTION =
   'Record axios and fetch calls as JSON and replay them in Node and React Native. Selective recording by default; mocks stay in your repo.'
@@ -113,6 +113,12 @@ export const PAGE_SEO: Record<string, PageSeoConfig> = {
     description:
       'Compare MSW and Mockifyer for React Native. Recording works on device with no service worker, supports Expo and bare React Native.',
     path: '/guides/react-native-without-msw',
+  },
+  '/guides/browser-record-replay': {
+    title: 'Record and Replay HTTP in the Browser',
+    description:
+      'Use Mockifyer to record and replay HTTP fetch calls in browser environments, Expo web builds, and Vite projects with the memory provider.',
+    path: '/guides/browser-record-replay',
   },
   '/features': {
     title: 'Mockifyer Features: Record, Replay, Scenarios',

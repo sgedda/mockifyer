@@ -1,105 +1,155 @@
 # @sgedda/mockifyer-fetch
 
-Record and replay fetch HTTP calls as JSON mocks for Node.js and React Native.
-
-## Overview
-
-`@sgedda/mockifyer-fetch` intercepts fetch requests (node-fetch, undici, React Native's native fetch) at the network layer, recording real API responses as JSON files and replaying them in tests.
-
-**Features:**
-- ✅ Selective recording by default (mark-and-capture, not capture-all)
-- ✅ Scenario switching for different data states
-- ✅ GraphQL query normalization and matching
-- ✅ Date/time control for time-dependent tests
-- ✅ **React Native and Expo support** (no service workers required)
-- ✅ Works with existing fetch code
+HTTP mock record/replay for `fetch` API with in-memory provider support for browser and Expo web.
 
 ## Installation
 
 ```bash
-npm install @sgedda/mockifyer-fetch
+npm install @sgedda/mockifyer-fetch @sgedda/mockifyer-core
 ```
 
-## Quick Start (Node.js)
-
-### 1. Setup (before fetch calls)
+## Node.js Usage
 
 ```typescript
 import { setupMockifyer } from '@sgedda/mockifyer-fetch';
 
-setupMockifyer({
+const mockifyer = setupMockifyer({
   mockDataPath: './mock-data',
-  recordMode: false, // Set to true to record
-  scenario: 'default',
+  recordMode: false,
+  useGlobalFetch: true
 });
+
+// Your fetch calls are now mocked
+const response = await fetch('https://api.example.com/data');
 ```
 
-### 2. Use fetch normally
+## Browser & Expo Web Usage
+
+Mockifyer works in browsers and Expo web builds with the memory provider and preloaded fixtures.
+
+### Requirements
+
+- Only the `memory` provider is supported (no filesystem/Redis/SQLite in browsers)
+- Fixtures must be preloaded via `databaseProvider.options.fixtures`
+- Uses Web Crypto API for hashing (or pure-JS fallback)
+
+### Browser Example
 
 ```typescript
-const response = await fetch('https://api.example.com/users');
-const data = await response.json();
-```
-
-### 3. Record mocks
-
-```bash
-MOCKIFYER_RECORD=true npm test
-```
-
-Responses are saved to `./mock-data/default/` as JSON.
-
-## React Native / Expo
-
-For React Native setup, see the [React Native guide](https://mockifyer.dev/guides/react-native-without-msw).
-
-```typescript
-// App.tsx or index.js (before any HTTP calls)
 import { setupMockifyer } from '@sgedda/mockifyer-fetch';
+import rates from './fixtures/api.frankfurter.dev/v1/latest.json';
 
-setupMockifyer({
-  scenario: 'default',
-  mockifyerMode: 'launch_client', // Only activate when launched with scenario
+const mockifyer = setupMockifyer({
+  mockDataPath: './fixtures',
+  databaseProvider: {
+    type: 'memory',
+    options: {
+      fixtures: [rates]  // Preload your mock data
+    }
+  },
+  recordMode: false,
+  failOnMissingMock: true,  // Recommended for testing
+  useGlobalFetch: true       // Patch global fetch
 });
+
+// Fetch will use the preloaded mock
+const response = await fetch('https://api.frankfurter.dev/v1/latest');
+const data = await response.json();
+console.log(data);  // Returns your mock data
 ```
 
-Launch with a scenario:
+### Expo Web Example
 
-```bash
-# iOS
-npx expo start --ios -- --scenario happy-path
+```javascript
+// App.js
+import { setupMockifyer } from '@sgedda/mockifyer-fetch';
+import frankfurterRates from './fixtures/frankfurter-rates.json';
 
-# Android
-npx expo start --android -- --scenario happy-path
+export default function App() {
+  useEffect(() => {
+    // Initialize mockifyer on mount
+    setupMockifyer({
+      mockDataPath: './fixtures',
+      databaseProvider: {
+        type: 'memory',
+        options: {
+          fixtures: [frankfurterRates]
+        }
+      },
+      recordMode: false,
+      failOnMissingMock: true,
+      useGlobalFetch: true
+    });
+  }, []);
+
+  const fetchData = async () => {
+    const response = await fetch('https://api.frankfurter.dev/v1/latest');
+    const data = await response.json();
+    console.log(data);  // Returns your mock data
+  };
+
+  // ... rest of your component
+}
 ```
 
-## Environment Variables
+### Fixture Format
 
-- `MOCKIFYER_MODE=on|off|launch_client` — Enable/disable mocking
-- `MOCKIFYER_RECORD=true|false` — Record new mocks
-- `MOCKIFYER_PATH=./mock-data` — Mock storage path
-- `MOCKIFYER_SCENARIO=scenario-name` — Active scenario
+Fixtures are JSON files with this structure:
 
-See the [Configuration Reference](https://mockifyer.dev/config-reference) for all options.
+```json
+{
+  "request": {
+    "method": "GET",
+    "url": "https://api.example.com/endpoint",
+    "headers": {},
+    "queryParams": {}
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "data": {
+      "result": "your mock data here"
+    }
+  },
+  "timestamp": "2024-01-15T10:00:00.000Z"
+}
+```
 
-## Documentation
+### Bundler Configuration
 
-Full documentation at **[mockifyer.dev](https://mockifyer.dev)**:
+Mockifyer uses package.json `browser` field mappings to automatically resolve browser-safe modules. Modern bundlers (Metro, Vite, webpack, esbuild) honor these mappings automatically.
 
-- [Getting Started](https://mockifyer.dev/getting-started)
-- [React Native Without MSW](https://mockifyer.dev/guides/react-native-without-msw)
-- [E2E Tutorial](https://mockifyer.dev/e2e-tutorial)
+**Metro (Expo)**:
+- Works out of the box with `npx expo export --platform web`
+- Uses the browser entry point automatically
 
-## Related Packages
+**Vite**:
+- Add `conditions: ['browser']` to your config if needed
 
-- **[@sgedda/mockifyer-core](https://www.npmjs.com/package/@sgedda/mockifyer-core)** — Core utilities (auto-installed as dependency)
-- **[@sgedda/mockifyer-axios](https://www.npmjs.com/package/@sgedda/mockifyer-axios)** — For axios instead of fetch
-- **[@sgedda/mockifyer-dashboard](https://www.npmjs.com/package/@sgedda/mockifyer-dashboard)** — Local UI and CLI for browsing mocks
+**webpack**:
+- The `browser` field is respected by default
 
-## License
+### Browser Compatibility
 
-MIT
+- ✅ Chrome, Firefox, Safari, Edge (modern versions)
+- ✅ Expo web (Metro bundler)
+- ✅ Vite, webpack, esbuild (with `platform: 'browser'`)
+- ❌ Node.js built-ins are not available (fs, path, crypto → Web Crypto)
+- ❌ Redis, SQLite providers not supported (use `memory` only)
 
-## Repository
+### Limitations in Browser
 
-[https://github.com/sgedda/mockifyer](https://github.com/sgedda/mockifyer)
+- No filesystem access (no recording, no file-based mocks)
+- No Redis/SQLite support
+- All fixtures must be preloaded at initialization
+- Request correlation is simplified (header-only)
+- No Atlas HTML generation
+- No screenshot capture
+
+### See Also
+
+- [@sgedda/mockifyer-core](../mockifyer-core/README.md) - Core types and providers
+- [Full documentation](https://mockifyer.dev)
+- [GitHub repository](https://github.com/sgedda/mockifyer)

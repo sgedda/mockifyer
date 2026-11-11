@@ -73,8 +73,9 @@ app.use((req, res, next) => {
 const REDIRECTS: Record<string, string> = {
   '/playground': '/getting-started',
   '/settings': '/date-config',
-  '/timeline': '/dashboard',
+  '/timeline': '/dashboard#network',
   '/index.html': '/',
+  '/browser-guide': '/guides/browser-record-replay',
 };
 
 app.use((req, res, next) => {
@@ -553,6 +554,7 @@ const HTML_ROUTES = [
   '/guides/stable-react-native-e2e',
   '/guides/mock-drift',
   '/guides/react-native-without-msw',
+  '/guides/browser-record-replay',
 ];
 
 // Fallback to index.html for SPA routing (GET requests only)

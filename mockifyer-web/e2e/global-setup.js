@@ -19,6 +19,21 @@ async function globalSetup() {
     // Don't fail completely - packages might already be built
     console.log('Continuing with tests...\n');
   }
+
+  console.log('\n=== Building frontend for e2e tests ===\n');
+  const mockifyerWebDir = path.resolve(__dirname, '..');
+  
+  try {
+    console.log('Running frontend build...');
+    execSync('npm run build:frontend', {
+      stdio: 'inherit',
+      cwd: mockifyerWebDir,
+    });
+    console.log('\n=== Frontend build complete! ===\n');
+  } catch (error) {
+    console.error('Failed to build frontend:', error);
+    throw error; // Frontend build is required for tests to work
+  }
 }
 
 module.exports = globalSetup;

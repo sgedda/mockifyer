@@ -62,6 +62,14 @@ jobs:
                   cd ..
                   test -f public/index.html
                   test -d public/assets
+                  echo "Compiling prerender script..."
+                  ./frontend/node_modules/.bin/tsc scripts/prerender-static.ts --outDir scripts --module commonjs --target es2020 --esModuleInterop --skipLibCheck || true
+                  echo "Running static HTML generation for SEO..."
+                  node scripts/prerender-static.js
+                  echo "Verifying per-route HTML files..."
+                  test -f public/features.html
+                  test -f public/faq.html
+                  test -f public/guides/react-native-without-msw.html
                   tar -czf spa-railway-upload.tar.gz -C public .
                   ls -lh spa-railway-upload.tar.gz
                   # Must be uploadable without --no-gitignore
@@ -69,7 +77,7 @@ jobs:
                     echo "spa-railway-upload.tar.gz is gitignored — Railway would skip it"
                     exit 1
                   fi
-                  echo "Prebuilt frontend tarball ready"
+                  echo "Prebuilt frontend tarball with per-route HTML ready"
 
             - name: Install Railway CLI
               run: npm install -g @railway/cli

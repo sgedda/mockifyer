@@ -1,13 +1,8 @@
 import { launch } from 'puppeteer';
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Core routes
-const CORE_ROUTES = [
+const ROUTES = [
   '/',
   '/getting-started',
   '/date-config',
@@ -19,24 +14,15 @@ const CORE_ROUTES = [
   '/packages',
   '/dashboard',
   '/comparisons',
-  '/guides',
+  '/guides/mock-at-the-network-edge',
+  '/guides/reproduce-tester-bugs',
+  '/guides/stable-react-native-e2e',
+  '/guides/mock-drift',
+  '/guides/react-native-without-msw',
 ];
 
-async function getContentRoutes() {
-  try {
-    const { getAllExistingContent } = await import('../frontend/src/lib/content-registry.js');
-    const contentPages = getAllExistingContent();
-    return contentPages.map((item) => item.path);
-  } catch (e) {
-    console.warn('Could not load content registry, using core routes only');
-    return [];
-  }
-}
-
 async function prerender() {
-  const contentRoutes = await getContentRoutes();
-  const ROUTES = [...CORE_ROUTES, ...contentRoutes];
-  const publicDir = path.join(__dirname, '../../public');
+  const publicDir = path.join(__dirname, '../public');
   
   // Use the built static files - serve them via http-server or similar
   // For now, we'll prerender from the Vite preview server
@@ -69,7 +55,7 @@ async function prerender() {
       });
 
       // Wait a bit more for React to fully render and SEO updates to apply
-      await page.waitForTimeout(1000);
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
       // Get the fully rendered HTML
       const html = await page.content();
@@ -107,10 +93,12 @@ async function prerender() {
   }
 }
 
-// Run
-prerender().catch((error) => {
-  console.error('Prerender failed:', error);
-  process.exit(1);
-});
+// Run if called directly
+if (require.main === module) {
+  prerender().catch((error) => {
+    console.error('Prerender failed:', error);
+    process.exit(1);
+  });
+}
 
 export { prerender };
