@@ -5,8 +5,19 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "react-native": "dist/react-native.js",
+  "browser": {
+    "./dist/index.js": "./dist/index.browser.js",
+    "./dist/core-proxy.js": "./dist/core-proxy.browser.js",
+    "./dist/node-capabilities.js": "./dist/node-capabilities.browser.js",
+    "./dist/node-capabilities.node.js": "./dist/node-capabilities.browser.js",
+    "./src/index.ts": "./src/index.browser.ts",
+    "./src/node-capabilities.ts": "./src/node-capabilities.browser.ts",
+    "./src/node-capabilities.node.ts": "./src/node-capabilities.browser.ts",
+    "./src/core-proxy.ts": "./src/core-proxy.browser.ts"
+  },
   "exports": {
     ".": {
+      "browser": "./dist/index.browser.js",
       "react-native": "./dist/react-native.js",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"

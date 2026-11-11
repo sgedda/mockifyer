@@ -10,7 +10,6 @@ import {
   MOCKIFYER_DEVICE_ID_HEADER,
   resolveMockifyerTraceFromHeaders,
 } from '@sgedda/mockifyer-core';
-import { performDashboardProxyRequest } from '../core-proxy';
 
 function headerContentType(headers: Headers): string | undefined {
   const contentType = headers.get('content-type');
@@ -198,6 +197,19 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
       headers.forEach((value, key) => {
         headerRecord[key] = value;
       });
+      
+      // Browser check: proxy requires Node
+      if (typeof process === 'undefined' || !process.versions?.node) {
+        throw new Error(
+          '[Mockifyer Browser] Dashboard proxy requires Node.js. ' +
+          'Use databaseProvider: { type: "memory", options: { fixtures: [...] } } for browser builds.'
+        );
+      }
+      
+      // This require() will be dead code in browser builds due to the check above,
+      // but esbuild still sees it. The solution is to ensure browser builds never
+      // configure proxy.baseUrl (validated in setupMockifyer browser entry).
+      const { performDashboardProxyRequest } = require('../core-proxy');
       return performDashboardProxyRequest({
         proxyBaseUrl: this.proxyBaseUrl,
         url,

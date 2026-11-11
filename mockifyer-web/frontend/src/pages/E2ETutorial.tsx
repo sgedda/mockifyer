@@ -4,7 +4,7 @@ import CodeBlock from '@/components/CodeBlock'
 
 export default function E2ETutorial() {
   return (
-    <div className="mx-auto max-w-4xl px-5 py-12 space-y-8">
+    <div className="mx-auto max-w-[1200px] px-5 py-12 space-y-8">
       <header className="space-y-4">
         <div className="flex items-center gap-3">
           <Play className="h-8 w-8 text-primary flex-shrink-0" />
@@ -55,14 +55,13 @@ export default function E2ETutorial() {
             </a>
           </div>
           
-          <div className="p-4 border border-amber-500/50 bg-amber-500/10 rounded-md">
+          <div className="p-4 border border-blue-500/50 bg-blue-500/10 rounded-md">
             <div className="flex gap-2">
-              <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-              <div className="text-amber-900 dark:text-amber-200 text-sm">
-                <strong>Branch note:</strong> The GUI tests, <code className="bg-muted px-1 rounded">E2E_PRESENTATION</code>, 
-                <code className="bg-muted px-1 rounded ml-1">npm run artifacts</code>, the from-scratch test and the tracing and 
-                delay tests are on PR #487 (<code className="bg-muted px-1 rounded">cursor/e2e-dashboard-gui-videos-7d37</code>). 
-                Until #487 merges, check out that branch.
+              <AlertCircle className="h-4 w-4 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+              <div className="text-blue-900 dark:text-blue-200 text-sm">
+                <strong>Getting started:</strong> The recordings below demonstrate the WanderWeird demo stack from the 
+                Mockifyer repository. To use Mockifyer in your own project, install the packages from npm (section 3) 
+                and follow the quick start setup (section 4).
               </div>
             </div>
           </div>
@@ -218,30 +217,51 @@ export default function E2ETutorial() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Terminal className="h-5 w-5" />
-            3. Clone and install
+            3. Install Mockifyer
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <CodeBlock code={`git clone https://github.com/sgedda/mockifyer && cd mockifyer
-git checkout cursor/e2e-dashboard-gui-videos-7d37   # until #487 is merged
+          <p className="text-sm text-muted-foreground">
+            Install published packages from npm for use in your own services:
+          </p>
+          
+          <div className="space-y-3">
+            <div>
+              <h4 className="font-semibold text-sm mb-2">Node.js services (fetch)</h4>
+              <CodeBlock code={`npm install @sgedda/mockifyer-core @sgedda/mockifyer-fetch`} language="bash" />
+            </div>
+            
+            <div>
+              <h4 className="font-semibold text-sm mb-2">Node.js services (axios)</h4>
+              <CodeBlock code={`npm install @sgedda/mockifyer-core @sgedda/mockifyer-axios`} language="bash" />
+            </div>
+            
+            <div>
+              <h4 className="font-semibold text-sm mb-2">Dashboard CLI</h4>
+              <CodeBlock code={`npm install -g @sgedda/mockifyer-dashboard
+
+# Or run without installing globally:
+npx @sgedda/mockifyer-dashboard --provider sqlite --path ./mock-data --port 3002`} language="bash" />
+            </div>
+          </div>
+
+          <div className="p-4 border border-blue-500/20 bg-blue-500/5 rounded-md mt-4">
+            <h4 className="font-semibold text-sm mb-2">To run the WanderWeird e2e demo (recordings below)</h4>
+            <p className="text-sm text-muted-foreground mb-2">
+              Clone the repo for the example app and e2e tests. The demo uses <code className="bg-muted px-1 rounded text-xs">file:</code> dependencies 
+              to local package builds (<code className="bg-muted px-1 rounded text-xs">packages/mockifyer-*</code>) for development:
+            </p>
+            <CodeBlock code={`git clone https://github.com/sgedda/mockifyer && cd mockifyer
 npm ci
 
-# Build the Mockifyer packages (same as the CI step)
-(
-cd packages/mockifyer-core && npm ci && npm run build
-cd ../mockifyer-axios && npm ci && npm run build
-cd ../mockifyer-fetch && npm ci && npm run build
-cd ../mockifyer-dashboard && npm ci && npm run build:backend
-(cd frontend && npm ci && npm run build)
-cd ../mockifyer-mcp && npm ci && npm run build
-)
+# Build Mockifyer packages (demo and e2e depend on these local builds)
+sh packages/build-all.sh
 
-# Install the demo app
-(
+# Install the example app
 cd example-projects/wanderweird-travel
 npm ci --legacy-peer-deps
-cd apps/mobile && npm ci --legacy-peer-deps
-)`} language="bash" />
+cd apps/mobile && npm ci --legacy-peer-deps`} language="bash" />
+          </div>
         </CardContent>
       </Card>
 
@@ -249,67 +269,80 @@ cd apps/mobile && npm ci --legacy-peer-deps
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Play className="h-5 w-5" />
-            4. Start the stack and run the tests
+            4. Getting started: basic setup and recording model
           </CardTitle>
-          <CardDescription>
-            Use one terminal per process
-          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            The commands are from <code className="bg-muted px-1 rounded">.github/workflows/e2e.yml</code>.
-          </p>
-
           <div>
-            <h4 className="font-semibold mb-2 text-sm">Starting the services</h4>
-            <CodeBlock code={`# 1. Dashboard (sqlite) on :3002
-cd example-projects/wanderweird-travel
-npx mockifyer-dashboard --provider sqlite --path ./mock-data --port 3002 --host 127.0.0.1
+            <h4 className="font-semibold mb-2 text-sm">1. Start the dashboard</h4>
+            <CodeBlock code={`# Start dashboard with sqlite provider (supports tracing)
+npx @sgedda/mockifyer-dashboard --provider sqlite --path ./mock-data --port 3002
 
-# 2. Optional: second dashboard (branch build) on :3012 for main-features.spec.ts
-mkdir -p /tmp/mockifyer-main-data
-node packages/mockifyer-dashboard/bin/mockifyer-dashboard --provider sqlite \\
-  --path /tmp/mockifyer-main-data --port 3012 --host 127.0.0.1      # run from the repo root
-
-# 3. WanderWeird services in proxy mode (gateway :4200 ... wander-api :4203)
-cd example-projects/wanderweird-travel && npm run dev:proxy:record
-
-# 4. Expo web (Metro) on :8090, with the client id the dashboard lanes key on
-cd example-projects/wanderweird-travel/apps/mobile
-EXPO_PUBLIC_MOCKIFYER_CLIENT_ID=wanderweird-demo npx expo start --web --port 8090`} language="bash" />
+# Or filesystem provider (simpler, no tracing)
+npx @sgedda/mockifyer-dashboard --provider filesystem --path ./mock-data --port 3002`} language="bash" />
           </div>
 
           <div>
-            <h4 className="font-semibold mb-2 text-sm">Running the tests</h4>
-            <CodeBlock code={`dev@wanderweird:~/mockifyer/e2e$ npm ci && npx playwright install chromium
-dev@wanderweird:~/mockifyer/e2e$ npm test              # everything (API, app and GUI)
-dev@wanderweird:~/mockifyer/e2e$ npm run test:gui      # dashboard GUI tests only (always recorded)
-dev@wanderweird:~/mockifyer/e2e$ E2E_PRESENTATION=1 npm run test:gui   # slow, readable recordings
-dev@wanderweird:~/mockifyer/e2e$ npm run artifacts     # side-by-side mp4 + .md per test, e2e-run-summary.md
-dev@wanderweird:~/mockifyer/e2e$ npm run test:main     # main-features.spec.ts against :3012
-dev@wanderweird:~/mockifyer/e2e$ npm run report        # Playwright HTML report`} language="bash" />
+            <h4 className="font-semibold mb-2 text-sm">2. Initialize Mockifyer in your service (Node.js + fetch)</h4>
+            <CodeBlock code={`import { initMockifyerForDashboardProxy } from '@sgedda/mockifyer-fetch';
+
+await initMockifyerForDashboardProxy({
+  dashboardBaseUrl: 'http://127.0.0.1:3002',
+  mockDataPath: './mock-data',
+  useGlobalFetch: true,
+  config: {
+    clientId: 'my-service',
+    activationMode: 'always',  // All requests routed through dashboard
+    logging: 'info',
+  },
+});
+
+// Now all fetch() calls go through the dashboard proxy
+const response = await fetch('https://api.example.com/data');`} language="typescript" />
+            <p className="text-xs text-muted-foreground mt-2">
+              For axios, use <code className="bg-muted px-1 rounded">@sgedda/mockifyer-axios</code> with{' '}
+              <code className="bg-muted px-1 rounded">createMockifyerAxiosConfig</code>.
+            </p>
           </div>
 
-          <div className="p-4 bg-muted rounded-md text-sm space-y-2">
-            <p>
-              <code className="bg-background px-1 rounded">global-setup.ts</code> stops early if a piece is down. 
-              Override the URLs with <code className="bg-background px-1 rounded">APP_URL</code>,{' '}
-              <code className="bg-background px-1 rounded">MOCKIFYER_DASHBOARD_URL</code>,{' '}
-              <code className="bg-background px-1 rounded">GATEWAY_URL</code> or{' '}
-              <code className="bg-background px-1 rounded">MAIN_DASHBOARD_URL</code>.{' '}
-              <code className="bg-background px-1 rounded">npm run artifacts</code> writes{' '}
-              <code className="bg-background px-1 rounded">gui-videos/&lt;spec&gt;--&lt;test&gt;.mp4</code> (1662×800, ffmpeg{' '}
-              <code className="bg-background px-1 rounded">hstack</code>) plus a Markdown file per test.
-            </p>
-            <p>
-              Presentation mode outlines the element being changed, holds 2.5 s before and after each value change, 
-              types at 120 ms per key and holds 1 s on navigation clicks. The assertions are the same. Locally, 
-              the six demo-stack GUI tests take about 45 s with it off and about 5 min with it on.
-            </p>
-            <p>
-              In every GUI test, the dashboard opens on its start screen (Statistics) and reaches each page by clicking. 
-              The app opens at its login screen in a fresh browser context, signs in as{' '}
-              <code className="bg-background px-1 rounded">wanderer</code>, then clicks Discover and shows <strong>99°</strong>.
+          <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-md">
+            <h4 className="font-semibold mb-2 text-blue-900 dark:text-blue-200">Recording model (selective by default)</h4>
+            <div className="text-sm text-muted-foreground space-y-2">
+              <p>
+                <strong className="text-foreground">Default:</strong> Requests are saved as <strong>request-only stubs</strong> into 
+                the <code className="bg-muted px-1 rounded">_scratch</code> scenario and keep going to the live API until you activate them.
+              </p>
+              <p>
+                <strong className="text-foreground">Activate a mock:</strong> Use the dashboard to change a stub from <strong>passthrough</strong> (live) 
+                to <strong>stored</strong>, <strong>refresh-next</strong>, or use domain/path rules. The next matching request captures the response body.
+              </p>
+              <p>
+                <strong className="text-foreground">Capture everything (quick exploration):</strong> Set{' '}
+                <code className="bg-muted px-1 rounded">MOCKIFYER_RECORD_RESPONSES=true</code> env or{' '}
+                <code className="bg-muted px-1 rounded">recordResponses: true</code> config to immediately save full responses. 
+                This creates large mock directories — selective recording is recommended for production.
+              </p>
+            </div>
+          </div>
+
+          <div>
+            <h4 className="font-semibold mb-2 text-sm">3. Activation mode (controls which requests are proxied)</h4>
+            <CodeBlock code={`// activationMode: 'always' — all outbound requests routed through dashboard
+config: { activationMode: 'always' }
+
+// activationMode: 'client_id_header' — only requests with x-mockifyer-client-id header
+config: {
+  activationMode: 'client_id_header',
+  clientId: 'my-service',
+}
+
+// Then send header on requests you want proxied:
+fetch('https://api.example.com/data', {
+  headers: { 'x-mockifyer-client-id': 'my-service' }  // matches clientId
+});`} language="typescript" />
+            <p className="text-xs text-muted-foreground mt-2">
+              <code className="bg-muted px-1 rounded">activationMode</code> controls <strong>which requests are routed through</strong> the 
+              dashboard proxy, not whether responses are captured. Recording is selective by default (request-only stubs).
             </p>
           </div>
         </CardContent>
@@ -317,7 +350,75 @@ dev@wanderweird:~/mockifyer/e2e$ npm run report        # Playwright HTML report`
 
       <Card>
         <CardHeader>
-          <CardTitle>5. Walkthrough: one scenario per test</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <Terminal className="h-5 w-5" />
+            5. Run the WanderWeird e2e demo
+          </CardTitle>
+          <CardDescription>
+            Commands to reproduce the recordings shown below
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            After cloning and building (section 3), start the demo stack and run the e2e tests:
+          </p>
+
+          <div>
+            <h4 className="font-semibold mb-2 text-sm">Starting the demo services</h4>
+            <CodeBlock code={`# 1. Dashboard (sqlite) on :3002
+cd example-projects/wanderweird-travel
+npx mockifyer-dashboard --provider sqlite --path ./mock-data --port 3002 --host 127.0.0.1
+
+# 2. WanderWeird services in proxy mode (gateway :4200 ... wander-api :4203)
+npm run dev:proxy:record
+
+# 3. Expo web (Metro) on :8090
+cd apps/mobile
+EXPO_PUBLIC_MOCKIFYER_CLIENT_ID=wanderweird-demo npx expo start --web --port 8090`} language="bash" />
+          </div>
+
+          <div>
+            <h4 className="font-semibold mb-2 text-sm">Running the e2e tests</h4>
+            <CodeBlock code={`cd e2e
+npm ci && npx playwright install chromium
+
+npm test              # everything (API, app and GUI)
+npm run test:gui      # dashboard GUI tests only (always recorded)
+npm run artifacts     # side-by-side mp4 + .md per test, e2e-run-summary.md
+
+# Presentation mode: slow, readable recordings with 2.5s holds
+E2E_PRESENTATION=1 npm run test:gui
+
+npm run report        # Playwright HTML report`} language="bash" />
+          </div>
+
+          <div className="p-4 bg-muted rounded-md text-sm space-y-2">
+            <p>
+              <code className="bg-background px-1 rounded">global-setup.ts</code> stops early if a piece is down. 
+              Override URLs with <code className="bg-background px-1 rounded">APP_URL</code>,{' '}
+              <code className="bg-background px-1 rounded">MOCKIFYER_DASHBOARD_URL</code>, or{' '}
+              <code className="bg-background px-1 rounded">GATEWAY_URL</code>.{' '}
+              <code className="bg-background px-1 rounded">npm run artifacts</code> writes{' '}
+              <code className="bg-background px-1 rounded">gui-videos/&lt;spec&gt;--&lt;test&gt;.mp4</code> (1662×800, ffmpeg{' '}
+              <code className="bg-background px-1 rounded">hstack</code>) plus a Markdown file per test.
+            </p>
+            <p>
+              <strong>Presentation mode</strong> (<code className="bg-background px-1 rounded">E2E_PRESENTATION=1</code>): outlines 
+              changed elements, holds 2.5 s before and after value changes, types at 120 ms per key. Locally, the six GUI tests 
+              take about 45 s with it off and about 5 min with it on.
+            </p>
+            <p>
+              In every GUI test, the dashboard opens on its start screen (Statistics) and reaches each page by clicking. 
+              The app opens at login, signs in as <code className="bg-background px-1 rounded">wanderer</code>, then clicks Discover 
+              and shows <strong>99°</strong>.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>6. Walkthrough: one scenario per test</CardTitle>
           <CardDescription>
             Nine test scenarios demonstrating different features
           </CardDescription>
@@ -332,7 +433,7 @@ dev@wanderweird:~/mockifyer/e2e$ npm run report        # Playwright HTML report`
           
           <div className="space-y-4">
             <div className="p-4 border rounded-lg">
-              <h4 className="font-semibold mb-2">5.1 Mock editor: response body edit</h4>
+              <h4 className="font-semibold mb-2">6.1 Mock editor: response body edit</h4>
               <p className="text-sm text-muted-foreground mb-2">
                 <strong>You'll see:</strong> sidebar Mocks, then search{' '}
                 <code className="bg-muted px-1 rounded text-xs">latitude=37.9838</code>, Expand all, and click the 
@@ -362,7 +463,7 @@ dev@wanderweird:~/mockifyer/e2e$ npm run report        # Playwright HTML report`
             </div>
 
             <div className="p-4 border rounded-lg">
-              <h4 className="font-semibold mb-2">5.2 Overrides page: field override</h4>
+              <h4 className="font-semibold mb-2">6.2 Overrides page: field override</h4>
               <p className="text-sm text-muted-foreground mb-2">
                 <strong>You'll see:</strong> in Overrides, Add field override{' '}
                 <code className="bg-muted px-1 rounded text-xs">current.temperature_2m</code> = 61 → Save overlays → Open mock.
@@ -390,7 +491,7 @@ dev@wanderweird:~/mockifyer/e2e$ npm run report        # Playwright HTML report`
             </div>
 
             <div className="p-4 border rounded-lg">
-              <h4 className="font-semibold mb-2">5.3 Status override 503</h4>
+              <h4 className="font-semibold mb-2">6.3 Status override 503</h4>
               <p className="text-sm text-muted-foreground mb-2">
                 <strong>You'll see:</strong> mock editor → Status Override = 503. The app shows <strong>18°</strong>.
               </p>
@@ -416,7 +517,7 @@ dev@wanderweird:~/mockifyer/e2e$ npm run report        # Playwright HTML report`
             </div>
 
             <div className="p-4 border rounded-lg">
-              <h4 className="font-semibold mb-2">5.4 Settings: client lane</h4>
+              <h4 className="font-semibold mb-2">6.4 Settings: client lane</h4>
               <p className="text-sm text-muted-foreground mb-2">
                 <strong>You'll see:</strong> Settings → Client lanes, where the lane scenario goes heatwave → 
                 rainy-weekend → guide-demo-2. The app shows <strong>44° → 11° → 99°</strong>.
@@ -443,7 +544,7 @@ dev@wanderweird:~/mockifyer/e2e$ npm run report        # Playwright HTML report`
             </div>
 
             <div className="p-4 border rounded-lg">
-              <h4 className="font-semibold mb-2">5.5 Header scenario picker (strict lanes)</h4>
+              <h4 className="font-semibold mb-2">6.5 Header scenario picker (strict lanes)</h4>
               <p className="text-sm text-muted-foreground mb-2">
                 <strong>You'll see:</strong> the lane is removed and the header picker is set to heatwave. 
                 The app keeps showing <strong>live</strong> weather, not 44°. Ticking "Lane global fallback" 
@@ -472,7 +573,7 @@ dev@wanderweird:~/mockifyer/e2e$ npm run report        # Playwright HTML report`
             </div>
 
             <div className="p-4 border rounded-lg">
-              <h4 className="font-semibold mb-2">5.6 Network view</h4>
+              <h4 className="font-semibold mb-2">6.6 Network view</h4>
               <p className="text-sm text-muted-foreground mb-2">
                 <strong>You'll see:</strong> the lane and header are both set to heatwave. Network is filtered 
                 to the lane, then Clear and an app reload. The app shows <strong>44°</strong>.
@@ -500,7 +601,7 @@ dev@wanderweird:~/mockifyer/e2e$ npm run report        # Playwright HTML report`
             </div>
 
             <div className="p-4 border rounded-lg">
-              <h4 className="font-semibold mb-2">5.7 From scratch: mock only Open-Meteo</h4>
+              <h4 className="font-semibold mb-2">6.7 From scratch: mock only Open-Meteo</h4>
               <p className="text-sm text-muted-foreground mb-3">
                 4 min 27 s in presentation mode. It uses its own empty dashboard on :3022.
               </p>
@@ -563,7 +664,7 @@ dev@wanderweird:~/mockifyer/e2e$ npm run report        # Playwright HTML report`
             </div>
 
             <div className="p-4 border rounded-lg">
-              <h4 className="font-semibold mb-2">5.8 Tracing walkthrough</h4>
+              <h4 className="font-semibold mb-2">6.8 Tracing walkthrough</h4>
               <p className="text-sm text-muted-foreground mb-3">
                 4 min 23 s in presentation mode.
               </p>
@@ -613,7 +714,7 @@ dev@wanderweird:~/mockifyer/e2e$ npm run report        # Playwright HTML report`
             </div>
 
             <div className="p-4 border rounded-lg">
-              <h4 className="font-semibold mb-2">5.9 Delay and status override on one endpoint</h4>
+              <h4 className="font-semibold mb-2">6.9 Delay and status override on one endpoint</h4>
               <p className="text-sm text-muted-foreground mb-3">
                 3 min 7 s in presentation mode. The test is in{' '}
                 <code className="bg-muted px-1 rounded text-xs">dashboard-gui.spec.ts</code>, which runs the test{' '}
@@ -663,7 +764,7 @@ dev@wanderweird:~/mockifyer/e2e$ npm run report        # Playwright HTML report`
 
       <Card>
         <CardHeader>
-          <CardTitle>6. How to reproduce: demo helpers vs Mockifyer features</CardTitle>
+          <CardTitle>7. How to reproduce: demo helpers vs Mockifyer features</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
@@ -746,7 +847,7 @@ dev@wanderweird:~/mockifyer/e2e$ npm run report        # Playwright HTML report`
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <CheckCircle className="h-5 w-5" />
-            7. Conclusion: what this shows for multi-service, nested setups
+            8. Conclusion: what this shows for multi-service, nested setups
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -804,34 +905,24 @@ dev@wanderweird:~/mockifyer/e2e$ npm run report        # Playwright HTML report`
 
           <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-md mt-6">
             <h4 className="font-semibold mb-2 text-amber-900 dark:text-amber-200">
-              Limits (as of #487)
+              Current limits
             </h4>
             <ul className="text-sm text-muted-foreground space-y-1 list-disc pl-5">
               <li>
-                Atlas's live trace (<code className="bg-muted px-1 rounded">t</code> in Metro) is hosted in Metro 
-                middleware. Running it outside Metro (Vite, Express) is in the backlog as SGE-60. The dashboard 
-                Network trace works without Metro.
-              </li>
-              <li>
-                The app has no loading indicator on refetch, so the delay shows up as hop Duration and as the 
-                measured request time.
-              </li>
-              <li>
-                Only 503 is tested. wander-api falls back on any non-2xx answer, so other codes would look the 
-                same in the app.
-              </li>
-              <li>
-                Lanes are strict by default: a client with a client id but no lane doesn't follow the global 
-                scenario unless you turn on "Lane global fallback".
-              </li>
-              <li>
-                <code className="bg-muted px-1 rounded">main-features.spec.ts</code> (status and delay through 
-                REST/MCP, explain-value) needs the branch-built dashboard on :3012, because the demo runs the 
-                published 1.5.92.
+                The demo and e2e use local package builds (<code className="bg-muted px-1 rounded">file:</code> dependencies). 
+                For your own services, install Mockifyer from npm (section 3).
               </li>
               <li>
                 The tests drive the Expo <strong>web</strong> build, not native React Native code paths. The suite 
                 isn't hermetic: it needs a live stack, runs serially and calls real public APIs where nothing is mocked.
+              </li>
+              <li>
+                Only 503 is tested for failure injection. wander-api falls back on any non-2xx answer, so other status 
+                codes would look the same in the app.
+              </li>
+              <li>
+                Lanes are strict by default: a client with a client id but no lane doesn't follow the global 
+                scenario unless you turn on "Lane global fallback".
               </li>
             </ul>
           </div>

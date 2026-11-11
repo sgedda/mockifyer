@@ -44,4 +44,34 @@ test.describe('Page Layout', () => {
       console.log(`${path}: left margin = ${box!.x}px`);
     }
   });
+
+  test('tutorial and main content pages should have minimum width at 1440px viewport', async ({ page }) => {
+    // Pages that should have wider content (max-w-[1200px] or similar)
+    const wideContentPages = [
+      '/e2e-tutorial',
+      '/dashboard',
+      '/features',
+      '/faq',
+      '/packages',
+      '/getting-started',
+    ];
+
+    await page.setViewportSize({ width: 1440, height: 900 });
+
+    for (const path of wideContentPages) {
+      await page.goto(path);
+      await page.waitForLoadState('networkidle');
+
+      const mainContent = page.locator('main > div').first();
+      const box = await mainContent.boundingBox();
+      
+      expect(box).not.toBeNull();
+      
+      // At 1440px viewport, content with max-w-[1200px] should be close to 1200px wide
+      // With padding, expect at least 1100px content width
+      expect(box!.width).toBeGreaterThanOrEqual(1100);
+      
+      console.log(`${path}: content width = ${Math.round(box!.width)}px`);
+    }
+  });
 });

@@ -5,21 +5,57 @@ import { CachedMockData, generateRequestKey } from '../utils/mock-matcher';
 import { DatabaseProvider, DatabaseProviderConfig, SaveMockOptions } from './types';
 
 /**
- * In-memory provider for React Native/Expo and other environments without filesystem access
- * Stores mock data in memory - data is lost when the app restarts
- * Perfect for development and testing scenarios
+ * In-memory provider for React Native/Expo and other environments without filesystem access.
+ * Stores mock data in memory - data is lost when the app restarts.
+ * Perfect for development, testing, and browser scenarios.
+ * 
+ * Supports preloading fixtures via:
+ * - `config.options.fixtures` array (loaded in constructor)
+ * - `seed(fixtures)` method (load after construction)
  */
 export class MemoryProvider implements DatabaseProvider {
   private mocks: Map<string, MockData> = new Map();
   private mockCounter: number = 0;
 
   constructor(config: DatabaseProviderConfig) {
-    // Memory provider doesn't need any config, but we accept it for consistency
+    // Load fixtures if provided
+    const fixtures = (config.options as { fixtures?: MockData[] })?.fixtures;
+    if (Array.isArray(fixtures) && fixtures.length > 0) {
+      this.seed(fixtures);
+      console.log(`[Mockifyer] MemoryProvider preloaded ${fixtures.length} fixtures`);
+    }
   }
 
   initialize(): void {
     // Nothing to initialize for in-memory storage
-    console.log('[Mockifyer] MemoryProvider initialized (in-memory storage)');
+    console.log(`[Mockifyer] MemoryProvider initialized (in-memory storage, ${this.mocks.size} mocks loaded)`);
+  }
+
+  /**
+   * Preload mock fixtures into memory. Accepts the same JSON format as filesystem provider saves.
+   * Call this after construction to seed the provider with recorded mocks.
+   * 
+   * @example
+   * ```ts
+   * import rates from './mock-data/default/api.frankfurter.dev/v1/latest.json';
+   * 
+   * const provider = new MemoryProvider({ options: {} });
+   * provider.seed([rates]);
+   * ```
+   */
+  seed(fixtures: MockData[]): void {
+    let loaded = 0;
+    for (const mockData of fixtures) {
+      if (!mockData || !mockData.request) {
+        console.warn('[Mockifyer] MemoryProvider.seed: skipping invalid fixture (missing request)');
+        continue;
+      }
+      const requestKey = generateRequestKey(mockData.request);
+      this.mocks.set(requestKey, mockData);
+      loaded++;
+    }
+    this.mockCounter += loaded;
+    console.log(`[Mockifyer] MemoryProvider seeded ${loaded} fixtures (total: ${this.mocks.size})`);
   }
 
   save(mockData: MockData, _options?: SaveMockOptions): void {

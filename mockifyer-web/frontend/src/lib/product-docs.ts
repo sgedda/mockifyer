@@ -275,4 +275,5 @@ export const GUIDE_ITEMS: GuideItem[] = [
   { href: '/guides/stable-react-native-e2e', label: 'Stable React Native E2E' },
   { href: '/guides/mock-drift', label: 'Stop Mock Drift' },
   { href: '/guides/react-native-without-msw', label: 'React Native: Handlers vs Recording' },
+  { href: '/guides/browser-record-replay', label: 'Record and Replay HTTP in the Browser' },
 ]
