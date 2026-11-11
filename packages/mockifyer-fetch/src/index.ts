@@ -4,26 +4,29 @@
 // DO NOT change this to static require() or import - bundlers will fail on browser builds.
 // The dynamic require is hidden inside functions to prevent bundle-time resolution.
 
-// Lazy-load Node.js built-ins (hidden from bundlers via function scope)
-function lazyRequire(moduleName: string): any {
+// Lazy-load Node.js built-ins (static literal requires, bundler-safe)
+function getFs(): typeof import('fs') | null {
   // Only works in Node.js
   if (typeof process === 'undefined' || !process.versions?.node) {
     return null;
   }
   try {
-    // Direct require works in Node module scope; function guard + try/catch prevent bundler issues
-    return require(moduleName);
+    // Static require with literal path - bundlers can stub this
+    return require('fs');
   } catch {
     return null;
   }
 }
 
-function getFs(): typeof import('fs') | null {
-  return lazyRequire('fs');
-}
-
 function getPath(): typeof import('path') | null {
-  return lazyRequire('path');
+  if (typeof process === 'undefined' || !process.versions?.node) {
+    return null;
+  }
+  try {
+    return require('path');
+  } catch {
+    return null;
+  }
 }
 
 // Import from core package
