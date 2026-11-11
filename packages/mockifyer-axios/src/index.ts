@@ -1072,6 +1072,9 @@ class MockifyerClass {
           `[Mockifyer] Domain path rules: replay denied for ${request.method} ${request.url}` +
             (trafficGate.matchedDomainPath ? ` (rule: ${trafficGate.matchedDomainPath})` : ' (allowlist unmatched)')
         );
+        if (this.config.failOnMissingMock) {
+          throw new Error(`No mock data found for request: ${this.generateRequestKey(request)}`);
+        }
         (config as any).__mockifyer_requestKey = requestKey;
         (config as any).__mockifyer_startTime = Date.now();
         return config;
@@ -1164,7 +1167,10 @@ class MockifyerClass {
       }
 
       if (this.config.failOnMissingMock) {
-        throw new Error(`No mock data found for request: ${this.generateRequestKey(request)}`);
+        const hasUsableMock = cachedMock && !cachedMock.mockData.alwaysUseRealApi && !cachedMock.mockData.responsePending;
+        if (!hasUsableMock) {
+          throw new Error(`No mock data found for request: ${this.generateRequestKey(request)}`);
+        }
       }
 
       // Same key the matcher used. saveResponse after setRecordMode(true) must not invent a second key.
@@ -1413,6 +1419,9 @@ class MockifyerClass {
         const trafficGate = this.domainPathRules.getTrafficGate(request.url, requestBaseUrl);
         (config as any).__mockifyer_domain_path_may_record = trafficGate.mayRecord;
         if (!trafficGate.mayReplay) {
+          if (this.config.failOnMissingMock) {
+            throw new Error(`No mock data found for request: ${this.generateRequestKey(request)}`);
+          }
           (config as any).__mockifyer_requestKey = requestKey;
           (config as any).__mockifyer_startTime = Date.now();
           return config;
