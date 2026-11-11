@@ -14,7 +14,7 @@
 
 [![Open in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz.svg)](https://stackblitz.com/github/sgedda/mockifyer/tree/main/example-projects/browser-vite)
 
-**Note**: Browser support will be available in the next Mockifyer release (`@sgedda/mockifyer-fetch@1.8.107+`). The StackBlitz demo will work once published. This example uses caret ranges (`^1.10.190`, `^1.8.106`) which will automatically pick up the next release within the same major version.
+**Note**: Browser support will be available in the next published Mockifyer release. The StackBlitz demo will work once published. This example uses caret ranges (`^1.10.190`, `^1.8.106`) which will automatically pick up the next published release within the same major version.
 
 ## Run Locally (Development)
 
