@@ -2,7 +2,7 @@ export const SITE_URL = 'https://mockifyer.dev'
 export const SITE_NAME = 'Mockifyer'
 
 export const DEFAULT_TITLE =
-  'Mockifyer — Record & Replay HTTP API Mocks for Node.js'
+  'Mockifyer — Record & Replay HTTP API Mocks'
 
 export const DEFAULT_DESCRIPTION =
   'Record axios and fetch calls as JSON and replay them in Node and React Native. Selective recording by default; mocks stay in your repo.'

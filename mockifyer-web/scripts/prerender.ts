@@ -55,7 +55,7 @@ async function prerender() {
       });
 
       // Wait a bit more for React to fully render and SEO updates to apply
-      await page.waitForTimeout(1000);
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
       // Get the fully rendered HTML
       const html = await page.content();
