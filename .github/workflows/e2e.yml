@@ -134,11 +134,79 @@ jobs:
       - name: Wait for Expo web
         run: npx wait-on -t 180000 http-get://127.0.0.1:8090
 
-      - name: Install Playwright browsers
+      - name: Get Playwright version
+        id: playwright-version
         working-directory: e2e
         run: |
-          npm ci
-          npx playwright install --with-deps chromium
+          PLAYWRIGHT_VERSION=$(node -p "require('./package-lock.json').packages['node_modules/@playwright/test'].version")
+          echo "version=$PLAYWRIGHT_VERSION" >> $GITHUB_OUTPUT
+          echo "Playwright version: $PLAYWRIGHT_VERSION"
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
+
+      - name: Install E2E dependencies
+        working-directory: e2e
+        run: npm ci
+
+      - name: Install Playwright browser binaries
+        working-directory: e2e
+        run: npx playwright install chromium
+
+      - name: Install Playwright system dependencies with retry
+        working-directory: e2e
+        run: |
+          set -e
+          MAX_ATTEMPTS=3
+          BACKOFF=5
+
+          # Configure apt retries
+          echo 'Acquire::Retries "3";' | sudo tee /etc/apt/apt.conf.d/80-retries
+
+          install_deps() {
+            echo "Attempt $1/$MAX_ATTEMPTS: Installing Playwright system dependencies..."
+            if npx playwright install-deps chromium; then
+              echo "✓ Successfully installed Playwright system dependencies"
+              return 0
+            else
+              return 1
+            fi
+          }
+
+          # Try with default Ubuntu mirrors (azure.archive.ubuntu.com)
+          for i in $(seq 1 $MAX_ATTEMPTS); do
+            if install_deps $i; then
+              exit 0
+            fi
+            if [ $i -lt $MAX_ATTEMPTS ]; then
+              echo "⚠ Failed, waiting ${BACKOFF}s before retry..."
+              sleep $BACKOFF
+              BACKOFF=$((BACKOFF * 2))
+            fi
+          done
+
+          # If all attempts fail, switch to main Ubuntu mirrors
+          echo "⚠ All attempts failed with azure.archive.ubuntu.com"
+          echo "→ Switching to archive.ubuntu.com and security.ubuntu.com..."
+          
+          sudo sed -i 's|http://azure.archive.ubuntu.com|http://archive.ubuntu.com|g' /etc/apt/sources.list
+          sudo sed -i 's|http://security.ubuntu.com|http://security.ubuntu.com|g' /etc/apt/sources.list
+          sudo apt-get clean
+          sudo apt-get update -qq || true
+
+          # Final attempt with fallback mirrors
+          echo "Final attempt with fallback mirrors..."
+          if npx playwright install-deps chromium; then
+            echo "✓ Successfully installed with fallback mirrors"
+            exit 0
+          else
+            echo "✗ Failed to install Playwright system dependencies"
+            exit 1
+          fi
 
       # The `gui` project always records (app + dashboard) and traces; the `chromium` project
       # records only on failure unless E2E_VIDEO is on (schedule / manual checkbox).
