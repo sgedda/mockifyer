@@ -15,7 +15,8 @@
     "./dist/utils/serialize-proxy-request-body.js": "./dist/utils/serialize-proxy-request-body.browser.js",
     "./dist/utils/atlas-doc-html.js": "./dist/utils/atlas-doc-html.browser.js",
     "./dist/utils/atlas-screenshot.js": "./dist/utils/atlas-screenshot.browser.js",
-    "./dist/utils/hop-context.js": "./dist/utils/hop-context.browser.js"
+    "./dist/utils/hop-context.js": "./dist/utils/hop-context.browser.js",
+    "./dist/utils/perform-dashboard-proxy-request.js": "./dist/utils/perform-dashboard-proxy-request.browser.js"
   },
   "exports": {
     ".": {
@@ -51,6 +52,7 @@
       "default": "./dist/utils/load-sibling-setup.js"
     },
     "./utils/perform-dashboard-proxy-request": {
+      "browser": "./dist/utils/perform-dashboard-proxy-request.browser.js",
       "types": "./dist/utils/perform-dashboard-proxy-request.d.ts",
       "default": "./dist/utils/perform-dashboard-proxy-request.js"
     },
