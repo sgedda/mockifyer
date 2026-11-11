@@ -14,19 +14,20 @@ test.describe('E2E Tutorial Page', () => {
     await expect(page.getByText(/Disclosure.*Mockifyer is my own open-source project/i)).toBeVisible();
   });
 
-  test('should display branch note callout', async ({ page }) => {
-    await expect(page.getByText(/Branch note.*PR #487/i)).toBeVisible();
-    await expect(page.getByText(/cursor\/e2e-dashboard-gui-videos-7d37/i).first()).toBeVisible();
+  test('should display getting started callout', async ({ page }) => {
+    await expect(page.getByText(/Getting started.*recordings below demonstrate/i)).toBeVisible();
+    await expect(page.getByText(/install the packages from npm/i)).toBeVisible();
   });
 
   test('should display all major sections', async ({ page }) => {
     await expect(page.getByRole('heading', { name: /What you'll build and see/i })).toBeVisible();
     await expect(page.getByRole('heading', { name: /Prerequisites/i })).toBeVisible();
-    await expect(page.getByRole('heading', { name: /Clone and install/i })).toBeVisible();
-    await expect(page.getByRole('heading', { name: /Start the stack and run the tests/i })).toBeVisible();
-    await expect(page.getByRole('heading', { name: /Walkthrough.*one scenario per test/i })).toBeVisible();
-    await expect(page.getByRole('heading', { name: /How to reproduce/i })).toBeVisible();
-    await expect(page.getByRole('heading', { name: /Conclusion/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /3\. Install Mockifyer/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /4\. Getting started.*basic setup/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /5\. Run the WanderWeird e2e demo/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /6\. Walkthrough.*one scenario per test/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /7\. How to reproduce/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /8\. Conclusion/i })).toBeVisible();
   });
 
   test('should display stack components table', async ({ page }) => {
@@ -41,20 +42,20 @@ test.describe('E2E Tutorial Page', () => {
     const count = await codeBlocks.count();
     expect(count).toBeGreaterThan(5);
     
-    await expect(page.getByText(/git clone.*mockifyer/i)).toBeVisible();
-    await expect(page.getByText(/npx mockifyer-dashboard/i)).toBeVisible();
+    await expect(page.getByText(/npm install @sgedda\/mockifyer/i).first()).toBeVisible();
+    await expect(page.getByText(/npx @sgedda\/mockifyer-dashboard/i).first()).toBeVisible();
   });
 
   test('should display all nine walkthrough scenarios', async ({ page }) => {
-    await expect(page.getByText(/5\.1.*Mock editor.*response body edit/i)).toBeVisible();
-    await expect(page.getByText(/5\.2.*Overrides page.*field override/i)).toBeVisible();
-    await expect(page.getByText(/5\.3.*Status override 503/i)).toBeVisible();
-    await expect(page.getByText(/5\.4.*Settings.*client lane/i)).toBeVisible();
-    await expect(page.getByText(/5\.5.*Header scenario picker/i)).toBeVisible();
-    await expect(page.getByText(/5\.6.*Network view/i)).toBeVisible();
-    await expect(page.getByText(/5\.7.*From scratch/i)).toBeVisible();
-    await expect(page.getByText(/5\.8.*Tracing walkthrough/i)).toBeVisible();
-    await expect(page.getByText(/5\.9.*Delay and status override/i)).toBeVisible();
+    await expect(page.getByText(/6\.1.*Mock editor.*response body edit/i)).toBeVisible();
+    await expect(page.getByText(/6\.2.*Overrides page.*field override/i)).toBeVisible();
+    await expect(page.getByText(/6\.3.*Status override 503/i)).toBeVisible();
+    await expect(page.getByText(/6\.4.*Settings.*client lane/i)).toBeVisible();
+    await expect(page.getByText(/6\.5.*Header scenario picker/i)).toBeVisible();
+    await expect(page.getByText(/6\.6.*Network view/i)).toBeVisible();
+    await expect(page.getByText(/6\.7.*From scratch/i)).toBeVisible();
+    await expect(page.getByText(/6\.8.*Tracing walkthrough/i)).toBeVisible();
+    await expect(page.getByText(/6\.9.*Delay and status override/i)).toBeVisible();
   });
 
   test('should display key temperatures mentioned in scenarios', async ({ page }) => {
@@ -65,17 +66,17 @@ test.describe('E2E Tutorial Page', () => {
   });
 
   test('should display conclusion with key benefits', async ({ page }) => {
-    await expect(page.getByText(/Per-endpoint control with no code changes/i)).toBeVisible();
-    await expect(page.getByText(/Scenarios shared across services/i)).toBeVisible();
+    await expect(page.getByText(/Per-endpoint control with no code changes/i).first()).toBeVisible();
+    await expect(page.getByText(/Scenarios shared across services/i).first()).toBeVisible();
     await expect(page.getByText(/Surgical failure injection/i)).toBeVisible();
     await expect(page.getByText(/A trace across services/i)).toBeVisible();
     await expect(page.getByText(/Checked end to end/i)).toBeVisible();
   });
 
-  test('should display limits section', async ({ page }) => {
-    await expect(page.getByText(/Limits.*as of #487/i)).toBeVisible();
-    await expect(page.getByText(/Atlas's live trace/i)).toBeVisible();
-    await expect(page.getByText(/The tests drive the Expo.*web.*build/i)).toBeVisible();
+  test('should display current limits section', async ({ page }) => {
+    await expect(page.getByText(/Current limits/i)).toBeVisible();
+    await expect(page.getByText(/local package builds/i).first()).toBeVisible();
+    await expect(page.getByText(/Expo.*web.*build/i).first()).toBeVisible();
   });
 
   test('should embed video recordings for all nine scenarios', async ({ page }) => {
@@ -104,11 +105,12 @@ test.describe('E2E Tutorial Page', () => {
     await expect(page.getByText(/recorded with.*E2E_PRESENTATION/i)).toBeVisible();
   });
 
-  test('should be accessible from navigation', async ({ page }) => {
+  test('should be accessible from home page', async ({ page }) => {
     await page.goto('/');
-    const navLink = page.getByRole('navigation').getByRole('link', { name: 'E2E Tutorial' });
-    await expect(navLink).toBeVisible();
-    await navLink.click();
+    // E2E Tutorial link is in the hero section, not main nav
+    const tutorialLink = page.getByRole('link', { name: /E2E Tutorial/i }).first();
+    await expect(tutorialLink).toBeVisible();
+    await tutorialLink.click();
     await expect(page).toHaveURL(/.*e2e-tutorial/);
     await expect(page.getByRole('heading', { name: /Controlling a nested multi-service stack/i })).toBeVisible();
   });

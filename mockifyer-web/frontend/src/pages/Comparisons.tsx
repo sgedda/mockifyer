@@ -122,7 +122,7 @@ const featureMatrix: {
   {
     feature: 'Fetch / React Native',
     mockifyer: 'fetch + RN',
-    msw: 'Browser + Node',
+    msw: 'Browser + Node + RN (msw/native)',
     polly: 'Browser + Node',
     nock: false,
     mirage: 'Browser',
@@ -234,7 +234,7 @@ const packages = [
 
 export default function Comparisons() {
   return (
-    <div className="space-y-8">
+    <div className="mx-auto max-w-5xl px-4 py-16 space-y-8">
       <header className="text-center">
         <h1 className="text-4xl font-bold mb-4">Mockifyer vs Alternatives</h1>
         <p className="text-xl text-muted-foreground max-w-3xl mx-auto">

@@ -131,8 +131,8 @@ export default function Contact() {
   }
 
   return (
-    <div className="space-y-8">
-      <div className="max-w-4xl mx-auto">
+    <div className="mx-auto max-w-4xl px-4 py-16 space-y-8">
+      <div>
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">

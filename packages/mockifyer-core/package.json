@@ -14,7 +14,8 @@
     "./dist/utils/mirror-proxy-recording-to-client.js": "./dist/utils/mirror-proxy-recording-to-client.browser.js",
     "./dist/utils/serialize-proxy-request-body.js": "./dist/utils/serialize-proxy-request-body.browser.js",
     "./dist/utils/atlas-doc-html.js": "./dist/utils/atlas-doc-html.browser.js",
-    "./dist/utils/atlas-screenshot.js": "./dist/utils/atlas-screenshot.browser.js"
+    "./dist/utils/atlas-screenshot.js": "./dist/utils/atlas-screenshot.browser.js",
+    "./dist/utils/hop-context.js": "./dist/utils/hop-context.browser.js"
   },
   "exports": {
     ".": {
@@ -23,6 +24,7 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./dist/index.browser.js": "./dist/index.browser.js",
     "./utils/build-utils": {
       "types": "./dist/utils/build-utils.d.ts",
       "default": "./dist/utils/build-utils.js"
@@ -63,6 +65,11 @@
     "./utils/build-proxy-upstream-body-init": {
       "types": "./dist/utils/build-proxy-upstream-body-init.d.ts",
       "default": "./dist/utils/build-proxy-upstream-body-init.js"
+    },
+    "./utils/crypto-digest": {
+      "browser": "./dist/utils/crypto-digest.browser.js",
+      "types": "./dist/utils/crypto-digest.d.ts",
+      "default": "./dist/utils/crypto-digest.js"
     },
     "./utils/fixture-pool/runtime-cache": {
       "types": "./dist/utils/fixture-pool/runtime-cache.d.ts",

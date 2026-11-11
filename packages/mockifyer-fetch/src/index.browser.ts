@@ -195,6 +195,9 @@ export function setupMockifyer(config: BrowserMockifyerConfig): MockifyerInstanc
     const originalFetch = globalThis.fetch;
     const mockifyerInstance = mockifyer;
     
+    // Store original fetch on the http client so it can be used for unmocked requests
+    (httpClient as any)._originalFetch = originalFetch;
+    
     globalThis.fetch = async function(input: string | Request | URL, init?: RequestInit): Promise<Response> {
       if (!mockifyerInstance.isMockifyerEnabled()) {
         return await originalFetch(input, init);

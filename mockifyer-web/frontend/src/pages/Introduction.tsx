@@ -1,581 +1,367 @@
-import { useState, useEffect } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
-import { ThumbsUp, ExternalLink } from 'lucide-react'
-import Logo from '@/components/Logo'
-import { useToast } from '@/components/ui/use-toast'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import { HERO_TAGLINE } from '@/lib/use-page-seo'
-import HomeFaq from '@/components/HomeFaq'
-import PackagesOverview from '@/components/PackagesOverview'
-import { KEY_FEATURES, MCP_TOOLS } from '@/lib/product-docs'
+import { Github, ArrowRight, PlayCircle, Database, Code2, Sparkles, Construction, Target, Zap, GitBranch, Terminal, Play } from 'lucide-react'
 import CodeBlock from '@/components/CodeBlock'
+import RunItButton from '@/components/RunItButton'
+
+interface MediaItem {
+  src: string
+  poster?: string
+  caption: string
+}
 
 export default function Introduction() {
-  return (
-    <div className="space-y-8">
-      <header className="text-center py-12">
-        <h1 className="flex justify-center mb-6">
-          <Logo size="lg" />
-        </h1>
-        <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
-          {HERO_TAGLINE}
-        </p>
-      </header>
+  const [selectedMedia, setSelectedMedia] = useState(0)
 
-      <Card>
-        <CardHeader>
-          <CardTitle>What is Mockifyer?</CardTitle>
-          <CardDescription>
-            Deterministic test state that doesn&apos;t drift — switchable scenario worlds for realistic testing
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p>
-            Modern applications depend on many underlying systems. Test data disappears or goes stale, 
-            dates drift, and setting up the right state takes manual admin work. Mockifyer gives you 
-            deterministic state that doesn&apos;t drift.
-          </p>
-          <p>
-            Record real API responses once, switch between complete <strong>scenario worlds</strong> at 
-            runtime (trips-empty, trips-one, trips-many, checkin-open), and control dates so time-dependent 
-            tests stay stable. No more &quot;works on my machine&quot; — the same mock world loads for everyone.
-          </p>
-          <div>
-            <strong className="text-foreground text-lg mb-4 block">What you get today</strong>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {KEY_FEATURES.map((feature) => (
-                <div
-                  key={feature.title}
-                  className="flex items-start gap-3 p-3 rounded-lg hover:bg-accent/50 transition-colors"
-                >
-                  <span className="text-2xl flex-shrink-0">{feature.icon}</span>
-                  <div>
-                    <strong className="text-foreground block mb-1">{feature.title}</strong>
-                    <p className="text-sm text-muted-foreground">{feature.description}</p>
-                  </div>
-                </div>
-              ))}
+  const mediaItems: MediaItem[] = [
+    {
+      src: '/videos/e2e-tutorial/delay-and-status-override_b200.mp4',
+      poster: '/videos/e2e-tutorial/delay-and-status-override_cc36.jpg',
+      caption: 'Override delays and HTTP status codes per scenario'
+    },
+    {
+      src: '/videos/e2e-tutorial/mock-editor-body-edit_7064.mp4',
+      poster: '/videos/e2e-tutorial/mock-editor-body-edit_bd79.jpg',
+      caption: 'Edit mock response bodies in real-time'
+    },
+    {
+      src: '/videos/e2e-tutorial/header-scenario-picker_4de8.mp4',
+      poster: '/videos/e2e-tutorial/header-scenario-picker_bdbe.jpg',
+      caption: 'Switch scenarios to test different states'
+    }
+  ]
+
+  return (
+    <div className="space-y-0">
+      {/* Hero Section */}
+      <section className="relative overflow-hidden border-b border-border">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(99,102,241,.12),transparent_60%)]"></div>
+        <div className="pointer-events-none absolute inset-0 opacity-40 dark:opacity-20 [background-image:linear-gradient(hsl(var(--border))_1px,transparent_1px),linear-gradient(90deg,hsl(var(--border))_1px,transparent_1px)] [background-size:48px_48px] [mask-image:radial-gradient(ellipse_at_top,black,transparent_70%)]"></div>
+        
+        <div className="relative mx-auto max-w-[1200px] px-5 py-16 sm:py-24">
+          <div className="text-center max-w-4xl mx-auto">
+            <div className="flex justify-center mb-8">
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-primary/20 bg-primary/5 text-sm font-medium text-primary">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+                </span>
+                Open-source API record &amp; replay for Node, React Native &amp; Expo
+              </div>
+            </div>
+            
+            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-foreground leading-tight">
+              <span className="inline-block">Record real APIs.</span>{' '}
+              <span className="inline-block bg-gradient-to-r from-primary via-blue-500 to-violet-500 bg-clip-text text-transparent animate-gradient pb-2 leading-normal">
+                Replay them anywhere.
+              </span>
+            </h1>
+            
+            <p className="mt-6 text-lg text-muted-foreground leading-relaxed max-w-2xl mx-auto">
+              HTTP mock record/replay for JavaScript and React Native. No account, no cloud—mocks are JSON in your repo or your own Redis/SQLite.
+            </p>
+            
+            <div className="mt-8 flex flex-wrap justify-center gap-4">
+              <Link to="/getting-started">
+                <Button size="lg" className="h-12 px-8 text-base font-medium group">
+                  Get Started
+                  <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
+                </Button>
+              </Link>
+              <Link to="/e2e-tutorial">
+                <Button size="lg" variant="outline" className="h-12 px-8 text-base font-medium">
+                  <PlayCircle className="mr-2 h-5 w-5" />
+                  E2E Tutorial
+                </Button>
+              </Link>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
-      <PackagesOverview />
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Why Mockifyer?</CardTitle>
-          <CardDescription>
-            The problem it solves
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-muted-foreground">
-            Applications depend on many underlying systems — APIs, databases, third-party services. 
-            Testing these integrations is challenging:
+      {/* See It In Action Showcase */}
+      <section className="mx-auto max-w-[1200px] px-5 py-16 border-b border-border">
+        <div className="text-center mb-8">
+          <h2 className="text-3xl font-semibold tracking-tight mb-3">See It In Action</h2>
+          <p className="text-muted-foreground max-w-2xl mx-auto">
+            Record traffic, edit mocks in the dashboard, and control delay/status for every scenario
           </p>
-          <ul className="space-y-2 text-sm text-muted-foreground list-disc pl-5">
-            <li>
-              <strong className="text-foreground">Test data disappears or goes stale:</strong> A booking 
-              created yesterday might be expired today, or deleted by another developer
-            </li>
-            <li>
-              <strong className="text-foreground">Dates drift:</strong> Time-dependent logic like 
-              &quot;upcoming trips&quot; or &quot;check-in window&quot; breaks as calendar dates move forward
-            </li>
-            <li>
-              <strong className="text-foreground">State setup takes manual work:</strong> Creating the 
-              right test state requires clicking through admin panels or running database scripts
-            </li>
-            <li>
-              <strong className="text-foreground">Previous fixes were hacky:</strong> Hardcoded backend 
-              bypasses tied to one test user, supporting only one dataset at a time
-            </li>
-          </ul>
-          <p className="text-muted-foreground">
-            <strong className="text-foreground">Mockifyer gives you deterministic state that doesn&apos;t drift.</strong> Record 
-            real API responses once, switch between complete scenarios at runtime, and control dates to keep 
-            time-dependent tests stable.
+          <p className="text-sm text-muted-foreground mt-3">
+            Want to try it yourself? Check out the{' '}
+            <a 
+              href="https://github.com/sgedda/mockifyer/tree/main/example-projects/wanderweird-travel" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-primary hover:underline font-medium"
+            >
+              WanderWeird demo app
+            </a>
+            {' '}— a full-stack Expo + multi-service example (7 Node services, Umbraco CMS, scenarios, request tracing).{' '}
+            <Link to="/e2e-tutorial" className="text-primary hover:underline font-medium">
+              E2E Tutorial →
+            </Link>
           </p>
-        </CardContent>
-      </Card>
-
-      <HomeFaq />
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Dashboard & MCP</CardTitle>
-          <CardDescription>
-            Optional tooling on top of the core libraries
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-muted-foreground">
-            <strong>@sgedda/mockifyer-dashboard</strong> runs locally to manage scenarios, client lanes, 
-            network hops, and Date Config. With Redis or SQLite, it proxies traffic so each device/app 
-            has its own isolated mock world.
-          </p>
-          <ul className="text-sm text-muted-foreground space-y-1 list-disc pl-5">
-            <li>Active scenario and client lane management</li>
-            <li>Browse and edit JSON mocks for each world</li>
-            <li>Network view: live hops filtered by lane</li>
-            <li>Date Config: per-scenario date overrides</li>
-            <li>Domain-path rules: control which endpoints to record/mock</li>
-          </ul>
-          <CodeBlock
-            language="bash"
-            code={`npx @sgedda/mockifyer-dashboard --path ./mock-data`}
-          />
-          <div className="mt-4">
-            <p className="text-muted-foreground mb-2">
-              <strong>@sgedda/mockifyer-mcp</strong> exposes dashboard APIs to Cursor and Claude Desktop 
-              via Model Context Protocol. <span className="inline-block bg-amber-100 dark:bg-amber-900/30 text-amber-900 dark:text-amber-200 text-xs px-2 py-0.5 rounded ml-2">
-                Experimental
-              </span>
-            </p>
-            <ul className="text-sm text-muted-foreground space-y-1 list-disc pl-5">
-              {MCP_TOOLS.map((tool) => (
-                <li key={tool}>{tool}</li>
-              ))}
-            </ul>
+        </div>
+        
+        {/* Main player */}
+        <div className="max-w-4xl mx-auto rounded-xl border border-border bg-card overflow-hidden">
+          <video
+            key={mediaItems[selectedMedia].src}
+            src={mediaItems[selectedMedia].src}
+            poster={mediaItems[selectedMedia].poster}
+            autoPlay
+            muted
+            loop
+            playsInline
+            className="w-full"
+            style={{ aspectRatio: '1662/800' }}
+          >
+            Your browser doesn't support video playback.
+          </video>
+          <div className="p-4 text-center text-muted-foreground">
+            {mediaItems[selectedMedia].caption}
           </div>
-          <Link to="/config-reference">
-            <Button variant="outline" size="sm">
-              Configuration reference
-            </Button>
-          </Link>
-        </CardContent>
-      </Card>
+        </div>
+        
+        {/* Thumbnail gallery */}
+        <div className="grid md:grid-cols-3 gap-4 mt-6 max-w-4xl mx-auto">
+          {mediaItems.map((item, index) => (
+            <button
+              key={item.src}
+              onClick={() => setSelectedMedia(index)}
+              aria-pressed={selectedMedia === index}
+              className={`rounded-lg border overflow-hidden transition-all ${
+                selectedMedia === index 
+                  ? 'border-primary ring-2 ring-primary/20' 
+                  : 'border-border hover:border-primary/50'
+              }`}
+            >
+              <video
+                src={item.src}
+                poster={item.poster}
+                muted
+                playsInline
+                preload="metadata"
+                className="w-full"
+              />
+              <div className={`p-3 text-xs text-center ${
+                selectedMedia === index 
+                  ? 'text-primary font-medium' 
+                  : 'text-muted-foreground'
+              }`}>
+                {item.caption}
+              </div>
+            </button>
+          ))}
+        </div>
+      </section>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Atlas: Live Tracing with the <code className="text-sm">t</code> Key</CardTitle>
-          <CardDescription>
-            Press <code className="text-sm">t</code> in the Metro terminal to capture and visualize nested HTTP calls
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-muted-foreground">
-            When running React Native with Metro, press <code className="text-xs bg-muted px-1 py-0.5 rounded">t</code> to 
-            start <strong>Atlas capture</strong>. A browser opens showing a live stream of correlated, nested 
-            HTTP calls as an expandable/collapsible tree: app → BFF → downstream services.
-          </p>
-          <ul className="text-sm text-muted-foreground space-y-1 list-disc pl-5">
-            <li>View request/response payloads with inline search</li>
-            <li>Find booking data the UI doesn&apos;t display yet</li>
-            <li>Trace error chains across multiple hops</li>
-            <li>Verify what actually went over the wire</li>
-            <li>Press <code className="text-xs bg-muted px-1 py-0.5 rounded">t</code> again to stop and render searchable HTML docs</li>
-          </ul>
-          <p className="text-sm text-muted-foreground">
-            <strong>Atlas vs Network view:</strong> The dashboard&apos;s Network tab shows live traffic hop-by-hop. 
-            Atlas maps and searches across an entire captured session, generating AI-ready documentation.
-          </p>
-        </CardContent>
-      </Card>
+      {/* Problems It Solves */}
+      <section className="mx-auto max-w-[1200px] px-5 py-20">
+        <h2 className="text-3xl font-semibold tracking-tight text-center mb-4">The Problems Mockifyer Solves</h2>
+        <p className="text-center text-muted-foreground mb-12 max-w-2xl mx-auto">
+          Testing integrations is hard when dependencies aren't stable
+        </p>
+        
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="p-6 rounded-xl border border-border bg-card">
+            <Construction className="h-8 w-8 text-primary mb-3" />
+            <h3 className="font-semibold text-lg mb-2">API Isn't Ready Yet</h3>
+            <p className="text-sm text-muted-foreground">
+              Backend is still being built but you need to build and test the frontend now
+            </p>
+          </div>
+          
+          <div className="p-6 rounded-xl border border-border bg-card">
+            <Target className="h-8 w-8 text-primary mb-3" />
+            <h3 className="font-semibold text-lg mb-2">Hard-to-Reproduce States</h3>
+            <p className="text-sm text-muted-foreground">
+              Errors, slowness, a specific date, or edge cases that you can't easily set up in a live API
+            </p>
+          </div>
+          
+          <div className="p-6 rounded-xl border border-border bg-card">
+            <Zap className="h-8 w-8 text-primary mb-3" />
+            <h3 className="font-semibold text-lg mb-2">E2E Tests Flake on Live Data</h3>
+            <p className="text-sm text-muted-foreground">
+              Real APIs change, data disappears, dates drift—tests that passed yesterday fail today
+            </p>
+          </div>
+          
+          <div className="p-6 rounded-xl border border-border bg-card">
+            <GitBranch className="h-8 w-8 text-primary mb-3" />
+            <h3 className="font-semibold text-lg mb-2">Trace Requests Across Services</h3>
+            <p className="text-sm text-muted-foreground">
+              Follow request chains service-to-service via <code className="text-xs bg-muted px-1 py-0.5 rounded">x-mockifyer-request-id</code> headers. See what each hop sent and received.
+            </p>
+          </div>
+          
+          <div className="p-6 rounded-xl border border-border bg-card">
+            <Terminal className="h-8 w-8 text-primary mb-3" />
+            <h3 className="font-semibold text-lg mb-2">Replicate Any Request with curl</h3>
+            <p className="text-sm text-muted-foreground">
+              Export recorded requests as copy-paste curl commands. Test backends directly, share reproduction steps.
+            </p>
+          </div>
+        </div>
+      </section>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Deterministic Maestro E2E</CardTitle>
-          <CardDescription>
-            Launch arguments lock the mock world on every test run
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-muted-foreground">
-            Launch arguments <code className="text-xs bg-muted px-1 py-0.5 rounded">mockifyerClientId</code> and{' '}
-            <code className="text-xs bg-muted px-1 py-0.5 rounded">scenario</code> start the app in the same 
-            mock world on every test run. No flaky API dependencies, no race conditions.
+      {/* How It Works - 3 Steps */}
+      <section className="border-y border-border bg-muted/30">
+        <div className="mx-auto max-w-[1200px] px-5 py-20">
+          <h2 className="text-3xl font-semibold tracking-tight text-center mb-12">How It Works</h2>
+          
+          <div className="grid md:grid-cols-3 gap-8">
+            <div className="text-center">
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 text-primary mb-4">
+                <Code2 className="h-8 w-8" />
+              </div>
+              <h3 className="font-semibold text-lg mb-2">1. Record</h3>
+              <p className="text-sm text-muted-foreground">
+                Run with <code className="text-xs bg-muted px-1 py-0.5 rounded border border-border">MOCKIFYER_RECORD=true</code>. Requests land in <code className="text-xs bg-muted px-1 py-0.5 rounded border border-border">_scratch/</code> and keep hitting the live API. Activate mocks in the dashboard or via domain-path rules to save responses.
+              </p>
+            </div>
+            
+            <div className="text-center">
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 text-primary mb-4">
+                <Database className="h-8 w-8" />
+              </div>
+              <h3 className="font-semibold text-lg mb-2">2. Organize Scenarios</h3>
+              <p className="text-sm text-muted-foreground">
+                Edit mocks in the dashboard. Create scenario folders (trips-empty, trips-many).
+              </p>
+            </div>
+            
+            <div className="text-center">
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 text-primary mb-4">
+                <PlayCircle className="h-8 w-8" />
+              </div>
+              <h3 className="font-semibold text-lg mb-2">3. Replay in Tests</h3>
+              <p className="text-sm text-muted-foreground">
+                Lock the scenario with launch arguments (React Native), <code className="text-xs bg-muted px-1 py-0.5 rounded border border-border">MOCKIFYER_SCENARIO</code> (Node), or <code className="text-xs bg-muted px-1 py-0.5 rounded border border-border">x-mockifyer-client-id</code> header (per-lane)—same state every run.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Code Example */}
+      <section id="date-freezing" className="mx-auto max-w-[1200px] px-5 py-20">
+        <div className="max-w-3xl mx-auto">
+          <h2 className="text-3xl font-semibold tracking-tight mb-4">Setup in 30 Seconds</h2>
+          <p className="text-muted-foreground mb-8">
+            Add one setup call at app startup. That's it.
           </p>
+          
           <CodeBlock
-            language="yaml"
-            code={`- launchApp:
-    clearState: true
-    arguments:
-      mockifyerClientId: e2e-trips-one
-      scenario: trips-one`}
+            language="typescript"
+            code={`import { setupMockifyerForReactNative } from '@sgedda/mockifyer-fetch/react-native';
+import { getCurrentDate } from '@sgedda/mockifyer-core';
+
+await setupMockifyerForReactNative({
+  isDev: __DEV__,
+  mockDataPath: 'mock-data',
+  config: {
+    dateManipulation: {
+      fixedDate: '2024-12-20',
+      timezone: 'America/New_York'
+    }
+  }
+});
+
+// Read time via getCurrentDate() — Mockifyer doesn't patch global Date
+const now = getCurrentDate();`}
           />
-          <p className="text-sm text-muted-foreground">
-            <strong>Workflow:</strong> Record the real API responses, have an AI write a Maestro test that 
-            starts with that scenario, then assert on what the UI components render. Every run replays the 
-            exact same backend state.
-          </p>
-        </CardContent>
-      </Card>
+          
+          <div className="mt-8 p-5 rounded-xl border border-primary/20 bg-primary/5">
+            <div className="flex items-start gap-3 mb-4">
+              <Play className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
+              <div>
+                <h3 className="font-semibold text-foreground mb-2">Try it Live</h3>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Record API calls, replay them offline, switch scenarios (empty/error), and freeze dates—all in your browser.
+                </p>
+              </div>
+            </div>
+            <RunItButton 
+              project="record-replay-basics"
+              title="Run Demo in StackBlitz"
+              size="sm"
+            />
+          </div>
+        </div>
+      </section>
 
-      <UpcomingFeaturesCard />
+      {/* Use Cases */}
+      <section className="border-y border-border bg-muted/30">
+        <div className="mx-auto max-w-[1200px] px-5 py-20">
+          <h2 className="text-3xl font-semibold tracking-tight text-center mb-12">Use Cases</h2>
+          
+          <div className="grid md:grid-cols-2 gap-6 max-w-4xl mx-auto">
+            <div className="p-6 rounded-xl border border-border bg-card">
+              <Code2 className="h-8 w-8 text-primary mb-3" />
+              <h3 className="font-semibold text-lg mb-2">React Native Development</h3>
+              <p className="text-sm text-muted-foreground">
+                Develop mobile apps with consistent mock data. Switch scenarios from your dev menu, test edge cases, and work offline.
+              </p>
+            </div>
+            
+            <div className="p-6 rounded-xl border border-border bg-card">
+              <PlayCircle className="h-8 w-8 text-primary mb-3" />
+              <h3 className="font-semibold text-lg mb-2">Deterministic E2E Tests</h3>
+              <p className="text-sm text-muted-foreground">
+                Lock the mock world with launch arguments. Same state every run—no flakes, no external dependencies.
+              </p>
+            </div>
+            
+            <div className="p-6 rounded-xl border border-border bg-card">
+              <Database className="h-8 w-8 text-primary mb-3" />
+              <h3 className="font-semibold text-lg mb-2">Demos & Presentations</h3>
+              <p className="text-sm text-muted-foreground">
+                Show your app with perfect data every time. No network issues, no unexpected responses during the demo.
+              </p>
+            </div>
+            
+            <div className="p-6 rounded-xl border border-border bg-card">
+              <Sparkles className="h-8 w-8 text-primary mb-3" />
+              <h3 className="font-semibold text-lg mb-2">AI Agents via MCP</h3>
+              <p className="text-sm text-muted-foreground">
+                Connect Cursor or Claude to your dashboard. AI can search mocks, set scenarios, and override field values. <strong>Not on npm</strong>—local tooling only.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Playground</CardTitle>
-          <CardDescription>
-            The Playground is an interactive example application that demonstrates Mockifyer's capabilities
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Link to="/playground">
-            <Button>Explore Playground</Button>
-          </Link>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Next Steps</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          <Link to="/getting-started" className="block">
-            <Button variant="outline" className="w-full justify-start">
-              Get Started Guide
+      {/* Final CTA */}
+      <section className="mx-auto max-w-[1200px] px-5 py-20 text-center">
+        <h2 className="text-3xl font-semibold tracking-tight mb-4">Ready to Get Started?</h2>
+        <p className="text-lg text-muted-foreground mb-8 max-w-2xl mx-auto">
+          Install Mockifyer and start building deterministic tests in minutes. No account required, no cloud service—everything runs locally.
+        </p>
+        
+        <div className="flex flex-wrap justify-center gap-4">
+          <Link to="/getting-started">
+            <Button size="lg" className="h-12 px-8 text-base font-medium">
+              Get Started
+              <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </Link>
-          <Link to="/playground" className="block">
-            <Button variant="outline" className="w-full justify-start">
-              Try the Playground
+          <Link to="/e2e-tutorial">
+            <Button size="lg" variant="outline" className="h-12 px-8 text-base font-medium">
+              <PlayCircle className="mr-2 h-5 w-5" />
+              E2E Tutorial
             </Button>
           </Link>
-          <Link to="/timeline" className="block">
-            <Button variant="outline" className="w-full justify-start">
-              View API Timeline
+          <a href="https://github.com/sgedda/mockifyer" target="_blank" rel="noopener noreferrer">
+            <Button size="lg" variant="outline" className="h-12 px-8 text-base font-medium">
+              <Github className="mr-2 h-5 w-5" />
+              GitHub
             </Button>
-          </Link>
-        </CardContent>
-      </Card>
+          </a>
+        </div>
+      </section>
     </div>
   )
 }
-
-interface Feature {
-  id: string
-  title: string
-  description: string
-  icon: string
-  linearId?: string | null
-  linearUrl?: string
-  tags?: string[]
-}
-
-function UpcomingFeaturesCard() {
-  const { toast } = useToast()
-  const [features, setFeatures] = useState<Feature[]>([])
-  const [votes, setVotes] = useState<Record<string, number>>({})
-  const [userVotes, setUserVotes] = useState<Set<string>>(new Set())
-  const [loading, setLoading] = useState(true)
-  const [selectedFeature, setSelectedFeature] = useState<Feature | null>(null)
-  const [featureDetails, setFeatureDetails] = useState<string | null>(null)
-  const [loadingDetails, setLoadingDetails] = useState(false)
-
-  useEffect(() => {
-    // Load votes and user's voted features from server
-    async function loadVotes() {
-      try {
-        const response = await fetch('/api/feature-votes', {
-          credentials: 'include', // Include cookies for user tracking
-        })
-        if (response.ok) {
-          const data = await response.json()
-          setVotes(data.votes || {})
-          setUserVotes(new Set(data.userVotedFeatures || []))
-        }
-      } catch (error) {
-        console.error('Failed to load votes:', error)
-      }
-    }
-
-    // Fetch features from Linear API
-    async function fetchFeaturesFromLinear() {
-      try {
-        const response = await fetch('/api/linear-features')
-        if (response.ok) {
-          const linearFeatures = await response.json()
-          setFeatures(linearFeatures)
-        } else {
-          // Fallback to default features if API fails
-          setFeatures([
-            {
-              id: 'enhanced-matching',
-              title: 'Enhanced Request Matching',
-              description: 'Improved algorithms for matching requests with more flexibility and accuracy',
-              icon: '🔮',
-            },
-            {
-              id: 'mock-versioning',
-              title: 'Mock File Versioning',
-              description: 'Track changes to mock files over time and manage different versions of your mock data',
-              icon: '📚',
-            },
-            {
-              id: 'graphql-normalization',
-              title: 'GraphQL Query Normalization',
-              description: 'Better handling of GraphQL queries with improved variable matching and query normalization',
-              icon: '🔍',
-            },
-            {
-              id: 'platform-support',
-              title: 'Additional Platform Support',
-              description: 'Extend Mockifyer to work with more environments and frameworks beyond Node.js and React Native',
-              icon: '🌐',
-            },
-          ])
-        }
-      } catch (error) {
-        console.error('Failed to fetch Linear features:', error)
-        // Fallback to default features
-        setFeatures([
-          {
-            id: 'enhanced-matching',
-            title: 'Enhanced Request Matching',
-            description: 'Improved algorithms for matching requests with more flexibility and accuracy',
-            icon: '🔮',
-          },
-          {
-            id: 'mock-versioning',
-            title: 'Mock File Versioning',
-            description: 'Track changes to mock files over time and manage different versions of your mock data',
-            icon: '📚',
-          },
-          {
-            id: 'graphql-normalization',
-            title: 'GraphQL Query Normalization',
-            description: 'Better handling of GraphQL queries with improved variable matching and query normalization',
-            icon: '🔍',
-          },
-          {
-            id: 'platform-support',
-            title: 'Additional Platform Support',
-            description: 'Extend Mockifyer to work with more environments and frameworks beyond Node.js and React Native',
-            icon: '🌐',
-          },
-        ])
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    loadVotes()
-    fetchFeaturesFromLinear()
-  }, [])
-
-  const handleToggleVote = async (featureId: string) => {
-    try {
-      const response = await fetch(`/api/feature-votes/${featureId}/toggle`, {
-        method: 'POST',
-        credentials: 'include', // Include cookies for user tracking
-      })
-
-      const result = await response.json()
-
-      if (!response.ok) {
-        // Handle error response from server
-        toast({
-          title: 'Already Voted',
-          description: result.error || 'You have already voted for this feature from this network',
-          variant: 'destructive',
-        })
-        return
-      }
-      
-      // Update local state
-      setVotes({
-        ...votes,
-        [featureId]: result.voteCount,
-      })
-      
-      // Update user votes
-      const newUserVotes = new Set(userVotes)
-      if (result.hasVoted) {
-        newUserVotes.add(featureId)
-      } else {
-        newUserVotes.delete(featureId)
-      }
-      setUserVotes(newUserVotes)
-
-      toast({
-        title: result.hasVoted ? 'Upvoted!' : 'Vote removed',
-        description: result.hasVoted 
-          ? 'Thank you for your feedback' 
-          : 'Your vote has been removed',
-      })
-    } catch (error: any) {
-      console.error('Failed to toggle vote:', error)
-      toast({
-        title: 'Error',
-        description: 'Failed to save your vote. Please try again.',
-        variant: 'destructive',
-      })
-    }
-  }
-
-  const handleFeatureClick = async (feature: Feature) => {
-    if (!feature.linearId) {
-      return // Can't open modal without Linear ID
-    }
-
-    setSelectedFeature(feature)
-    setLoadingDetails(true)
-    setFeatureDetails(null)
-
-    try {
-      const response = await fetch(`/api/linear-features/${feature.linearId}`)
-      if (response.ok) {
-        const data = await response.json()
-        setFeatureDetails(data.description || data.message || 'No description available')
-      } else {
-        setFeatureDetails('Failed to load issue details')
-      }
-    } catch (error) {
-      console.error('Failed to load feature details:', error)
-      setFeatureDetails('Failed to load issue details')
-    } finally {
-      setLoadingDetails(false)
-    }
-  }
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Upcoming Features</CardTitle>
-        <CardDescription>
-          What's coming next in Mockifyer. Upvote features you'd like to see prioritized!
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {loading ? (
-          <div className="text-center text-muted-foreground py-4">Loading features...</div>
-        ) : (
-          <div className="space-y-3">
-            {features
-              .sort((a, b) => {
-                const votesA = votes[a.id] || 0
-                const votesB = votes[b.id] || 0
-                return votesB - votesA // Sort descending by vote count
-              })
-              .map((feature) => {
-                const voteCount = votes[feature.id] || 0
-                const hasVoted = userVotes.has(feature.id)
-              
-              return (
-                <div
-                  key={feature.id}
-                  className={`flex items-start gap-3 p-3 rounded-lg border hover:bg-accent/50 transition-colors ${
-                    feature.linearId ? 'cursor-pointer' : ''
-                  }`}
-                  onClick={() => feature.linearId && handleFeatureClick(feature)}
-                >
-                  <span className="text-lg flex-shrink-0">{feature.icon}</span>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-2 mb-1 flex-wrap">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap mb-1">
-                          <h4 className="font-semibold">{feature.title}</h4>
-                          {feature.tags && feature.tags.length > 0 && (
-                            <div className="flex items-center gap-1 flex-wrap">
-                              {feature.tags.map((tag) => (
-                                <span
-                                  key={tag}
-                                  className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20"
-                                >
-                                  {tag}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      <Button
-                        variant={hasVoted ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleToggleVote(feature.id)
-                        }}
-                        className="flex items-center gap-1.5 h-7 px-2 flex-shrink-0"
-                      >
-                        <ThumbsUp className={`h-3 w-3 ${hasVoted ? 'fill-current' : ''}`} />
-                        <span className="text-xs">{voteCount}</span>
-                      </Button>
-                    </div>
-                    <p className="text-sm text-muted-foreground">{feature.description}</p>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </CardContent>
-
-      {/* Feature Details Modal */}
-      <Dialog open={!!selectedFeature} onOpenChange={(open) => !open && setSelectedFeature(null)}>
-        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex-1">
-                <DialogTitle className="flex items-center gap-2">
-                  {selectedFeature?.icon && <span className="text-2xl">{selectedFeature.icon}</span>}
-                  {selectedFeature?.title}
-                </DialogTitle>
-                <DialogDescription className="mt-2">
-                  {selectedFeature?.description}
-                </DialogDescription>
-              </div>
-              {selectedFeature?.linearUrl && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  asChild
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <a
-                    href={selectedFeature.linearUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1"
-                  >
-                    View in Linear
-                    <ExternalLink className="h-3 w-3" />
-                  </a>
-                </Button>
-              )}
-            </div>
-            {selectedFeature?.tags && selectedFeature.tags.length > 0 && (
-              <div className="flex items-center gap-2 mt-2 flex-wrap">
-                {selectedFeature.tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20"
-                  >
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            )}
-          </DialogHeader>
-          <div className="mt-4">
-            {loadingDetails ? (
-              <div className="text-center text-muted-foreground py-8">Loading details...</div>
-            ) : featureDetails ? (
-              <div className="prose prose-sm dark:prose-invert max-w-none">
-                <pre className="whitespace-pre-wrap text-sm bg-muted p-4 rounded-md overflow-x-auto">
-                  {featureDetails}
-                </pre>
-              </div>
-            ) : (
-              <div className="text-center text-muted-foreground py-8">
-                No additional details available
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
-    </Card>
-  )
-}
-
