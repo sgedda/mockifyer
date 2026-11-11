@@ -138,6 +138,12 @@ export const PAGE_SEO: Record<string, PageSeoConfig> = {
       'Compare Mockifyer with MSW, Polly.js, and Nock. Learn when record-replay fits better than in-code handlers for API testing.',
     path: '/comparisons',
   },
+  '/guides': {
+    title: 'Mockifyer Guides: Testing Patterns and Best Practices',
+    description:
+      'In-depth guides for testing patterns, React Native E2E, debugging tester bugs, and avoiding mock drift with Mockifyer record-replay.',
+    path: '/guides',
+  },
 }
 
 export const NOT_FOUND_SEO: PageSeoConfig = {
@@ -206,4 +212,33 @@ export function buildFaqPageJsonLd(
       },
     })),
   }
+}
+
+/**
+ * Generate SEO entries from the content registry for dynamic routes.
+ * Used at build time for sitemap, prerender, and route generation.
+ */
+export function generateSeoFromContentRegistry(): Record<string, PageSeoConfig> {
+  const entries: Record<string, PageSeoConfig> = {}
+  
+  // Import here to avoid circular dependencies at runtime
+  // In production, this should be called only during build
+  try {
+    const { GUIDES, COMPARISONS } = require('./content-registry')
+    const allContent = [...GUIDES, ...COMPARISONS]
+    
+    for (const item of allContent) {
+      if (item.exists) {
+        entries[item.path] = {
+          title: item.seoTitle || item.title,
+          description: item.seoDescription,
+          path: item.path,
+        }
+      }
+    }
+  } catch (e) {
+    // Content registry not available (e.g., during server build)
+  }
+  
+  return entries
 }

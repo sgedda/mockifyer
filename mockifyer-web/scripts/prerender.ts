@@ -1,8 +1,13 @@
 import { launch } from 'puppeteer';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
-const ROUTES = [
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Core routes
+const CORE_ROUTES = [
   '/',
   '/getting-started',
   '/date-config',
@@ -14,14 +19,23 @@ const ROUTES = [
   '/packages',
   '/dashboard',
   '/comparisons',
-  '/guides/mock-at-the-network-edge',
-  '/guides/reproduce-tester-bugs',
-  '/guides/stable-react-native-e2e',
-  '/guides/mock-drift',
-  '/guides/react-native-without-msw',
+  '/guides',
 ];
 
+async function getContentRoutes() {
+  try {
+    const { getAllExistingContent } = await import('../frontend/src/lib/content-registry.js');
+    const contentPages = getAllExistingContent();
+    return contentPages.map((item) => item.path);
+  } catch (e) {
+    console.warn('Could not load content registry, using core routes only');
+    return [];
+  }
+}
+
 async function prerender() {
+  const contentRoutes = await getContentRoutes();
+  const ROUTES = [...CORE_ROUTES, ...contentRoutes];
   const publicDir = path.join(__dirname, '../../public');
   
   // Use the built static files - serve them via http-server or similar
@@ -93,12 +107,10 @@ async function prerender() {
   }
 }
 
-// Run if called directly
-if (require.main === module) {
-  prerender().catch((error) => {
-    console.error('Prerender failed:', error);
-    process.exit(1);
-  });
-}
+// Run
+prerender().catch((error) => {
+  console.error('Prerender failed:', error);
+  process.exit(1);
+});
 
 export { prerender };

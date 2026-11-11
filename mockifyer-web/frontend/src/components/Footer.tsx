@@ -62,6 +62,11 @@ export default function Footer() {
           <div>
             <h3 className="font-semibold mb-4">Guides</h3>
             <ul className="space-y-2 text-sm text-muted-foreground">
+              <li>
+                <Link to="/guides" className="hover:text-foreground transition-colors font-medium">
+                  All guides
+                </Link>
+              </li>
               {GUIDE_ITEMS.map((guide) => (
                 <li key={guide.href}>
                   <Link to={guide.href} className="hover:text-foreground transition-colors">
