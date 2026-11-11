@@ -192,13 +192,16 @@ async function prerender() {
   }
   
   console.log('📄 Starting static HTML generation for SEO...');
+  // Read the original template ONCE before any modifications
   const baseHtml = fs.readFileSync(indexPath, 'utf-8');
   
   let count = 0;
   for (const [routePath, seoConfig] of Object.entries(PAGE_SEO)) {
+    // Use the original baseHtml for all routes (not the modified one)
+    const html = generateHtml(routePath, seoConfig, baseHtml);
+    
     if (routePath === '/') {
-      // Homepage is already index.html
-      const html = generateHtml(routePath, seoConfig, baseHtml);
+      // Homepage is index.html
       fs.writeFileSync(indexPath, html, 'utf-8');
       console.log(`  ✓ / → index.html`);
       count++;
