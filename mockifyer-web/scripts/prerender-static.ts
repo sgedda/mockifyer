@@ -135,7 +135,7 @@ function generateHtml(routePath: string, seoConfig: typeof PAGE_SEO[string], bas
   
   // Replace meta description
   html = html.replace(
-    /<meta name="description" content=".*?"(\s*\/)>/,
+    /<meta name="description"[\s\S]*?content=".*?"[\s\S]*?\/>/,
     `<meta name="description" content="${seoConfig.description}" />`
   );
   
@@ -151,7 +151,7 @@ function generateHtml(routePath: string, seoConfig: typeof PAGE_SEO[string], bas
     `<meta property="og:title" content="${title}" />`
   );
   html = html.replace(
-    /<meta property="og:description" content=".*?"(\s*\/)>/,
+    /<meta property="og:description"[\s\S]*?content=".*?"[\s\S]*?\/>/,
     `<meta property="og:description" content="${seoConfig.description}" />`
   );
   html = html.replace(
@@ -165,7 +165,7 @@ function generateHtml(routePath: string, seoConfig: typeof PAGE_SEO[string], bas
     `<meta name="twitter:title" content="${title}" />`
   );
   html = html.replace(
-    /<meta name="twitter:description" content=".*?"(\s*\/)>/,
+    /<meta name="twitter:description"[\s\S]*?content=".*?"[\s\S]*?\/>/,
     `<meta name="twitter:description" content="${seoConfig.description}" />`
   );
   
