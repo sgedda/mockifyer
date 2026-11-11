@@ -992,7 +992,7 @@ export class MockifyerClass {
       }
 
       if (this.config.failOnMissingMock) {
-        const hasUsableMock = cachedMock && !cachedMock.mockData.alwaysUseRealApi && !cachedMock.mockData.responsePending;
+        const hasUsableMock = cachedMock && !cachedMock.mockData.alwaysUseRealApi && !cachedMock.mockData.responsePending && !cachedMock.mockData.refreshOnNextRequest && !cachedMock.mockData.alwaysRefreshFromLive;
         if (!hasUsableMock) {
           const scenario = this.capabilities.getCurrentScenario(this.config.mockDataPath, this.config.clientId);
           const requestKey = this.generateRequestKey(request);

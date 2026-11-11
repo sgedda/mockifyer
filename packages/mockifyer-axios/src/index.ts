@@ -1167,7 +1167,7 @@ class MockifyerClass {
       }
 
       if (this.config.failOnMissingMock) {
-        const hasUsableMock = cachedMock && !cachedMock.mockData.alwaysUseRealApi && !cachedMock.mockData.responsePending;
+        const hasUsableMock = cachedMock && !cachedMock.mockData.alwaysUseRealApi && !cachedMock.mockData.responsePending && !cachedMock.mockData.refreshOnNextRequest && !cachedMock.mockData.alwaysRefreshFromLive;
         if (!hasUsableMock) {
           throw new Error(`No mock data found for request: ${this.generateRequestKey(request)}`);
         }
@@ -2323,7 +2323,7 @@ class MockifyerClass {
       );
 
       const recordBodies = resolveLocalRecordResponses(
-        this.config.proxy?.recordResponses ?? this.config.recordResponses
+        this.config.recordResponses ?? this.config.proxy?.recordResponses
       );
       const mockData = buildLocalRecordingMockData({
         request,
@@ -2590,7 +2590,7 @@ class MockifyerClass {
   /** True when new recordings include response bodies (not request-only stubs). */
   public isRecordResponses(): boolean {
     return resolveRecordResponses(
-      this.config.proxy?.recordResponses ?? this.config.recordResponses
+      this.config.recordResponses ?? this.config.proxy?.recordResponses
     );
   }
 
