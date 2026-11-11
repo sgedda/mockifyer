@@ -7,7 +7,7 @@ test.describe('Getting Started Page', () => {
 
   test('should display getting started content', async ({ page }) => {
     // Check main heading
-    await expect(page.getByText(/Getting Started with Mockifyer/i)).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Getting Started/i })).toBeVisible();
   });
 
   test('should have Quick Start section', async ({ page }) => {
@@ -22,16 +22,30 @@ test.describe('Getting Started Page', () => {
   });
 
   test('should have sections for different platforms', async ({ page }) => {
-    // Check for platform-specific sections
-    const hasNodeSection = await page.getByText(/Node Service/i).isVisible().catch(() => false);
-    const hasReactNativeSection = await page.getByText(/React Native/i).isVisible().catch(() => false);
-    
-    // At least one platform section should exist
-    expect(hasNodeSection || hasReactNativeSection).toBeTruthy();
+    // Check for platform tabs
+    await expect(page.getByRole('tab', { name: 'Node Service' })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'React Native' })).toBeVisible();
   });
 
-  test('should have environment configuration section', async ({ page }) => {
-    await expect(page.getByText(/Environment Configuration/i)).toBeVisible({ timeout: 5000 });
+  test('should have Next Steps section without Playground', async ({ page }) => {
+    // Check Next Steps heading
+    await expect(page.getByRole('heading', { name: /Next Steps/i })).toBeVisible();
+    
+    // Should have E2E Tutorial and Dashboard links (use first() to avoid strict mode)
+    await expect(page.getByRole('link', { name: /E2E Tutorial/i }).first()).toBeVisible();
+    await expect(page.getByRole('link', { name: /Dashboard/i }).first()).toBeVisible();
+    
+    // Should NOT have Playground link
+    const playgroundLink = page.getByRole('link', { name: /Playground/i });
+    expect(await playgroundLink.count()).toBe(0);
+  });
+
+  test('should have Example Projects section', async ({ page }) => {
+    // Check for Example Project heading
+    await expect(page.getByRole('heading', { name: /Example Project/i })).toBeVisible();
+    
+    // Check for WanderWeird example (use first() to avoid strict mode)
+    await expect(page.getByText(/WanderWeird Travel Demo/i)).toBeVisible();
   });
 });
 

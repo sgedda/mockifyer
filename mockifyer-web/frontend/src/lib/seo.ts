@@ -49,24 +49,6 @@ export const PAGE_SEO: Record<string, PageSeoConfig> = {
       'Install @sgedda/mockifyer-axios or mockifyer-fetch, configure mock data paths, and start recording or replaying HTTP API responses in minutes.',
     path: '/getting-started',
   },
-  '/playground': {
-    title: 'API Mock Playground',
-    description:
-      'Try Mockifyer live: send HTTP requests, switch mock scenarios, and inspect recorded axios and fetch responses in the browser.',
-    path: '/playground',
-  },
-  '/timeline': {
-    title: 'Request Timeline',
-    description:
-      'Browse recorded HTTP requests and responses captured by Mockifyer. Inspect headers, bodies, and mock match details.',
-    path: '/timeline',
-  },
-  '/settings': {
-    title: 'Settings & Scenarios',
-    description:
-      'Configure Mockifyer scenarios, date manipulation, runtime options, and environment variables for local development and testing.',
-    path: '/settings',
-  },
   '/date-config': {
     title: 'Date Configuration',
     description:
@@ -90,6 +72,30 @@ export const PAGE_SEO: Record<string, PageSeoConfig> = {
     description:
       'End-to-end walkthrough of the WanderWeird demo stack with Mockifyer. Drive the dashboard GUI, switch scenarios, inject failures, and trace nested HTTP calls across services.',
     path: '/e2e-tutorial',
+  },
+  '/guides/mock-at-the-network-edge': {
+    title: 'Mock at the Network Edge - Testing Guide',
+    description:
+      'Stop mocking hooks and components. Mock HTTP at the network edge to test what users see. Real response shapes, survive refactors, catch breaking API changes.',
+    path: '/guides/mock-at-the-network-edge',
+  },
+  '/guides/reproduce-tester-bugs': {
+    title: 'Reproduce Tester Bugs Locally - Testing Guide',
+    description:
+      'Capture API calls from tester devices, trace requests across services via x-mockifyer-request-id, export as curl, and replay bugs locally.',
+    path: '/guides/reproduce-tester-bugs',
+  },
+  '/guides/stable-react-native-e2e': {
+    title: 'Stable React Native E2E Tests - Detox, Appium, Maestro',
+    description:
+      'Stop Detox, Appium, and Maestro flakes. Lock scenarios with launch arguments, freeze dates, and make the backend deterministic.',
+    path: '/guides/stable-react-native-e2e',
+  },
+  '/guides/mock-drift': {
+    title: 'Stop Mock Drift - Record Real API Responses',
+    description:
+      'Hand-written mocks drift from real APIs. Record real responses, re-record when APIs change, and git diff to catch breaking changes. MSW vs record-replay comparison.',
+    path: '/guides/mock-drift',
   },
 }
 

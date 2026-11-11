@@ -15,42 +15,46 @@ export interface PublishedPackage {
 export const PUBLISHED_PACKAGES: PublishedPackage[] = [
   {
     name: '@sgedda/mockifyer-core',
-    version: '1.8.37',
+    version: '1.10.190',
     role: 'Mocks, scenarios, client lanes, date control, activation modes, providers',
     npmUrl: 'https://www.npmjs.com/package/@sgedda/mockifyer-core',
   },
   {
     name: '@sgedda/mockifyer-axios',
-    version: '1.8.21',
+    version: '1.10.35',
     role: 'Axios integration for Node and backend services',
     install: 'npm install @sgedda/mockifyer-core @sgedda/mockifyer-axios axios',
     npmUrl: 'https://www.npmjs.com/package/@sgedda/mockifyer-axios',
   },
   {
     name: '@sgedda/mockifyer-fetch',
-    version: '1.8.31',
+    version: '1.8.106',
     role: 'fetch, React Native, Metro sync, Atlas tracing (t key in Metro)',
     install: 'npm install @sgedda/mockifyer-core @sgedda/mockifyer-fetch',
     npmUrl: 'https://www.npmjs.com/package/@sgedda/mockifyer-fetch',
   },
   {
     name: '@sgedda/mockifyer-dashboard',
-    version: '1.4.50',
+    version: '1.5.93',
     role: 'Web UI, Redis/SQLite, Network view, scenario/lane management, Date Config',
     install: 'npx @sgedda/mockifyer-dashboard --path ./mock-data',
     npmUrl: 'https://www.npmjs.com/package/@sgedda/mockifyer-dashboard',
   },
+]
+
+// Not on npm — build from source
+export const REPO_ONLY_PACKAGES = [
   {
     name: '@sgedda/mockifyer-mcp',
-    version: '0.1.0',
-    role: 'AI tools for Cursor and Claude (experimental)',
-    npmUrl: 'https://www.npmjs.com/package/@sgedda/mockifyer-mcp',
+    version: '0.1.5',
+    role: '42 MCP tools for Cursor/Claude (search, AI context, field overrides, explain_value)',
+    buildPath: 'packages/mockifyer-mcp',
   },
   {
     name: '@sgedda/mockifyer-test-helper',
     version: '1.8.9',
     role: 'Test utilities and auto-setup for realistic mock data in tests',
-    npmUrl: 'https://www.npmjs.com/package/@sgedda/mockifyer-test-helper',
+    buildPath: 'packages/mockifyer-test-helper',
   },
 ]
 
@@ -150,7 +154,7 @@ export const SETUP_MOCKIFYER_OPTIONS = `{
   clientId?: string;                 // Lane id (or MOCKIFYER_CLIENT_ID)
   useGlobalAxios?: boolean;          // axios package
   useGlobalFetch?: boolean;          // fetch package
-  runtimeMode?: 'on' | 'launch_client' | 'off';  // React Native startup
+  runtimeMode?: 'on' | 'launch_client' | 'manual' | 'off';  // React Native startup (manual aliases: e2e/maestro/gui/toggle)
   recordNewMocksAsPassthrough?: boolean;
   refreshPassthroughRecordings?: boolean;
   useSimilarMatch?: boolean;
@@ -259,3 +263,16 @@ export const MCP_TOOLS = [
   'mockifyer_list_client_lanes / mockifyer_set_client_lane_scenario',
   'mockifyer_get_endpoint_stats',
 ] as const
+
+export interface GuideItem {
+  href: string
+  label: string
+}
+
+export const GUIDE_ITEMS: GuideItem[] = [
+  { href: '/guides/mock-at-the-network-edge', label: 'Mock at the Network Edge' },
+  { href: '/guides/reproduce-tester-bugs', label: 'Reproduce Tester Bugs' },
+  { href: '/guides/stable-react-native-e2e', label: 'Stable React Native E2E' },
+  { href: '/guides/mock-drift', label: 'Stop Mock Drift' },
+  { href: '/guides/react-native-without-msw', label: 'React Native: Handlers vs Recording' },
+]

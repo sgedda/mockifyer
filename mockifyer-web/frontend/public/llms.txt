@@ -7,22 +7,30 @@ Use Mockifyer when you need reliable integration tests without depending on live
 ## Product
 
 - [Home](https://mockifyer.dev/): Overview, feature highlights, and live demo links
+- [Features](https://mockifyer.dev/features): Key capabilities and use cases
 - [Getting Started](https://mockifyer.dev/getting-started): Install and configure `@sgedda/mockifyer-axios` or `@sgedda/mockifyer-fetch`
 - [Getting Started (markdown)](https://mockifyer.dev/getting-started.md): Static install guide for crawlers
 - [Overview (markdown)](https://mockifyer.dev/overview.md): Short product summary
-- [Playground](https://mockifyer.dev/playground): Try record/replay and scenario switching in the browser
+- [FAQ](https://mockifyer.dev/faq): Frequently asked questions
+- [Packages](https://mockifyer.dev/packages): npm package overview and versions
+- [Dashboard](https://mockifyer.dev/dashboard): Dashboard features and MCP server
 - [E2E Tutorial](https://mockifyer.dev/e2e-tutorial): End-to-end walkthrough of the WanderWeird multi-service stack with the dashboard GUI
 - [Configuration Reference](https://mockifyer.dev/config-reference): Environment variables and setup options
 - [Configuration (markdown)](https://mockifyer.dev/config-reference.md): Static env var reference
+- [Comparisons](https://mockifyer.dev/comparisons): Compare Mockifyer with MSW, Polly, Nock, and others
+- [Guides](https://mockifyer.dev/guides/mock-at-the-network-edge): Mock at the Network Edge
+- [Guides](https://mockifyer.dev/guides/mock-drift): Prevent Mock Drift
+- [Guides](https://mockifyer.dev/guides/reproduce-tester-bugs): Reproduce Tester Bugs
+- [Guides](https://mockifyer.dev/guides/stable-react-native-e2e): Stable React Native E2E
 
 ## npm packages
 
-- [@sgedda/mockifyer-core](https://www.npmjs.com/package/@sgedda/mockifyer-core) (1.8.x): Types, mock matching, scenarios, dates, activation, AI context
-- [@sgedda/mockifyer-axios](https://www.npmjs.com/package/@sgedda/mockifyer-axios) (1.8.x): Axios — call `setupMockifyer()` before importing axios
-- [@sgedda/mockifyer-fetch](https://www.npmjs.com/package/@sgedda/mockifyer-fetch) (1.8.x): fetch, React Native, dashboard proxy
-- [@sgedda/mockifyer-dashboard](https://www.npmjs.com/package/@sgedda/mockifyer-dashboard) (1.4.x): Local UI/CLI, Redis proxy, client lanes
-- [@sgedda/mockifyer-mcp](https://www.npmjs.com/package/@sgedda/mockifyer-mcp) (0.1.x): MCP server for Cursor/Claude (requires dashboard)
-- [@sgedda/mockifyer-test-helper](https://www.npmjs.com/package/@sgedda/mockifyer-test-helper): Test utilities
+- [@sgedda/mockifyer-core](https://www.npmjs.com/package/@sgedda/mockifyer-core) (1.10.190): Types, mock matching, scenarios, dates, activation, AI context
+- [@sgedda/mockifyer-axios](https://www.npmjs.com/package/@sgedda/mockifyer-axios) (1.10.35): Axios — call `setupMockifyer()` before importing axios
+- [@sgedda/mockifyer-fetch](https://www.npmjs.com/package/@sgedda/mockifyer-fetch) (1.8.106): fetch, React Native, dashboard proxy
+- [@sgedda/mockifyer-dashboard](https://www.npmjs.com/package/@sgedda/mockifyer-dashboard) (1.5.93): Local UI/CLI, Redis proxy, client lanes
+- **@sgedda/mockifyer-mcp** (in repo, not on npm): 42 MCP tools for Cursor/Claude (requires dashboard). Build from `packages/mockifyer-mcp`.
+- **@sgedda/mockifyer-test-helper** (in repo, not on npm): Test utilities. Build from `packages/mockifyer-test-helper`.
 
 ## Quick start (axios)
 

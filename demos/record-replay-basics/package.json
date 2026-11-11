@@ -1,0 +1,18 @@
+{
+  "name": "mockifyer-record-replay-basics",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Record real API responses with Mockifyer, then replay them offline with scenario switching and date freezing",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "record": "node record.js"
+  },
+  "dependencies": {
+    "@sgedda/mockifyer-core": "^1.10.190",
+    "@sgedda/mockifyer-fetch": "^1.8.106"
+  },
+  "devDependencies": {
+    "vitest": "^2.0.0"
+  }
+}

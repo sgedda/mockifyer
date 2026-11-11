@@ -1,19 +1,23 @@
 import { Link, useLocation } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
-import { Menu, Moon, Sun } from 'lucide-react'
+import { Menu, Moon, Sun, Github, ChevronDown } from 'lucide-react'
 import { useState } from 'react'
 import Logo from './Logo'
 import { useTheme } from '@/lib/use-theme'
+import { GUIDE_ITEMS } from '@/lib/product-docs'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 const navItems = [
-  { href: '/getting-started', label: 'Getting Started' },
-  { href: '/playground', label: 'Playground' },
-  { href: '/timeline', label: 'Timeline' },
-  { href: '/comparisons', label: 'Comparisons' },
-  { href: '/e2e-tutorial', label: 'E2E Tutorial' },
-  { href: '/browser-guide', label: 'Browser Guide' },
-  { href: '/settings', label: 'Settings' },
-  { href: '/contact', label: 'Contact' },
+  { href: '/getting-started', label: 'Get Started' },
+  { href: '/features', label: 'Features' },
+  { href: '/dashboard', label: 'Dashboard' },
+  { href: '/packages', label: 'Packages' },
+  { href: '/faq', label: 'FAQ' },
 ]
 
 export default function Navigation() {
@@ -26,98 +30,166 @@ export default function Navigation() {
            (path === '/' && location.pathname === '/')
   }
 
+  const isGuidesActive = () => {
+    return location.pathname.startsWith('/guides/')
+  }
+
   return (
-    <nav className="border-b bg-card">
-      <div className="container mx-auto px-4">
-        <div className="flex h-16 items-center justify-between gap-2">
-          <Logo className="flex-shrink-0" />
+    <nav className="sticky top-0 z-40 border-b border-border/80 bg-background/80 backdrop-blur">
+      <div className="mx-auto flex h-16 max-w-[1200px] items-center gap-4 px-5">
+        <Link to="/" className="flex items-center gap-2 flex-shrink-0" aria-label="Mockifyer home">
+          <Logo />
+        </Link>
+        
+        {/* Desktop Navigation */}
+        <nav className="ml-4 hidden items-center gap-1 lg:flex">
+          {navItems.map((item) => (
+            <Link
+              key={item.href}
+              to={item.href}
+              className={`px-3 py-1.5 rounded-md text-[15px] font-medium transition-colors ${
+                isActive(item.href)
+                  ? 'text-foreground bg-muted'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
+              }`}
+            >
+              {item.label}
+            </Link>
+          ))}
           
-          {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center gap-1 flex-1 justify-end min-w-0 max-w-full overflow-hidden">
-            <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide">
-              {navItems.map((item) => (
-                <Link
-                  key={item.href}
-                  to={item.href}
-                  className={`px-2 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0 ${
-                    isActive(item.href)
-                      ? 'bg-primary text-primary-foreground'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-accent'
-                  }`}
-                >
-                  {item.label}
-                </Link>
-              ))}
-            </div>
-          </div>
-
-          {/* Theme Toggle - Always visible on desktop */}
-          <div className="hidden md:flex items-center flex-shrink-0 ml-1">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={(e) => {
-                e.preventDefault()
-                toggleTheme()
-              }}
-              className="flex-shrink-0"
-              aria-label="Toggle theme"
-            >
-              {theme === 'dark' ? (
-                <Sun className="h-5 w-5" />
-              ) : (
-                <Moon className="h-5 w-5" />
-              )}
-            </Button>
-          </div>
-
-          {/* Mobile Menu Button */}
-          <div className="md:hidden flex items-center gap-2 flex-shrink-0">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={(e) => {
-                e.preventDefault()
-                toggleTheme()
-              }}
-              aria-label="Toggle theme"
-            >
-              {theme === 'dark' ? (
-                <Sun className="h-5 w-5" />
-              ) : (
-                <Moon className="h-5 w-5" />
-              )}
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            >
-              <Menu className="h-6 w-6" />
-            </Button>
-          </div>
-        </div>
-
-        {/* Mobile Navigation */}
-        {mobileMenuOpen && (
-          <div className="md:hidden border-t py-4 space-y-2">
-            {navItems.map((item) => (
-              <Link
-                key={item.href}
-                to={item.href}
-                onClick={() => setMobileMenuOpen(false)}
-                className={`block px-3 py-2 rounded-md text-sm font-medium ${
-                  isActive(item.href)
-                    ? 'bg-primary text-primary-foreground'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+          {/* Guides Dropdown */}
+          <DropdownMenu modal={false}>
+            <DropdownMenuTrigger asChild>
+              <button
+                className={`px-3 py-1.5 rounded-md text-[15px] font-medium transition-colors inline-flex items-center gap-1 ${
+                  isGuidesActive()
+                    ? 'text-foreground bg-muted'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
                 }`}
               >
-                {item.label}
-              </Link>
-            ))}
-          </div>
-        )}
+                Guides
+                <ChevronDown className="h-4 w-4" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              {GUIDE_ITEMS.map((guide) => (
+                <DropdownMenuItem key={guide.href} asChild>
+                  <Link to={guide.href} className="cursor-pointer">
+                    {guide.label}
+                  </Link>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </nav>
+
+        {/* Desktop Actions */}
+        <div className="ml-auto hidden lg:flex items-center gap-2">
+          <a
+            href="https://github.com/sgedda/mockifyer"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="p-2 rounded-lg hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-colors"
+            aria-label="GitHub"
+          >
+            <Github className="h-5 w-5" />
+          </a>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={(e) => {
+              e.preventDefault()
+              toggleTheme()
+            }}
+            className="rounded-lg hover:bg-muted/60 text-muted-foreground hover:text-foreground"
+            aria-label="Toggle theme"
+          >
+            {theme === 'dark' ? (
+              <Sun className="h-5 w-5" />
+            ) : (
+              <Moon className="h-5 w-5" />
+            )}
+          </Button>
+        </div>
+
+        {/* Mobile Actions */}
+        <div className="ml-auto lg:hidden flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={(e) => {
+              e.preventDefault()
+              toggleTheme()
+            }}
+            className="text-muted-foreground"
+            aria-label="Toggle theme"
+          >
+            {theme === 'dark' ? (
+              <Sun className="h-5 w-5" />
+            ) : (
+              <Moon className="h-5 w-5" />
+            )}
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            className="text-muted-foreground"
+            aria-label="Menu"
+          >
+            <Menu className="h-6 w-6" />
+          </Button>
+        </div>
       </div>
+
+      {/* Mobile Navigation */}
+      {mobileMenuOpen && (
+        <nav className="lg:hidden border-t border-border px-5 py-3 space-y-1">
+          {navItems.map((item) => (
+            <Link
+              key={item.href}
+              to={item.href}
+              onClick={() => setMobileMenuOpen(false)}
+              className={`block px-3 py-2.5 rounded-lg text-[15px] font-medium ${
+                isActive(item.href)
+                  ? 'text-foreground bg-muted'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
+              }`}
+            >
+              {item.label}
+            </Link>
+          ))}
+          
+          {/* Guides submenu */}
+          <div className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            Guides
+          </div>
+          {GUIDE_ITEMS.map((guide) => (
+            <Link
+              key={guide.href}
+              to={guide.href}
+              onClick={() => setMobileMenuOpen(false)}
+              className={`block px-3 py-2 ml-2 rounded-lg text-sm font-medium ${
+                isActive(guide.href)
+                  ? 'text-foreground bg-muted'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
+              }`}
+            >
+              {guide.label}
+            </Link>
+          ))}
+          
+          <a
+            href="https://github.com/sgedda/mockifyer"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-[15px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60"
+          >
+            <Github className="h-4 w-4" />
+            GitHub
+          </a>
+        </nav>
+      )}
     </nav>
   )
 }
