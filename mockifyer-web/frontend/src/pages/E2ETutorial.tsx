@@ -4,7 +4,7 @@ import CodeBlock from '@/components/CodeBlock'
 
 export default function E2ETutorial() {
   return (
-    <div className="mx-auto max-w-4xl px-5 py-12 space-y-8">
+    <div className="mx-auto max-w-[1200px] px-5 py-12 space-y-8">
       <header className="space-y-4">
         <div className="flex items-center gap-3">
           <Play className="h-8 w-8 text-primary flex-shrink-0" />
