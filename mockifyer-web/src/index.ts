@@ -75,6 +75,7 @@ const REDIRECTS: Record<string, string> = {
   '/settings': '/date-config',
   '/timeline': '/dashboard#network',
   '/index.html': '/',
+  '/browser-guide': '/guides/browser-record-replay',
 };
 
 app.use((req, res, next) => {
