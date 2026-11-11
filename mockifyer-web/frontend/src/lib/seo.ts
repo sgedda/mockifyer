@@ -158,9 +158,15 @@ export const NOT_FOUND_SEO: PageSeoConfig = {
   noIndex: true,
 }
 
+// Merge generated SEO from content registry with static PAGE_SEO
+const MERGED_SEO: Record<string, PageSeoConfig> = {
+  ...PAGE_SEO,
+  ...generateSeoFromContentRegistry(),
+}
+
 export function getPageSeo(pathname: string): PageSeoConfig | undefined {
   const normalized = pathname.replace(/\/index\.html$/, '').replace(/\/$/, '') || '/'
-  return PAGE_SEO[normalized]
+  return MERGED_SEO[normalized]
 }
 
 export function formatPageTitle(title: string): string {

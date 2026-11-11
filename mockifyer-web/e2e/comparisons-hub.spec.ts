@@ -41,20 +41,16 @@ test.describe('Comparisons Hub Page', () => {
     await expect(page.getByText(/For backend.*integration testing with eBPF-level capture.*Keploy/i)).toBeVisible();
   });
   
-  test('should show empty comparisons section when no comparison pages exist', async ({ page }) => {
+  test('should show all comparison pages', async ({ page }) => {
     await page.goto('/comparisons');
     
-    // The "Detailed Comparisons" section should not be visible or should be hidden
-    // since no comparison pages exist yet (all are exists: false)
+    // The "Detailed Comparisons" section should be visible
     const detailedComparisonsHeading = page.getByRole('heading', { name: /Detailed Comparisons/i });
+    await expect(detailedComparisonsHeading).toBeVisible();
     
-    // Should not be visible (or if visible, should have no items)
-    const isVisible = await detailedComparisonsHeading.isVisible().catch(() => false);
-    if (isVisible) {
-      // If the section is visible, it should have no comparison links
-      const comparisonLinks = page.locator('a[href^="/comparisons/"]');
-      await expect(comparisonLinks).toHaveCount(0);
-    }
+    // Should have 5 comparison links (msw, pollyjs, nock, wiremock, mockoon)
+    const comparisonLinks = page.locator('a[href^="/comparisons/"]');
+    await expect(comparisonLinks).toHaveCount(5);
   });
   
   test('should keep existing content intact', async ({ page }) => {

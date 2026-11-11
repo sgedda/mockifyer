@@ -28,6 +28,7 @@ export default function Msw() {
         <div className="overflow-x-auto my-6">
           <table className="min-w-full border-collapse">
             <tr>
+              <th className="border border-border px-4 py-2 text-left font-semibold bg-muted"></th>
               <th className="border border-border px-4 py-2 text-left font-semibold bg-muted">MSW</th>
               <th className="border border-border px-4 py-2 text-left font-semibold bg-muted">Mockifyer</th>
             </tr>
