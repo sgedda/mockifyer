@@ -6,12 +6,66 @@
 import type { HTTPRequestConfig, HTTPResponse, MockifyerProxyRecordingMeta } from '../types/http-client';
 import { buildDashboardProxyEnvelope } from './dashboard-proxy-envelope';
 import { joinProxyDashboardApiUrl } from './join-proxy-dashboard-api-url';
-import { serializeProxyRequestBody } from './serialize-proxy-request-body';
 import { mapProxyPayloadSourceToNetworkSource } from './inline-trace';
 import { resolveMockifyerTraceFromProxyPayload } from './mockifyer-trace';
 import type { MockData } from '../types';
+import type { ProxySerializedBody } from './proxy-request-body-types';
 
 const MOCKIFYER_ORIGINAL_FETCH_KEY = '__mockifyer_original_fetch';
+
+/**
+ * Serialize FormData and URLSearchParams for the proxy envelope.
+ * Plain objects and primitives pass through as-is.
+ */
+async function serializeBodyForProxyEnvelope(body: unknown): Promise<unknown> {
+  if (body === undefined || body === null) {
+    return body;
+  }
+
+  if (typeof body === 'string' || typeof body === 'number' || typeof body === 'boolean') {
+    return body;
+  }
+
+  // URLSearchParams
+  if (typeof URLSearchParams !== 'undefined' && body instanceof URLSearchParams) {
+    return {
+      __mockifyerProxyBody: true,
+      kind: 'urlencoded',
+      contentType: 'application/x-www-form-urlencoded',
+      data: body.toString(),
+    } satisfies ProxySerializedBody;
+  }
+
+  // FormData
+  if (typeof FormData !== 'undefined' && body instanceof FormData) {
+    const params = new URLSearchParams();
+    const entries = (body as FormData & {
+      entries?: () => IterableIterator<[string, string | Blob]>;
+    }).entries?.();
+
+    if (entries) {
+      for (const [key, value] of entries) {
+        if (typeof value === 'string') {
+          params.append(key, value);
+        } else if (typeof Blob !== 'undefined' && value instanceof Blob) {
+          params.append(key, await value.text());
+        } else {
+          params.append(key, String(value));
+        }
+      }
+    }
+
+    return {
+      __mockifyerProxyBody: true,
+      kind: 'urlencoded',
+      contentType: 'application/x-www-form-urlencoded',
+      data: params.toString(),
+    } satisfies ProxySerializedBody;
+  }
+
+  // Plain objects and everything else pass through
+  return body;
+}
 
 /**
  * Resolve unpatched fetch to avoid re-intercepting our own proxy call.
@@ -76,7 +130,7 @@ export async function performDashboardProxyRequest(
     fetchFn,
   } = params;
 
-  const serializedBody = await serializeProxyRequestBody(body, headers);
+  const serializedBody = await serializeBodyForProxyEnvelope(body);
   const proxyUrl = joinProxyDashboardApiUrl(proxyBaseUrl, '/api/proxy');
   const envelope = buildDashboardProxyEnvelope({
     url,
