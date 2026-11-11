@@ -68,6 +68,7 @@ import {
   type MockifyerActivationMode,
   resolveRecordResponses,
   resolveLocalRecordResponses,
+  resolveLocalRecordResponsesForUrl,
   buildLocalRecordingMockData,
   adoptStoredOutboundRequestId,
   resolvePersistedHopIds,
@@ -1361,11 +1362,12 @@ export class MockifyerClass {
         queryParams: normalizedParamsForSave,
       };
       // Prefer explicit override / config; else request-only default (same as proxy).
-      const recordBodies = resolveLocalRecordResponses(
+      // Use URL-aware resolution for selective recording.
+      const configValue =
         this.recordResponsesOverride ??
-          this.config.proxy?.recordResponses ??
-          this.config.recordResponses
-      );
+        this.config.proxy?.recordResponses ??
+        this.config.recordResponses;
+      const recordBodies = resolveLocalRecordResponsesForUrl(storedRequest.url, configValue, this.config.baseUrl);
       const mockData = buildLocalRecordingMockData({
         request: storedRequest,
         response: {
@@ -1384,7 +1386,9 @@ export class MockifyerClass {
           requestId: hopIds.requestId,
           parentRequestId: hopIds.parentRequestId,
           parentRequestIds: hopIds.parentRequestIds,
-          ...(newRecordingUsesAlwaysUseRealApi() || !recordBodies
+          // Allowlisted URLs (recordBodies=true) should NOT have alwaysUseRealApi
+          // so they replay immediately. Request-only stubs need alwaysUseRealApi.
+          ...(!recordBodies
             ? { alwaysUseRealApi: true as const }
             : {}),
         },
@@ -1596,14 +1600,18 @@ export class MockifyerClass {
 
   /** True when new recordings include response bodies (not request-only stubs). */
   isRecordResponses(): boolean {
-    if (this.config.proxy?.baseUrl) {
-      return resolveRecordResponses(
-        this.recordResponsesOverride ?? this.config.proxy.recordResponses
-      );
+    const configValue = this.recordResponsesOverride ??
+      (this.config.proxy?.baseUrl ? this.config.proxy.recordResponses : this.config.recordResponses);
+    
+    // If config is an array, return true if array is non-empty (at least some URLs will record)
+    if (Array.isArray(configValue)) {
+      return configValue.length > 0;
     }
-    return resolveLocalRecordResponses(
-      this.recordResponsesOverride ?? this.config.recordResponses
-    );
+    
+    if (this.config.proxy?.baseUrl) {
+      return resolveRecordResponses(configValue);
+    }
+    return resolveLocalRecordResponses(configValue);
   }
 
   /**
