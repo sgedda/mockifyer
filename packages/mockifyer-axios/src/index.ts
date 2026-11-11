@@ -2410,6 +2410,11 @@ class MockifyerClass {
         );
       }
 
+      // Update domain path rule to allow replay for allowlisted responses
+      if (recordBodies) {
+        this.domainPathRules.enableAutoMockForUrl(request.url, baseUrlForPatternMatch);
+      }
+
       await this.ensureInboundParentStubForChild(hopIds.parentRequestId, response.config);
       
       // Generate test if enabled

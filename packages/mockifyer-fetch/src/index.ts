@@ -1617,6 +1617,11 @@ class MockifyerClass {
           );
         }
 
+        // Update domain path rule to allow replay for allowlisted responses
+        if (recordBodies) {
+          this.domainPathRules.enableAutoMockForUrl(storedRequest.url, this.config.baseUrl);
+        }
+
         if (this.config.generateTests?.enabled && this.testGenerator) {
           await this.generateTestForMock(mockData);
         }
