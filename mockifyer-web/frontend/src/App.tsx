@@ -12,6 +12,7 @@ import ConfigReference from './pages/ConfigReference'
 import Contact from './pages/Contact'
 import Comparisons from './pages/Comparisons'
 import E2ETutorial from './pages/E2ETutorial'
+import BrowserRecordReplay from './pages/guides/BrowserRecordReplay'
 import Features from './pages/Features'
 import FAQ from './pages/FAQ'
 import Packages from './pages/Packages'
@@ -78,11 +79,13 @@ function App() {
               <Route path="/guides/stable-react-native-e2e" element={<StableReactNativeE2E />} />
               <Route path="/guides/mock-drift" element={<MockDrift />} />
               <Route path="/guides/react-native-without-msw" element={<ReactNativeWithoutMSW />} />
+              <Route path="/guides/browser-record-replay" element={<BrowserRecordReplay />} />
               
               {/* Redirects for removed pages */}
               <Route path="/playground" element={<Navigate to="/getting-started" replace />} />
               <Route path="/timeline" element={<Navigate to="/dashboard#network" replace />} />
               <Route path="/settings" element={<Navigate to="/date-config" replace />} />
+              <Route path="/browser-guide" element={<Navigate to="/guides/browser-record-replay" replace />} />
               
               <Route path="/date-config" element={<DateConfig />} />
               <Route path="/getting-started" element={<GettingStarted />} />

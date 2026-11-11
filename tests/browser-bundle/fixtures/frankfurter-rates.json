@@ -1,0 +1,25 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "https://api.frankfurter.dev/v1/latest",
+    "headers": {},
+    "queryParams": {}
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "data": {
+      "amount": 1.0,
+      "base": "USD",
+      "date": "2024-01-15",
+      "rates": {
+        "EUR": 0.92,
+        "GBP": 0.79,
+        "JPY": 149.50
+      }
+    }
+  },
+  "timestamp": "2024-01-15T10:00:00.000Z"
+}
