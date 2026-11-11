@@ -46,11 +46,11 @@ export {
 import { MockifyerClass } from './mockifyer-class';
 import { browserCapabilities } from './node-capabilities.browser';
 import { BrowserDashboardSync } from './browser-dashboard-sync';
-import { BrowserDashboardClient } from '@sgedda/mockifyer-core/dist/utils/dashboard-client.browser';
+import { BrowserDashboardClient } from '@sgedda/mockifyer-core/utils/dashboard-client.browser';
 
 // Re-export dashboard client
 export { BrowserDashboardSync } from './browser-dashboard-sync';
-export { BrowserDashboardClient } from '@sgedda/mockifyer-core/dist/utils/dashboard-client.browser';
+export { BrowserDashboardClient } from '@sgedda/mockifyer-core/utils/dashboard-client.browser';
 
 // MockifyerInstance interface
 export interface BrowserDashboardConfig {
