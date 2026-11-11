@@ -14,7 +14,7 @@ export default function PackagesOverview({
   description = 'Install scoped npm packages from @sgedda — not the private monorepo root.',
 }: PackagesOverviewProps) {
   const [copiedPackage, setCopiedPackage] = useState<string | null>(null)
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const copyInstallCommand = (installCmd: string, pkgName: string) => {
     navigator.clipboard.writeText(installCmd)
