@@ -96,7 +96,10 @@ import {
   applyRecordingPassthroughFlag,
   resolveRecordResponses,
   resolveLocalRecordResponses,
+  resolveLocalRecordResponsesForUrl,
   buildLocalRecordingMockData,
+  warnRequestOnlyStub,
+  warnSetupWithoutInterception,
   ensureLocalInboundParentStubSaved,
   inboundParentStubFilename,
   readOutboundParentHopFromConfig,
@@ -184,11 +187,17 @@ class MockifyerClass {
       return config;
     }
 
+    // Resolve recordResponses to boolean for dashboard proxy
+    const recordResponsesValue = proxy?.recordResponses ?? false;
+    const resolvedRecordResponses = typeof recordResponsesValue === 'boolean'
+      ? recordResponsesValue
+      : recordResponsesValue.length > 0;
+    
     return attachDashboardProxyAxiosAdapter(config, {
       proxyBaseUrl,
       proxyScenario: proxy?.scenario,
       proxyRecordOnMiss: proxy?.recordOnMiss,
-      proxyRecordResponses: proxy?.recordResponses ?? false,
+      proxyRecordResponses: resolvedRecordResponses,
       strictLaneScenario: resolveProxyStrictLaneScenario(this.config),
       upstreamTlsInsecure: resolveProxyUpstreamTlsInsecure(this.config),
       clientId: this.config.clientId,
@@ -559,9 +568,19 @@ class MockifyerClass {
       this.ensureMockDataDirectory();
     }
 
+    // Resolve recordResponses to boolean for HTTP client
+    const proxyForClient = config.proxy ? {
+      ...config.proxy,
+      recordResponses: typeof config.proxy.recordResponses === 'boolean'
+        ? config.proxy.recordResponses
+        : Array.isArray(config.proxy.recordResponses) && config.proxy.recordResponses.length > 0
+          ? true
+          : false
+    } : undefined;
+    
     this.httpClient = new AxiosHTTPClient(config.axiosInstance, {
       baseUrl: config.baseUrl,
-      proxy: config.proxy,
+      proxy: proxyForClient,
       clientId: this.config.clientId,
       getClientId: () => this.config.clientId,
       getStrictLaneScenario: () => resolveProxyStrictLaneScenario(this.config),
@@ -587,6 +606,15 @@ class MockifyerClass {
       runtimeMode: this.config.runtimeMode,
       headline: this.config.initLog?.headline,
     });
+
+    // Warn if recording is enabled but no interception is configured
+    warnSetupWithoutInterception(
+      Boolean(this.config.recordMode),
+      (this.config as any).useGlobalFetch,
+      this.config.useGlobalAxios,
+      Boolean(this.config.proxy?.baseUrl),
+      'axios'
+    );
   }
 
   private applyOutboundLaneHeadersToAxiosRequest(config: any): void {
@@ -2313,9 +2341,9 @@ class MockifyerClass {
         correlation
       );
 
-      const recordBodies = resolveLocalRecordResponses(
-        this.config.proxy?.recordResponses ?? this.config.recordResponses
-      );
+      // Use URL-aware resolution for selective recording
+      const configValue = this.config.proxy?.recordResponses ?? this.config.recordResponses;
+      const recordBodies = resolveLocalRecordResponsesForUrl(request.url, configValue);
       const mockData = buildLocalRecordingMockData({
         request,
         response: storedResponse,
@@ -2336,6 +2364,16 @@ class MockifyerClass {
             : {}),
         },
       });
+
+      // Warn if this is a request-only stub (first time for this host)
+      if (!recordBodies && saveDecision.action !== 'overwrite') {
+        try {
+          const parsedUrl = new URL(request.url);
+          warnRequestOnlyStub(request.url, `['${parsedUrl.hostname}']`);
+        } catch {
+          warnRequestOnlyStub(request.url);
+        }
+      }
 
       applyRecordingPassthroughFlag(mockData, saveDecision.alwaysUseRealApi);
 
@@ -2580,9 +2618,16 @@ class MockifyerClass {
 
   /** True when new recordings include response bodies (not request-only stubs). */
   public isRecordResponses(): boolean {
-    return resolveRecordResponses(
-      this.config.proxy?.recordResponses ?? this.config.recordResponses
-    );
+    const configValue = this.config.proxy?.recordResponses ?? this.config.recordResponses;
+    
+    // Return true if boolean true or non-empty array
+    if (typeof configValue === 'boolean') {
+      return configValue;
+    }
+    if (Array.isArray(configValue)) {
+      return configValue.length > 0;
+    }
+    return false;
   }
 
   /**

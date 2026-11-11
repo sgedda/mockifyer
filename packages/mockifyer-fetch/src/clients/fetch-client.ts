@@ -89,7 +89,7 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
       baseUrl: string;
       scenario?: string;
       recordOnMiss?: boolean;
-      recordResponses?: boolean;
+      recordResponses?: boolean | Array<string | RegExp>;
       strictLaneScenario?: boolean;
       mirrorRecordedMocksToClient?: boolean;
     };
@@ -107,7 +107,11 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
     this.proxyBaseUrl = config?.proxy?.baseUrl;
     this.proxyScenario = config?.proxy?.scenario;
     this.proxyRecordOnMiss = config?.proxy?.recordOnMiss;
-    this.proxyRecordResponses = config?.proxy?.recordResponses ?? false;
+    // Resolve recordResponses to boolean for internal storage
+    const recordResponsesValue = config?.proxy?.recordResponses ?? false;
+    this.proxyRecordResponses = typeof recordResponsesValue === 'boolean'
+      ? recordResponsesValue
+      : recordResponsesValue.length > 0;
     this.getClientId = config?.getClientId;
     this.getStrictLaneScenario = config?.getStrictLaneScenario;
     this.getUpstreamTlsInsecure = config?.getUpstreamTlsInsecure;

@@ -81,7 +81,10 @@ import {
   getInlineTraceEnvelopeBusinessBody,
   resolveRecordResponses,
   resolveLocalRecordResponses,
+  resolveLocalRecordResponsesForUrl,
   buildLocalRecordingMockData,
+  warnRequestOnlyStub,
+  warnSetupWithoutInterception,
   applyOutboundRequestCorrelation,
   adoptStoredOutboundRequestId,
   resolvePersistedHopIds,
@@ -603,6 +606,15 @@ class MockifyerClass {
       runtimeMode: this.config.runtimeMode,
       headline: this.config.initLog?.headline,
     });
+
+    // Warn if recording is enabled but no interception is configured
+    warnSetupWithoutInterception(
+      Boolean(this.config.recordMode),
+      this.config.useGlobalFetch,
+      (this.config as any).useGlobalAxios,
+      Boolean(this.config.proxy?.baseUrl),
+      'fetch'
+    );
   }
 
   private ensureMockDataDirectory(): void {
@@ -1517,11 +1529,13 @@ class MockifyerClass {
         queryParams: normalizedParamsForSave,
       };
       // Prefer explicit override / config; else request-only default (same as proxy).
-      const recordBodies = resolveLocalRecordResponses(
+      // Use URL-aware resolution for selective recording.
+      const configValue =
         this.recordResponsesOverride ??
-          this.config.proxy?.recordResponses ??
-          this.config.recordResponses
-      );
+        this.config.proxy?.recordResponses ??
+        this.config.recordResponses;
+      const recordBodies = resolveLocalRecordResponsesForUrl(storedRequest.url, configValue);
+      
       const mockData = buildLocalRecordingMockData({
         request: storedRequest,
         response: {
@@ -1545,6 +1559,16 @@ class MockifyerClass {
             : {}),
         },
       });
+
+      // Warn if this is a request-only stub (first time for this host)
+      if (!recordBodies && saveDecision.action !== 'overwrite') {
+        try {
+          const parsedUrl = new URL(storedRequest.url);
+          warnRequestOnlyStub(storedRequest.url, `['${parsedUrl.hostname}']`);
+        } catch {
+          warnRequestOnlyStub(storedRequest.url);
+        }
+      }
 
       applyRecordingPassthroughFlag(mockData, saveDecision.alwaysUseRealApi);
 
@@ -1941,14 +1965,19 @@ class MockifyerClass {
 
   /** True when new recordings include response bodies (not request-only stubs). */
   isRecordResponses(): boolean {
-    if (this.config.proxy?.baseUrl) {
-      return resolveRecordResponses(
-        this.recordResponsesOverride ?? this.config.proxy.recordResponses
-      );
+    const configValue = this.recordResponsesOverride ?? 
+      (this.config.proxy?.baseUrl 
+        ? this.config.proxy.recordResponses 
+        : this.config.recordResponses);
+    
+    // Return true if boolean true or non-empty array
+    if (typeof configValue === 'boolean') {
+      return configValue;
     }
-    return resolveLocalRecordResponses(
-      this.recordResponsesOverride ?? this.config.recordResponses
-    );
+    if (Array.isArray(configValue)) {
+      return configValue.length > 0;
+    }
+    return false;
   }
 
   /**

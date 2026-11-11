@@ -83,6 +83,8 @@ import { getCurrentDate } from '@sgedda/mockifyer-core';
 
 setupMockifyer({
   mockDataPath: './mock-data',
+  useGlobalFetch: true,  // Required to intercept fetch calls
+  recordMode: true,      // Enable recording
   dateManipulation: {
     fixedDate: '2024-01-01T00:00:00.000Z',
   },
@@ -129,6 +131,7 @@ See [e2e/README.md](./e2e/README.md) for full documentation, test descriptions, 
 - Record and replay HTTP requests (axios or fetch)
 - Automatic interception driven by env + config
 - **Scenarios** — `mock-data/<scenario>/...` plus `scenario-config.json`
+- **Selective response recording** — record full responses only for specific hosts/paths; others save as request-only stubs
 - Date manipulation (fixed date, offset, timezone) for tests
 - **Status override** — simulate error responses (500, 429, 404) without modifying stored response data
 - **Response delay** — add artificial latency to test slow network conditions
@@ -275,6 +278,52 @@ await axios.get('https://api.example.com/v1/profile', {
 **Dashboard proxy:** when the dashboard proxies to the real upstream, it sets **`X-Mockifyer-Client-Id`** on that upstream request when a lane `clientId` is resolved, so downstream APIs can apply the same rule. See [MULTI_CLIENT_ISOLATION.md](./MULTI_CLIENT_ISOLATION.md) for lane and proxy context.
 
 Implementation helpers (for custom middleware): `resolveActivationMode`, `shouldApplyMockifyer`, `getOutboundMockifyerClientIdHeader`, and `MOCKIFYER_CLIENT_ID_HEADER` are exported from `@sgedda/mockifyer-core`.
+
+## Selective Response Recording
+
+By default, Mockifyer saves **request-only stubs** (`responsePending: true`, `alwaysUseRealApi: true`) that continue hitting the live API until you activate them in the dashboard. This prevents accidentally recording sensitive data or large response bodies for all domains.
+
+Use **`recordResponses`** to selectively record full response bodies for specific URLs:
+
+```typescript
+setupMockifyer({
+  mockDataPath: './mock-data',
+  useGlobalFetch: true,
+  recordMode: true,
+  // Record full responses only for these URLs:
+  recordResponses: [
+    'api.example.com',       // Exact host match
+    '*.staging.com',         // Wildcard subdomain (api.staging.com, etc.)
+    'api.example.com/v1/*',  // Host + path glob
+    /\/v2\/users/            // RegExp for full URL
+  ],
+});
+```
+
+**Behavior:**
+
+- URLs matching a pattern save **full response bodies** and **replay immediately** (no `alwaysUseRealApi` flag).
+- Non-matching URLs save **request-only stubs** into the `_scratch` scenario and keep hitting the live API.
+- When a request-only stub is saved for a new host, Mockifyer logs a **warning once per host** explaining how to opt in.
+
+**Environment overrides:**
+
+```bash
+# Global capture-all (overrides config)
+export MOCKIFYER_RECORD_RESPONSES=true
+
+# Selective via comma-separated list
+export MOCKIFYER_RECORD_RESPONSES_FOR="api.example.com,*.staging.com"
+```
+
+**Precedence:**
+1. `MOCKIFYER_RECORD_RESPONSES=true` (capture everything)
+2. `MOCKIFYER_RECORD_RESPONSES_FOR=...` (selective list)
+3. Config `recordResponses` array
+4. Config `recordResponses` boolean
+5. Default (`false` — request-only stubs)
+
+**Dashboard proxy:** The same `recordResponses` config and environment variables work for `proxy.recordResponses` when using the dashboard proxy.
 
 ## Domain-path rules
 

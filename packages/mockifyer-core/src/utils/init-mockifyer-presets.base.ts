@@ -283,9 +283,11 @@ export async function buildDashboardProxyConfig(
     parseProxyRecordOnMissEnv() ??
     (envRecord ? true : undefined);
 
-  const recordResponses = resolveRecordResponses(
-    options.recordResponses ?? extra.proxy?.recordResponses
-  );
+  // For dashboard proxy, resolve to boolean only (proxy doesn't support pattern matching yet)
+  const recordResponsesConfig = options.recordResponses ?? extra.proxy?.recordResponses;
+  const recordResponses = typeof recordResponsesConfig === 'boolean' 
+    ? resolveRecordResponses(recordResponsesConfig)
+    : resolveRecordResponses(Array.isArray(recordResponsesConfig) || recordResponsesConfig === true);
 
   const useCentralProxy =
     options.skipDashboardRedisHealthCheck === true ||
