@@ -318,23 +318,32 @@ describe('BrowserDashboardClient', () => {
       expect(scenario).toBe('default');
     });
 
-    it('returns null when lanes are disabled', async () => {
-      mockFetch.mockResolvedValue({
-        ok: true,
-        text: async () =>
-          JSON.stringify({
-            enabled: false,
-            lanes: [],
-            globalScenario: null,
-          }),
-      });
+    it('falls back to global scenario when lanes are disabled', async () => {
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          text: async () =>
+            JSON.stringify({
+              enabled: false,
+              lanes: [],
+              globalScenario: null,
+            }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          text: async () =>
+            JSON.stringify({
+              currentScenario: 'filesystem-scenario',
+              scenarios: ['default', 'filesystem-scenario'],
+            }),
+        });
 
       const client = new BrowserDashboardClient({
         dashboardBaseUrl: 'http://localhost:3002',
       });
       const scenario = await client.pollClientLaneScenario('web-client');
 
-      expect(scenario).toBe(null);
+      expect(scenario).toBe('filesystem-scenario');
     });
 
     it('returns null on error', async () => {

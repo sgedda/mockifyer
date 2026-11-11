@@ -214,7 +214,10 @@ export class BrowserDashboardClient {
   async pollClientLaneScenario(clientId: string): Promise<string | null> {
     try {
       const lanes = await this.getClientLanes();
-      if (!lanes.enabled) return null;
+      if (!lanes.enabled) {
+        // Lanes disabled (filesystem dashboard): fall back to global scenario
+        return this.pollScenario();
+      }
       
       const lane = lanes.lanes.find(l => l.clientId === clientId);
       return lane?.scenario ?? lanes.globalScenario ?? null;
