@@ -32,11 +32,10 @@ test.describe('SEO: Per-route HTML metadata', () => {
       expect(canonicalMatch).toBeTruthy();
       expect(canonicalMatch![1]).toBe(`https://mockifyer.dev${route.path}`);
 
-      // Wait for the page to render and check H1
-      await page.waitForLoadState('networkidle');
-      const h1 = page.locator('h1').first();
-      await expect(h1).toBeVisible();
-      await expect(h1).toContainText(route.h1);
+      // Check H1 in raw HTML before React loads (SEO-critical)
+      const h1Match = html!.match(/<h1[^>]*>(.*?)<\/h1>/);
+      expect(h1Match).toBeTruthy();
+      expect(h1Match![1]).toMatch(route.h1);
     });
   }
 });
