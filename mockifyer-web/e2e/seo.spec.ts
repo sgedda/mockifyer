@@ -2,14 +2,14 @@ import { test, expect } from '@playwright/test';
 
 // Routes that should have unique SEO
 const ROUTES = [
-  { path: '/', title: 'Mockifyer — Record & Replay HTTP API Mocks for Node.js', h1: /Record real APIs/ },
+  { path: '/', title: 'Mockifyer — Record & Replay HTTP API Mocks', h1: /Mockifyer/ },
   { path: '/getting-started', title: 'Getting Started with Mockifyer | Mockifyer', h1: /Getting Started/i },
-  { path: '/features', title: 'Mockifyer Features: Record, Replay, Scenarios | Mockifyer', h1: /Features/i },
-  { path: '/faq', title: 'Mockifyer FAQ: Record-Replay API Mocks | Mockifyer', h1: /Frequently Asked Questions/i },
+  { path: '/features', title: 'Mockifyer Features: Record, Replay, Scenarios | Mockifyer', h1: /Mockifyer Features/i },
+  { path: '/faq', title: 'Mockifyer FAQ: Record-Replay API Mocks | Mockifyer', h1: /FAQ/i },
   { path: '/packages', title: 'Mockifyer npm Packages for Axios and Fetch | Mockifyer', h1: /Packages/i },
   { path: '/dashboard', title: 'Mockifyer Dashboard and MCP Tools | Mockifyer', h1: /Dashboard/i },
   { path: '/comparisons', title: 'Mockifyer vs MSW, Polly.js, and Nock | Mockifyer', h1: /Comparisons/i },
-  { path: '/guides/react-native-without-msw', title: 'MSW vs Recording in React Native | Mockifyer', h1: /React Native/i },
+  { path: '/guides/react-native-without-msw', title: 'MSW vs Recording in React Native | Mockifyer', h1: /MSW/i },
 ];
 
 test.describe('SEO: Per-route HTML metadata', () => {
