@@ -6,7 +6,7 @@
 import type {
   BrowserDashboardClient,
   NetworkEvent,
-} from '@sgedda/mockifyer-core/dist/utils/dashboard-client.browser';
+} from '@sgedda/mockifyer-core/utils/dashboard-client.browser';
 
 export interface BrowserDashboardSyncOptions {
   dashboardClient: BrowserDashboardClient;
