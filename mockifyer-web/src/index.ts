@@ -73,7 +73,7 @@ app.use((req, res, next) => {
 const REDIRECTS: Record<string, string> = {
   '/playground': '/getting-started',
   '/settings': '/date-config',
-  '/timeline': '/dashboard',
+  '/timeline': '/dashboard#network',
   '/index.html': '/',
 };
 

@@ -34,9 +34,9 @@ function HashScrollHandler() {
 
   useEffect(() => {
     if (location.hash) {
-      const element = document.getElementById(location.hash.substring(1))
-      if (element) {
-        setTimeout(() => {
+      const scrollToHash = () => {
+        const element = document.getElementById(location.hash.substring(1))
+        if (element) {
           const headerOffset = 64
           const elementPosition = element.getBoundingClientRect().top
           const offsetPosition = elementPosition + window.pageYOffset - headerOffset
@@ -45,7 +45,16 @@ function HashScrollHandler() {
             top: offsetPosition,
             behavior: 'smooth'
           })
-        }, 0)
+          return true
+        }
+        return false
+      }
+
+      // Try immediately
+      if (!scrollToHash()) {
+        // Retry after lazy components load
+        const timeoutId = setTimeout(scrollToHash, 100)
+        return () => clearTimeout(timeoutId)
       }
     }
   }, [location])

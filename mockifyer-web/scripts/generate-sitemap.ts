@@ -44,7 +44,7 @@ ${urls}
 
 function writeSitemap() {
   const sitemap = generateSitemap();
-  const outputPath = path.join(__dirname, '../frontend/public/sitemap.xml');
+  const outputPath = path.join(__dirname, '../public/sitemap.xml');
   fs.writeFileSync(outputPath, sitemap, 'utf-8');
   console.log(`✓ Sitemap generated: ${outputPath}`);
 }

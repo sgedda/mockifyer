@@ -22,7 +22,7 @@ const ROUTES = [
 ];
 
 async function prerender() {
-  const publicDir = path.join(__dirname, '../../public');
+  const publicDir = path.join(__dirname, '../public');
   
   // Use the built static files - serve them via http-server or similar
   // For now, we'll prerender from the Vite preview server
