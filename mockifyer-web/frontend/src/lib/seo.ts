@@ -5,7 +5,7 @@ export const DEFAULT_TITLE =
   'Mockifyer — Record & Replay HTTP API Mocks for Node.js'
 
 export const DEFAULT_DESCRIPTION =
-  'Mockifyer records and replays axios and fetch HTTP calls as JSON mocks. Deterministic Node.js API testing with date control, GraphQL matching, and scenario switching.'
+  'Record axios and fetch calls as JSON and replay them in Node and React Native. Selective recording by default; mocks stay in your repo.'
 
 export const DEFAULT_KEYWORDS = [
   'API mocking',
@@ -37,6 +37,11 @@ export interface PageSeoConfig {
   noIndex?: boolean
 }
 
+/**
+ * SEO configuration for all routes.
+ * To add a new route: add one entry to this object with title (without ' | Mockifyer' suffix),
+ * description (<=155 chars), and path. The title suffix is added automatically.
+ */
 export const PAGE_SEO: Record<string, PageSeoConfig> = {
   '/': {
     title: DEFAULT_TITLE,
@@ -61,6 +66,12 @@ export const PAGE_SEO: Record<string, PageSeoConfig> = {
       'Complete reference for Mockifyer environment variables, mock data paths, recording modes, and activation settings.',
     path: '/config-reference',
   },
+  '/faq': {
+    title: 'Mockifyer FAQ: Record-Replay API Mocks',
+    description:
+      'Frequently asked questions about Mockifyer: how to record API calls, switch scenarios, and use the dashboard and MCP tools.',
+    path: '/faq',
+  },
   '/contact': {
     title: 'Contact',
     description:
@@ -68,9 +79,9 @@ export const PAGE_SEO: Record<string, PageSeoConfig> = {
     path: '/contact',
   },
   '/e2e-tutorial': {
-    title: 'E2E Tutorial: Controlling a nested multi-service stack',
+    title: 'E2E Tutorial: Multi-Service Mocks',
     description:
-      'End-to-end walkthrough of the WanderWeird demo stack with Mockifyer. Drive the dashboard GUI, switch scenarios, inject failures, and trace nested HTTP calls across services.',
+      'End-to-end walkthrough using the WanderWeird demo: a multi-service Expo app with scenarios, dashboard control, and nested request tracing.',
     path: '/e2e-tutorial',
   },
   '/guides/mock-at-the-network-edge': {
@@ -92,16 +103,52 @@ export const PAGE_SEO: Record<string, PageSeoConfig> = {
     path: '/guides/stable-react-native-e2e',
   },
   '/guides/mock-drift': {
-    title: 'Stop Mock Drift - Record Real API Responses',
+    title: 'Stop Hand-Written API Mocks from Drifting',
     description:
-      'Hand-written mocks drift from real APIs. Record real responses, re-record when APIs change, and git diff to catch breaking changes. MSW vs record-replay comparison.',
+      'Hand-written mocks drift from real APIs. Record real responses, re-record when APIs change, and git diff to catch breaking changes.',
     path: '/guides/mock-drift',
+  },
+  '/guides/react-native-without-msw': {
+    title: 'MSW vs Recording in React Native',
+    description:
+      'Compare MSW and Mockifyer for React Native. Recording works on device with no service worker, supports Expo and bare React Native.',
+    path: '/guides/react-native-without-msw',
+  },
+  '/features': {
+    title: 'Mockifyer Features: Record, Replay, Scenarios',
+    description:
+      'Selective recording, scenario switching, date freezing, React Native support, GraphQL matching, and a local dashboard for editing mocks.',
+    path: '/features',
+  },
+  '/packages': {
+    title: 'Mockifyer npm Packages for Axios and Fetch',
+    description:
+      '@sgedda/mockifyer-core, mockifyer-axios, mockifyer-fetch for recording and replay. Optional dashboard package for browsing mocks.',
+    path: '/packages',
+  },
+  '/dashboard': {
+    title: 'Mockifyer Dashboard and MCP Tools',
+    description:
+      'Local UI and CLI to browse scenarios, edit mocks, visualize traffic, and expose MCP tools to Cursor and Claude Desktop.',
+    path: '/dashboard',
+  },
+  '/comparisons': {
+    title: 'Mockifyer vs MSW, Polly.js, and Nock',
+    description:
+      'Compare Mockifyer with MSW, Polly.js, and Nock. Learn when record-replay fits better than in-code handlers for API testing.',
+    path: '/comparisons',
   },
 }
 
-export function getPageSeo(pathname: string): PageSeoConfig {
-  const normalized = pathname.replace(/\/index\.html$/, '') || '/'
-  return PAGE_SEO[normalized] ?? PAGE_SEO['/']
+export const NOT_FOUND_SEO: PageSeoConfig = {
+  title: 'Page Not Found - Mockifyer',
+  description: 'The page you are looking for does not exist.',
+  noIndex: true,
+}
+
+export function getPageSeo(pathname: string): PageSeoConfig | undefined {
+  const normalized = pathname.replace(/\/index\.html$/, '').replace(/\/$/, '') || '/'
+  return PAGE_SEO[normalized]
 }
 
 export function formatPageTitle(title: string): string {

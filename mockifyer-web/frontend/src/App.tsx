@@ -3,26 +3,31 @@ import { Toaster } from '@/components/ui/toaster'
 import Navigation from './components/Navigation'
 import Footer from './components/Footer'
 import { Navigate } from 'react-router-dom'
-import { useEffect } from 'react'
+import { useEffect, lazy, Suspense } from 'react'
 import { useLocation } from 'react-router-dom'
-import Introduction from './pages/Introduction'
-import DateConfig from './pages/DateConfig'
-import GettingStarted from './pages/GettingStarted'
-import ConfigReference from './pages/ConfigReference'
-import Contact from './pages/Contact'
-import Comparisons from './pages/Comparisons'
-import E2ETutorial from './pages/E2ETutorial'
-import Features from './pages/Features'
-import FAQ from './pages/FAQ'
-import Packages from './pages/Packages'
-import Dashboard from './pages/Dashboard'
-import MockAtTheNetworkEdge from './pages/guides/MockAtTheNetworkEdge'
-import ReproduceTesterBugs from './pages/guides/ReproduceTesterBugs'
-import StableReactNativeE2E from './pages/guides/StableReactNativeE2E'
-import MockDrift from './pages/guides/MockDrift'
-import ReactNativeWithoutMSW from './pages/guides/ReactNativeWithoutMSW'
 import { ThemeProvider } from './lib/use-theme'
 import PageSeoManager from './components/PageSeoManager'
+
+// Eager load only the homepage
+import Introduction from './pages/Introduction'
+
+// Lazy load all other pages for code splitting
+const DateConfig = lazy(() => import('./pages/DateConfig'))
+const GettingStarted = lazy(() => import('./pages/GettingStarted'))
+const ConfigReference = lazy(() => import('./pages/ConfigReference'))
+const Contact = lazy(() => import('./pages/Contact'))
+const Comparisons = lazy(() => import('./pages/Comparisons'))
+const E2ETutorial = lazy(() => import('./pages/E2ETutorial'))
+const Features = lazy(() => import('./pages/Features'))
+const FAQ = lazy(() => import('./pages/FAQ'))
+const Packages = lazy(() => import('./pages/Packages'))
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const MockAtTheNetworkEdge = lazy(() => import('./pages/guides/MockAtTheNetworkEdge'))
+const ReproduceTesterBugs = lazy(() => import('./pages/guides/ReproduceTesterBugs'))
+const StableReactNativeE2E = lazy(() => import('./pages/guides/StableReactNativeE2E'))
+const MockDrift = lazy(() => import('./pages/guides/MockDrift'))
+const ReactNativeWithoutMSW = lazy(() => import('./pages/guides/ReactNativeWithoutMSW'))
+const NotFound = lazy(() => import('./pages/NotFound'))
 
 function HashScrollHandler() {
   const location = useLocation()
@@ -48,6 +53,14 @@ function HashScrollHandler() {
   return null
 }
 
+function LoadingFallback() {
+  return (
+    <div className="flex items-center justify-center min-h-[50vh]">
+      <div className="text-muted-foreground">Loading...</div>
+    </div>
+  )
+}
+
 function App() {
   return (
     <ThemeProvider>
@@ -64,7 +77,8 @@ function App() {
           <HashScrollHandler />
           <Navigation />
           <main>
-            <Routes>
+            <Suspense fallback={<LoadingFallback />}>
+              <Routes>
               <Route path="/" element={<Introduction />} />
               <Route path="/index.html" element={<Introduction />} />
               <Route path="/features" element={<Features />} />
@@ -90,7 +104,11 @@ function App() {
               <Route path="/comparisons" element={<Comparisons />} />
               <Route path="/e2e-tutorial" element={<E2ETutorial />} />
               <Route path="/contact" element={<Contact />} />
-            </Routes>
+              
+              {/* 404 catch-all */}
+              <Route path="*" element={<NotFound />} />
+              </Routes>
+            </Suspense>
           </main>
           <Footer />
           <Toaster />
