@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { ExternalLink } from 'lucide-react'
+import { GUIDE_ITEMS } from '@/lib/product-docs'
 
 export default function Footer() {
   return (
@@ -61,26 +62,13 @@ export default function Footer() {
           <div>
             <h3 className="font-semibold mb-4">Guides</h3>
             <ul className="space-y-2 text-sm text-muted-foreground">
-              <li>
-                <Link to="/guides/mock-at-the-network-edge" className="hover:text-foreground transition-colors">
-                  Mock at the Network Edge
-                </Link>
-              </li>
-              <li>
-                <Link to="/guides/mock-drift" className="hover:text-foreground transition-colors">
-                  Prevent Mock Drift
-                </Link>
-              </li>
-              <li>
-                <Link to="/guides/reproduce-tester-bugs" className="hover:text-foreground transition-colors">
-                  Reproduce Tester Bugs
-                </Link>
-              </li>
-              <li>
-                <Link to="/guides/stable-react-native-e2e" className="hover:text-foreground transition-colors">
-                  Stable React Native E2E
-                </Link>
-              </li>
+              {GUIDE_ITEMS.map((guide) => (
+                <li key={guide.href}>
+                  <Link to={guide.href} className="hover:text-foreground transition-colors">
+                    {guide.label}
+                  </Link>
+                </li>
+              ))}
             </ul>
           </div>
           

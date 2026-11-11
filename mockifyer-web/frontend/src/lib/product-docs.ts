@@ -263,3 +263,16 @@ export const MCP_TOOLS = [
   'mockifyer_list_client_lanes / mockifyer_set_client_lane_scenario',
   'mockifyer_get_endpoint_stats',
 ] as const
+
+export interface GuideItem {
+  href: string
+  label: string
+}
+
+export const GUIDE_ITEMS: GuideItem[] = [
+  { href: '/guides/mock-at-the-network-edge', label: 'Mock at the Network Edge' },
+  { href: '/guides/reproduce-tester-bugs', label: 'Reproduce Tester Bugs' },
+  { href: '/guides/stable-react-native-e2e', label: 'Stable React Native E2E' },
+  { href: '/guides/mock-drift', label: 'Stop Mock Drift' },
+  { href: '/guides/react-native-without-msw', label: 'React Native: Handlers vs Recording' },
+]
