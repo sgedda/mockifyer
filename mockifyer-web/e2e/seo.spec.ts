@@ -8,7 +8,7 @@ const ROUTES = [
   { path: '/faq', title: 'Mockifyer FAQ: Record-Replay API Mocks | Mockifyer', h1: /FAQ/i },
   { path: '/packages', title: 'Mockifyer npm Packages for Axios and Fetch | Mockifyer', h1: /Packages/i },
   { path: '/dashboard', title: 'Mockifyer Dashboard and MCP Tools | Mockifyer', h1: /Dashboard/i },
-  { path: '/comparisons', title: 'Mockifyer vs MSW, Polly.js, and Nock | Mockifyer', h1: /Comparisons/i },
+  { path: '/comparisons', title: 'Mockifyer vs MSW, Polly.js, and Nock | Mockifyer', h1: /Mockifyer vs/i },
   { path: '/guides/react-native-without-msw', title: 'MSW vs Recording in React Native | Mockifyer', h1: /MSW/i },
 ];
 
