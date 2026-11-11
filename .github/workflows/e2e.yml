@@ -159,7 +159,7 @@ jobs:
 
       - name: Install Playwright system dependencies with retry
         working-directory: e2e
-        timeout-minutes: 15
+        timeout-minutes: 20
         run: |
           set -e
           MAX_ATTEMPTS=3
@@ -176,7 +176,7 @@ jobs:
 
           install_deps() {
             echo "Attempt $1/$MAX_ATTEMPTS: Installing Playwright system dependencies (${INSTALL_TIMEOUT}s timeout)..."
-            if timeout ${INSTALL_TIMEOUT}s npx playwright install-deps chromium; then
+            if sudo timeout --kill-after=10s ${INSTALL_TIMEOUT}s npx playwright install-deps chromium; then
               echo "✓ Successfully installed Playwright system dependencies"
               return 0
             else
@@ -216,7 +216,7 @@ jobs:
           sudo apt-get clean
           
           echo "→ Running apt-get update to refresh package lists..."
-          if timeout 120s sudo apt-get update -qq; then
+          if sudo timeout --kill-after=10s 120s apt-get update -qq; then
             echo "✓ apt-get update succeeded"
           else
             echo "⚠ apt-get update failed or timed out, proceeding with cached lists"
@@ -225,7 +225,7 @@ jobs:
           # Final attempt with fallback mirrors
           echo ""
           echo "Final attempt with fallback mirrors (${INSTALL_TIMEOUT}s timeout)..."
-          if timeout ${INSTALL_TIMEOUT}s npx playwright install-deps chromium; then
+          if sudo timeout --kill-after=10s ${INSTALL_TIMEOUT}s npx playwright install-deps chromium; then
             echo "✓ Successfully installed with fallback mirrors"
             exit 0
           else
