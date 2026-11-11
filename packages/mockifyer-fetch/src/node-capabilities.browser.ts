@@ -91,7 +91,7 @@ function pureSha256Hex(input: string): string {
   return H.map((n) => n.toString(16).padStart(8, '0')).join('');
 }
 
-export const browserCapabilities: NodeCapabilities = {
+const browserCapabilities: NodeCapabilities = {
   digest(input: string): string {
     // Use pure-JS implementation (Web Crypto is async, we need sync)
     return pureSha256Hex(input);
@@ -118,3 +118,6 @@ export const browserCapabilities: NodeCapabilities = {
   applyRequestCorrelation: undefined,
   generateAtlasHtml: undefined,
 };
+
+// Export as nodeCapabilities for consistency (package.json maps .node to .browser)
+export const nodeCapabilities = browserCapabilities;

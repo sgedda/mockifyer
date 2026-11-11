@@ -90,26 +90,29 @@ import { mirrorProxyRecordingToClient } from './core-proxy';
 // Local imports
 import { FetchHTTPClient } from './clients/fetch-client';
 
-// Lazy-load Node.js built-ins (hidden from bundlers via function scope)
-function lazyRequire(moduleName: string): any {
+// Lazy-load Node.js built-ins (static literal requires, bundler-safe)
+function getFs(): typeof import('fs') | null {
   // Only works in Node.js
   if (typeof process === 'undefined' || !process.versions?.node) {
     return null;
   }
   try {
-    // Direct require works in Node module scope; function guard + try/catch prevent bundler issues
-    return require(moduleName);
+    // Static require with literal path - bundlers can stub this
+    return require('fs');
   } catch {
     return null;
   }
 }
 
-function getFs(): typeof import('fs') | null {
-  return lazyRequire('fs');
-}
-
 function getPath(): typeof import('path') | null {
-  return lazyRequire('path');
+  if (typeof process === 'undefined' || !process.versions?.node) {
+    return null;
+  }
+  try {
+    return require('path');
+  } catch {
+    return null;
+  }
 }
 
 export class MockifyerClass {
@@ -396,13 +399,20 @@ export class MockifyerClass {
   }
 
   constructor(config: MockifyerConfig, capabilities?: NodeCapabilities) {
-    // Import Node capabilities lazily (avoids bundling in browser builds)
+    // Import Node capabilities (static require, bundler handles via package.json exports)
     if (!capabilities) {
-      // Dynamic import for Node capabilities
-      // In Node/Jest: uses require. In browser: capabilities must be passed explicitly.
+      // Static require with literal path - package.json browser field maps to .browser.ts
       if (typeof require !== 'undefined') {
-        const nodeModule = require('./node-capabilities.node');
-        this.capabilities = nodeModule.nodeCapabilities;
+        try {
+          const nodeModule = require('./node-capabilities.node');
+          this.capabilities = nodeModule.nodeCapabilities;
+        } catch (error) {
+          throw new Error(
+            '[Mockifyer] Failed to load node capabilities. ' +
+            'In browser builds, pass capabilities explicitly or use the browser entry point. ' +
+            `Error: ${error}`
+          );
+        }
       } else {
         throw new Error(
           '[Mockifyer] No capabilities provided and require() not available. ' +
