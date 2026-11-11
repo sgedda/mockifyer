@@ -2,11 +2,29 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Globe, CheckCircle2, XCircle, Code, Rocket, AlertCircle, Play } from 'lucide-react'
 import CodeBlock from '@/components/CodeBlock'
 import { Link } from 'react-router-dom'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 
 export default function BrowserRecordReplay() {
   const [showStackBlitz, setShowStackBlitz] = useState(false)
+  
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('embed') === 'true' && window.crossOriginIsolated) {
+      setShowStackBlitz(true);
+      window.history.replaceState({}, '', '/guides/browser-record-replay');
+    }
+  }, []);
+  
+  const handleShowEmbed = () => {
+    // If not cross-origin isolated (e.g., user navigated from another page via SPA),
+    // do a full page reload with ?embed=true to restore intent after isolation
+    if (typeof window !== 'undefined' && !window.crossOriginIsolated) {
+      window.location.href = '/guides/browser-record-replay?embed=true';
+      return;
+    }
+    setShowStackBlitz(!showStackBlitz);
+  };
   
   return (
     <div className="max-w-[900px] mx-auto space-y-6">
@@ -275,11 +293,7 @@ npm run dev
         <CardContent className="space-y-4">
           <div className="p-4 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-500/50">
             <p className="text-sm text-muted-foreground">
-              <strong>Note:</strong> This demo will work once browser support is published in the next release (currently in PR{' '}
-              <a href="https://github.com/sgedda/mockifyer/pull/495" className="text-blue-600 dark:text-blue-400 hover:underline" target="_blank" rel="noopener noreferrer">
-                #495
-              </a>
-              ).
+              <strong>Note:</strong> This demo will work once browser support is published in the next release.
             </p>
           </div>
           
@@ -297,7 +311,7 @@ npm run dev
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setShowStackBlitz(!showStackBlitz)}
+              onClick={handleShowEmbed}
             >
               {showStackBlitz ? 'Hide' : 'Show'} Embedded Preview
             </Button>
@@ -306,10 +320,10 @@ npm run dev
           {showStackBlitz && (
             <div className="border rounded-lg overflow-hidden" style={{ height: '500px' }}>
               <iframe
-                src="https://stackblitz.com/github/sgedda/mockifyer/tree/main/example-projects/browser-vite?embed=1&view=preview"
+                src="https://stackblitz.com/github/sgedda/mockifyer/tree/main/example-projects/browser-vite?embed=1&view=preview&corp=1"
                 className="w-full h-full"
                 title="Mockifyer Browser Example"
-                allow="accelerometer; ambient-light-sensor; camera; encrypted-media; geolocation; gyroscope; hid; microphone; midi; payment; usb; vr; xr-spatial-tracking"
+                allow="cross-origin-isolated; accelerometer; ambient-light-sensor; camera; encrypted-media; geolocation; gyroscope; hid; microphone; midi; payment; usb; vr; xr-spatial-tracking"
                 sandbox="allow-forms allow-modals allow-popups allow-presentation allow-same-origin allow-scripts"
               />
             </div>
