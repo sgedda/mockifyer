@@ -169,6 +169,12 @@ function generateHtml(routePath: string, seoConfig: typeof PAGE_SEO[string], bas
     `<meta name="twitter:description" content="${seoConfig.description}" />`
   );
   
+  // Remove homepage JSON-LD (React will add route-specific JSON-LD on client)
+  html = html.replace(
+    /<script type="application\/ld\+json">[\s\S]*?<\/script>/,
+    ''
+  );
+  
   // Add visible H1 and intro text inside #root for SEO
   // This provides search engines with visible content before JavaScript loads
   // React will replace this with the actual app content

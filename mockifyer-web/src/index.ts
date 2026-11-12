@@ -60,8 +60,14 @@ app.use((req, res, next) => {
 });
 
 // Trailing slash redirect (301) - must be before other routes
+// Only redirect GET/HEAD requests, exclude /guides directory to prevent redirect loop
 app.use((req, res, next) => {
-  if (req.path !== '/' && req.path.endsWith('/')) {
+  if (
+    (req.method === 'GET' || req.method === 'HEAD') &&
+    req.path !== '/' &&
+    req.path !== '/guides' && // Exclude /guides directory to prevent loop with express.static
+    req.path.endsWith('/')
+  ) {
     const query = req.url.slice(req.path.length);
     const safePath = req.path.slice(0, -1);
     return res.redirect(301, safePath + query);

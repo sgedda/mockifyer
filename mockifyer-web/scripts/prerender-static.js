@@ -113,16 +113,18 @@ function generateHtml(routePath, seoConfig, baseHtml) {
     // Replace title
     let html = baseHtml.replace(/<title>.*?<\/title>/, `<title>${title}</title>`);
     // Replace meta description
-    html = html.replace(/<meta name="description" content=".*?"(\s*\/)>/, `<meta name="description" content="${seoConfig.description}" />`);
+    html = html.replace(/<meta name="description"[\s\S]*?content=".*?"[\s\S]*?\/>/, `<meta name="description" content="${seoConfig.description}" />`);
     // Replace canonical
     html = html.replace(/<link rel="canonical" href=".*?"(\s*\/)>/, `<link rel="canonical" href="${canonical}" />`);
     // Replace OG tags
     html = html.replace(/<meta property="og:title" content=".*?"(\s*\/)>/, `<meta property="og:title" content="${title}" />`);
-    html = html.replace(/<meta property="og:description" content=".*?"(\s*\/)>/, `<meta property="og:description" content="${seoConfig.description}" />`);
+    html = html.replace(/<meta property="og:description"[\s\S]*?content=".*?"[\s\S]*?\/>/, `<meta property="og:description" content="${seoConfig.description}" />`);
     html = html.replace(/<meta property="og:url" content=".*?"(\s*\/)>/, `<meta property="og:url" content="${canonical}" />`);
     // Replace Twitter tags
     html = html.replace(/<meta name="twitter:title" content=".*?"(\s*\/)>/, `<meta name="twitter:title" content="${title}" />`);
-    html = html.replace(/<meta name="twitter:description" content=".*?"(\s*\/)>/, `<meta name="twitter:description" content="${seoConfig.description}" />`);
+    html = html.replace(/<meta name="twitter:description"[\s\S]*?content=".*?"[\s\S]*?\/>/, `<meta name="twitter:description" content="${seoConfig.description}" />`);
+    // Remove homepage JSON-LD (React will add route-specific JSON-LD on client)
+    html = html.replace(/<script type="application\/ld\+json">[\s\S]*?<\/script>/, '');
     // Add visible H1 and intro text inside #root for SEO
     // This provides search engines with visible content before JavaScript loads
     // React will replace this with the actual app content

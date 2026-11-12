@@ -149,6 +149,7 @@ export const PAGE_SEO: Record<string, PageSeoConfig> = {
 export const NOT_FOUND_SEO: PageSeoConfig = {
   title: 'Page Not Found - Mockifyer',
   description: 'The page you are looking for does not exist.',
+  path: '/404', // Prevent canonical from falling back to homepage
   noIndex: true,
 }
 
