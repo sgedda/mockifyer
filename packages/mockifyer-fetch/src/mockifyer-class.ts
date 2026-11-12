@@ -562,7 +562,10 @@ export class MockifyerClass {
     this.httpClient = new FetchHTTPClient({
       baseUrl: config.baseUrl,
       defaultHeaders: config.defaultHeaders,
-      proxy: config.proxy,
+      proxy: config.proxy ? {
+        ...config.proxy,
+        recordResponses: config.recordResponses ?? config.proxy.recordResponses,
+      } : undefined,
       clientId: this.config.clientId,
       getClientId: () => this.config.clientId,
       getStrictLaneScenario: () => resolveProxyStrictLaneScenario(this.config),
@@ -1617,7 +1620,8 @@ export class MockifyerClass {
   /** True when new recordings include response bodies (not request-only stubs). */
   isRecordResponses(): boolean {
     const configValue = this.recordResponsesOverride ??
-      (this.config.proxy?.baseUrl ? this.config.proxy.recordResponses : this.config.recordResponses);
+      this.config.recordResponses ??
+      this.config.proxy?.recordResponses;
     
     // Check env override first (applies to both boolean and array configs)
     const { envRecordResponsesOverride } = require('@sgedda/mockifyer-core');

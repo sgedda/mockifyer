@@ -189,7 +189,7 @@ class MockifyerClass {
     }
 
     // Pass recordResponses through (boolean or array) - envelope handles URL matching
-    const resolvedRecordResponses = proxy?.recordResponses ?? false;
+    const resolvedRecordResponses = this.config.recordResponses ?? proxy?.recordResponses ?? false;
     
     return attachDashboardProxyAxiosAdapter(config, {
       proxyBaseUrl,
