@@ -393,7 +393,7 @@ router.post('/', async (req: Request, res: Response) => {
       });
     const proxyDateFields = { dateManipulation: explicitManipulation };
 
-    let mock = storedMock;
+    mock = storedMock;
     let mockSource: 'redis' | 'disk' = 'redis';
     let mockFilename = mirroredMockRelativePath(hash);
 
