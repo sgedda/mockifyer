@@ -63,7 +63,8 @@ export function resolveRecordResponsesForUrl(
   configValue: boolean | Array<RecordResponsesPattern> | undefined,
   baseUrl?: string
 ): boolean {
-  return shouldRecordResponseForUrl(url, configValue, undefined, baseUrl);
+  const env = typeof process !== 'undefined' ? process.env : undefined;
+  return shouldRecordResponseForUrl(url, configValue, env, baseUrl);
 }
 
 /**
@@ -75,7 +76,8 @@ export function resolveLocalRecordResponsesForUrl(
   configValue: boolean | Array<RecordResponsesPattern> | undefined,
   baseUrl?: string
 ): boolean {
-  return shouldRecordResponseForUrl(url, configValue, undefined, baseUrl);
+  const env = typeof process !== 'undefined' ? process.env : undefined;
+  return shouldRecordResponseForUrl(url, configValue, env, baseUrl);
 }
 
 /** Placeholder mock: visible in dashboard, always live API until response is captured. */

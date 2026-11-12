@@ -415,7 +415,16 @@ export class DomainPathRulesSession {
       return;
     }
 
-    const domainPath = endpointUrlToDomainPath(resolved);
+    let absoluteUrl = resolved;
+    if (baseUrl && !/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(resolved)) {
+      try {
+        absoluteUrl = new URL(resolved, baseUrl).href;
+      } catch {
+        // If URL construction fails, use the original
+      }
+    }
+
+    const domainPath = endpointUrlToDomainPath(absoluteUrl);
     if (!domainPath) {
       return;
     }

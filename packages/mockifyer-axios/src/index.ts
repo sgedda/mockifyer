@@ -188,11 +188,8 @@ class MockifyerClass {
       return config;
     }
 
-    // Resolve recordResponses to boolean for dashboard proxy (proxy doesn't support patterns yet)
-    const recordResponsesValue = proxy?.recordResponses ?? false;
-    const resolvedRecordResponses = typeof recordResponsesValue === 'boolean'
-      ? recordResponsesValue
-      : false;
+    // Pass recordResponses through (boolean or array) - envelope handles URL matching
+    const resolvedRecordResponses = proxy?.recordResponses ?? false;
     
     return attachDashboardProxyAxiosAdapter(config, {
       proxyBaseUrl,
@@ -569,19 +566,10 @@ class MockifyerClass {
       this.ensureMockDataDirectory();
     }
 
-    // Resolve recordResponses to boolean for HTTP client
-    const proxyForClient = config.proxy ? {
-      ...config.proxy,
-      recordResponses: typeof config.proxy.recordResponses === 'boolean'
-        ? config.proxy.recordResponses
-        : Array.isArray(config.proxy.recordResponses) && config.proxy.recordResponses.length > 0
-          ? true
-          : false
-    } : undefined;
-    
+    // Pass recordResponses through (boolean or array) - envelope handles URL matching
     this.httpClient = new AxiosHTTPClient(config.axiosInstance, {
       baseUrl: config.baseUrl,
-      proxy: proxyForClient,
+      proxy: config.proxy,
       clientId: this.config.clientId,
       getClientId: () => this.config.clientId,
       getStrictLaneScenario: () => resolveProxyStrictLaneScenario(this.config),
@@ -609,13 +597,19 @@ class MockifyerClass {
     });
 
     // Warn if recording is enabled but no interception is configured
-    warnSetupWithoutInterception(
-      Boolean(this.config.recordMode),
-      (this.config as any).useGlobalFetch,
-      this.config.useGlobalAxios,
-      Boolean(this.config.proxy?.baseUrl),
-      'axios'
-    );
+    // For axios: interception is active when useGlobalAxios is true, a proxy is set,
+    // or an axiosInstance is provided (which has interceptors attached)
+    const hasInterception = this.config.useGlobalAxios ||
+      Boolean(this.config.proxy?.baseUrl) ||
+      Boolean(this.config.axiosInstance);
+    
+    if (this.config.recordMode && !hasInterception) {
+      console.warn(
+        '[Mockifyer-Axios] ⚠️  Recording is enabled but no interception is configured. ' +
+        'Requests will not be captured. Set useGlobalAxios: true, provide an axiosInstance, ' +
+        'or configure a dashboard proxy to enable recording.'
+      );
+    }
   }
 
   private applyOutboundLaneHeadersToAxiosRequest(config: any): void {

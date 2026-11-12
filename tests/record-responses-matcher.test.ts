@@ -279,5 +279,39 @@ describe('record-responses-matcher', () => {
       expect(shouldRecordResponseForUrl('https://api.example.com/v3/users', patterns)).toBe(false);
       expect(shouldRecordResponseForUrl('https://api.example.com/v1/posts', patterns)).toBe(false);
     });
+
+    it('path globs escape regex special characters', () => {
+      // Dots in paths should be treated literally, not as regex wildcards
+      const patterns = ['api.example.com/v1.0/*'];
+      expect(shouldRecordResponseForUrl('https://api.example.com/v1.0/users', patterns)).toBe(true);
+      expect(shouldRecordResponseForUrl('https://api.example.com/v1X0/users', patterns)).toBe(false);
+
+      // Plus signs should be treated literally
+      const patternsWithPlus = ['api.example.com/c++/*'];
+      expect(shouldRecordResponseForUrl('https://api.example.com/c++/docs', patternsWithPlus)).toBe(true);
+      expect(shouldRecordResponseForUrl('https://api.example.com/cxx/docs', patternsWithPlus)).toBe(false);
+    });
+
+    it('relative URLs with baseUrl', () => {
+      const patterns = ['api.example.com/users'];
+      const baseUrl = 'https://api.example.com';
+      
+      expect(shouldRecordResponseForUrl('/users', patterns, undefined, baseUrl)).toBe(true);
+      expect(shouldRecordResponseForUrl('/posts', patterns, undefined, baseUrl)).toBe(false);
+    });
+
+    it('env override applies to all URLs when using arrays', () => {
+      const patterns = ['api.example.com'];
+      
+      // MOCKIFYER_RECORD_RESPONSES=false should disable recording even for matching URLs
+      process.env[ENV_VARS.MOCK_RECORD_RESPONSES] = 'false';
+      expect(shouldRecordResponseForUrl('https://api.example.com/users', patterns)).toBe(false);
+      expect(shouldRecordResponseForUrl('https://other.com/data', patterns)).toBe(false);
+      
+      // MOCKIFYER_RECORD_RESPONSES=true should enable recording for all URLs
+      process.env[ENV_VARS.MOCK_RECORD_RESPONSES] = 'true';
+      expect(shouldRecordResponseForUrl('https://api.example.com/users', patterns)).toBe(true);
+      expect(shouldRecordResponseForUrl('https://other.com/data', patterns)).toBe(true);
+    });
   });
 });

@@ -78,12 +78,7 @@ describe('Selective recordResponses E2E replay', () => {
       (global as any).fetch = (global as any).__mockifyer_original_fetch;
       delete (global as any).__mockifyer_original_fetch;
     }
-    // Reset axios
-    const axios = require('axios');
-    if (axios.defaults?.__mockifyer_original_adapter) {
-      axios.defaults.adapter = axios.defaults.__mockifyer_original_adapter;
-      delete axios.defaults.__mockifyer_original_adapter;
-    }
+    // Axios tests use instance mode (useGlobalAxios: false), so no global cleanup needed
   });
 
   describe('fetch', () => {

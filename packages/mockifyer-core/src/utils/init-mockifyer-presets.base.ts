@@ -283,11 +283,11 @@ export async function buildDashboardProxyConfig(
     parseProxyRecordOnMissEnv() ??
     (envRecord ? true : undefined);
 
-  // For dashboard proxy, resolve to boolean only (proxy doesn't support pattern matching yet)
+  // Pass recordResponses through (boolean or array) - envelope handles URL matching
   const recordResponsesConfig = options.recordResponses ?? extra.proxy?.recordResponses;
-  const recordResponses = typeof recordResponsesConfig === 'boolean' 
+  const recordResponses = typeof recordResponsesConfig === 'boolean'
     ? resolveRecordResponses(recordResponsesConfig)
-    : resolveRecordResponses(false);
+    : recordResponsesConfig ?? resolveRecordResponses(false);
 
   const useCentralProxy =
     options.skipDashboardRedisHealthCheck === true ||

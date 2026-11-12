@@ -51,7 +51,8 @@ function hostMatches(requestHost: string, patternHost: string): boolean {
  * Supports `*` wildcards: `/v1/*` matches `/v1/users`, `/v1/posts`, etc.
  */
 function pathMatchesGlob(requestPath: string, glob: string): boolean {
-  const pattern = glob.replace(/\*/g, '.*');
+  const escaped = glob.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = escaped.replace(/\*/g, '.*');
   const regex = new RegExp(`^${pattern}$`);
   return regex.test(requestPath);
 }

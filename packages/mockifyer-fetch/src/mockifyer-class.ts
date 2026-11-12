@@ -1443,17 +1443,17 @@ export class MockifyerClass {
             );
           }
 
-          // Update domain path rule to allow replay for allowlisted responses
-          if (recordBodies) {
-            this.domainPathRules.enableAutoMockForUrl(storedRequest.url, this.config.baseUrl);
-          }
-
           if (this.config.generateTests?.enabled && this.testGenerator) {
             await this.generateTestForMock(mockData);
           }
         } else {
           console.warn('[Mockifyer] Cannot save mock: no database provider and fs/path not available');
         }
+      }
+
+      // Update domain path rule to allow replay for allowlisted responses
+      if (recordBodies) {
+        this.domainPathRules.enableAutoMockForUrl(storedRequest.url, this.config.baseUrl);
       }
     } finally {
       this.savingResponses.delete(requestKey);
@@ -1613,11 +1613,19 @@ export class MockifyerClass {
     const configValue = this.recordResponsesOverride ??
       (this.config.proxy?.baseUrl ? this.config.proxy.recordResponses : this.config.recordResponses);
     
-    // If config is an array, return true if array is non-empty (at least some URLs will record)
+    // Check env override first (applies to both boolean and array configs)
+    const { envRecordResponsesOverride } = require('@sgedda/mockifyer-core/src/utils/request-only-mock');
+    const envOverride = envRecordResponsesOverride();
+    if (envOverride !== undefined) {
+      return envOverride;
+    }
+    
+    // If config is an array, return true if non-empty (at least some URLs will record)
     if (Array.isArray(configValue)) {
       return configValue.length > 0;
     }
     
+    // For boolean configs, use the old resolvers
     if (this.config.proxy?.baseUrl) {
       return resolveRecordResponses(configValue);
     }
