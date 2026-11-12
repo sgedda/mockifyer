@@ -227,6 +227,11 @@ router.post('/', async (req: Request, res: Response) => {
     );
   };
 
+  let resolvedScenarioName: string | undefined;
+  let effectiveRecord: boolean | undefined;
+  let mock: any = null;
+  let catalogHopIdentityPromise: Promise<any> | undefined;
+
   try {
     if (clientId) {
       runInBackground(store.recordLaneSeen(clientId));
@@ -351,7 +356,7 @@ router.post('/', async (req: Request, res: Response) => {
       });
     }
 
-    const resolvedScenarioName = resolution.scenario;
+    resolvedScenarioName = resolution.scenario;
     networkLogCtx = await openProxyNetworkLog(mockDataPath, config, resolvedScenarioName, hopIdentity);
 
     const scenarioPath = getScenarioFolderPath(mockDataPath, resolvedScenarioName);
@@ -365,7 +370,7 @@ router.post('/', async (req: Request, res: Response) => {
         loadMergedOverrideGroupState(store, resolvedScenarioName, scenarioPath),
         store.getDomainPathRules(resolvedScenarioName),
       ]);
-    let effectiveRecord = typeof record === 'boolean' ? record : proxyConfig?.recordOnMiss ?? true;
+    effectiveRecord = typeof record === 'boolean' ? record : proxyConfig?.recordOnMiss ?? true;
     const proxyRecordingExclusions = parseRecordingExclusionsEnv();
     if (
       effectiveRecord &&
@@ -388,7 +393,7 @@ router.post('/', async (req: Request, res: Response) => {
       });
     const proxyDateFields = { dateManipulation: explicitManipulation };
 
-    let mock = storedMock;
+    mock = storedMock;
     let mockSource: 'redis' | 'disk' = 'redis';
     let mockFilename = mirroredMockRelativePath(hash);
 
@@ -416,7 +421,7 @@ router.post('/', async (req: Request, res: Response) => {
     hopIdentity = resolveProxyHopIdentity(inboundCorrelation, upperMethod, url, mock?.requestId);
     const liveHopIdentity = hopIdentity;
     // Only recordings need the healed parent id; a mock hit responds without waiting on the lookup.
-    const catalogHopIdentityPromise = resolveInboundParentRequestIdForChild(
+    catalogHopIdentityPromise = resolveInboundParentRequestIdForChild(
       store,
       resolvedScenarioName,
       liveHopIdentity.parentRequestId,
@@ -772,6 +777,45 @@ router.post('/', async (req: Request, res: Response) => {
       ...proxyNetworkBodyFields(body),
       errorMessage: proxyFailure.message,
     });
+
+    if (effectiveRecord === true && resolvedScenarioName && shouldWriteNewProxyRecording(mock as MockData | null)) {
+      const scenarioLocked = await store.isScenarioLocked(resolvedScenarioName);
+      if (!scenarioLocked) {
+        const requestPayload = {
+          method: upperMethod,
+          url,
+          headers: toPersistedRequestHeaders(headers),
+          data: normalizedRequestBody,
+          queryParams: {},
+        };
+        const errorPlaceholder = buildRequestOnlyMockData(requestPayload as MockData['request'], {
+          alwaysUseRealApi: true,
+        });
+        const latestRow = await readLatestRowForCallerMerge(store, hash, resolvedScenarioName, mock as MockData | null);
+        applyProxyCorrelationToMockData(
+          errorPlaceholder,
+          networkLogCtx,
+          hopIdentity,
+          catalogHopIdentityPromise ? await catalogHopIdentityPromise : null,
+          latestRow
+        );
+        await store.setByHashInScenario(hash, errorPlaceholder, resolvedScenarioName);
+        if (redisDisk.mirrorWrites) {
+          runInBackground(Promise.resolve().then(() => mirrorRecordedMockToDisk({
+            mockDataPath,
+            scenarioName: resolvedScenarioName!,
+            hash,
+            mockData: errorPlaceholder,
+          })));
+        }
+        if (debugProxy) {
+          console.log(
+            `[ProxyRoute] error placeholder stored: ${upperMethod} ${url} (hash=${hash.slice(0, 8)}…) (scenario=${resolvedScenarioName}) (lane=${clientId || '—'})`
+          );
+        }
+      }
+    }
+
     return res.status(500).json({
       error: 'Proxy failed',
       details: proxyFailure.message,

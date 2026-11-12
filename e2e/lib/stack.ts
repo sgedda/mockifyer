@@ -38,11 +38,18 @@ export const wander = {
  * The from-scratch GUI test's own stack: an empty dashboard on SCRATCH_DASHBOARD, with the gateway and
  * wander-api proxying through it (unpinned, without the record env, so only the dashboard's Record switch
  * and its rules decide what is stored). The app and the rest of the services keep using the demo dashboard.
+ * 
+ * Also starts a local Open-Meteo stub so the test doesn't depend on the live api.open-meteo.com.
  */
 export const scratchStack = {
   async start() {
+    run('open-meteo-stub.sh', ['start']);
     run('scratch-dashboard.sh', ['start']);
-    const viaScratch = { MOCKIFYER_DASHBOARD_URL: SCRATCH_DASHBOARD, WW_RECORD: 'off' };
+    const viaScratch = { 
+      MOCKIFYER_DASHBOARD_URL: SCRATCH_DASHBOARD, 
+      WW_RECORD: 'off',
+      WEATHER_API_BASE_URL: 'http://127.0.0.1:9100',
+    };
     run('ww-service.sh', ['wander-api', 'start'], viaScratch);
     run('ww-service.sh', ['gateway-api', 'start'], viaScratch);
     // Not waitForGateway(): a discover call without a clientId would resolve to the scratch dashboard's
@@ -53,6 +60,7 @@ export const scratchStack = {
   async stop() {
     run('ww-service.sh', ['gateway-api', 'start']);
     run('scratch-dashboard.sh', ['stop']);
+    run('open-meteo-stub.sh', ['stop']);
     await pinToBaseAndWait();
   },
 };
