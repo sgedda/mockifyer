@@ -70,8 +70,10 @@ function upsertJsonLd(
 /**
  * Updates document title and head meta tags for the active route.
  */
-export function usePageSeo(config: PageSeoConfig): void {
+export function usePageSeo(config: PageSeoConfig | undefined): void {
   useEffect(() => {
+    if (!config) return
+
     const title = formatPageTitle(config.title)
     const description = config.description
     const canonicalUrl = absoluteUrl(config.path ?? '/')
@@ -105,8 +107,9 @@ export function usePageSeo(config: PageSeoConfig): void {
     upsertMeta('twitter:description', description)
 
     const isHome = config.path === '/'
+    const isFaq = config.path === '/faq'
     upsertJsonLd(JSON_LD_ID, isHome ? buildSoftwareApplicationJsonLd() : null)
-    upsertJsonLd(FAQ_JSON_LD_ID, isHome ? buildFaqPageJsonLd(HOME_FAQ) : null)
+    upsertJsonLd(FAQ_JSON_LD_ID, isFaq ? buildFaqPageJsonLd(HOME_FAQ) : null)
 
     return () => {
       document.title = DEFAULT_TITLE
@@ -120,9 +123,9 @@ export function usePageSeo(config: PageSeoConfig): void {
       upsertMeta('og:image', OG_IMAGE_URL, 'property')
       upsertMeta('twitter:image', OG_IMAGE_URL)
       upsertJsonLd(JSON_LD_ID, buildSoftwareApplicationJsonLd())
-      upsertJsonLd(FAQ_JSON_LD_ID, buildFaqPageJsonLd(HOME_FAQ))
+      upsertJsonLd(FAQ_JSON_LD_ID, null)
     }
-  }, [config.description, config.noIndex, config.path, config.title])
+  }, [config])
 }
 
 export { HERO_TAGLINE }
