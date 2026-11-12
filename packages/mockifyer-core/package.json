@@ -1,6 +1,6 @@
 {
   "name": "@sgedda/mockifyer-core",
-  "version": "1.10.192",
+  "version": "1.10.193",
   "description": "Core utilities and types for Mockifyer",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -72,6 +72,10 @@
       "browser": "./dist/utils/crypto-digest.browser.js",
       "types": "./dist/utils/crypto-digest.d.ts",
       "default": "./dist/utils/crypto-digest.js"
+    },
+    "./utils/record-responses-matcher": {
+      "types": "./dist/utils/record-responses-matcher.d.ts",
+      "default": "./dist/utils/record-responses-matcher.js"
     },
     "./utils/fixture-pool/runtime-cache": {
       "types": "./dist/utils/fixture-pool/runtime-cache.d.ts",
