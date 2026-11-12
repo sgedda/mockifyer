@@ -11,7 +11,7 @@ export function buildDashboardProxyEnvelope(params: {
   body: unknown;
   scenario: string | undefined;
   recordOnMiss: boolean | undefined;
-  recordResponses: boolean;
+  recordResponses: boolean | Array<string | RegExp>;
   strictLaneScenario: boolean;
   upstreamTlsInsecure: boolean;
 }): Record<string, unknown> {
@@ -31,6 +31,17 @@ export function buildDashboardProxyEnvelope(params: {
     strictLaneScenario,
     upstreamTlsInsecure,
   } = params;
+  
+  // Resolve recordResponses to boolean for the proxy envelope using URL-aware matching
+  let resolvedRecordResponses: boolean;
+  if (typeof recordResponses === 'boolean') {
+    resolvedRecordResponses = recordResponses;
+  } else {
+    // Array of patterns - check if URL matches
+    const { shouldRecordResponseForUrl } = require('./record-responses-matcher');
+    resolvedRecordResponses = shouldRecordResponseForUrl(url, recordResponses);
+  }
+  
   const envelope: Record<string, unknown> = {
     url,
     method,
@@ -41,7 +52,7 @@ export function buildDashboardProxyEnvelope(params: {
     headers,
     body,
     scenario,
-    recordResponses,
+    recordResponses: resolvedRecordResponses,
     strictLaneScenario,
     upstreamTlsInsecure,
   };

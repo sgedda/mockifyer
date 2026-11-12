@@ -18,7 +18,7 @@ export class AxiosHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
   private proxyBaseUrl?: string;
   private proxyScenario?: string;
   private proxyRecordOnMiss?: boolean;
-  private proxyRecordResponses: boolean;
+  private proxyRecordResponses: boolean | Array<string | RegExp>;
   private getClientId?: () => string | undefined;
   private getStrictLaneScenario?: () => boolean;
   private getUpstreamTlsInsecure?: () => boolean;
@@ -34,7 +34,7 @@ export class AxiosHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
         baseUrl: string;
         scenario?: string;
         recordOnMiss?: boolean;
-        recordResponses?: boolean;
+        recordResponses?: boolean | Array<string | RegExp>;
         strictLaneScenario?: boolean;
       };
       clientId?: string;

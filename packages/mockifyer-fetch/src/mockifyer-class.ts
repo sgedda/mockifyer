@@ -68,6 +68,7 @@ import {
   type MockifyerActivationMode,
   resolveRecordResponses,
   resolveLocalRecordResponses,
+  resolveLocalRecordResponsesForUrl,
   buildLocalRecordingMockData,
   adoptStoredOutboundRequestId,
   resolvePersistedHopIds,
@@ -90,26 +91,29 @@ import { mirrorProxyRecordingToClient } from './core-proxy';
 // Local imports
 import { FetchHTTPClient } from './clients/fetch-client';
 
-// Lazy-load Node.js built-ins (hidden from bundlers via function scope)
-function lazyRequire(moduleName: string): any {
+// Lazy-load Node.js built-ins (static literal requires, bundler-safe)
+function getFs(): typeof import('fs') | null {
   // Only works in Node.js
   if (typeof process === 'undefined' || !process.versions?.node) {
     return null;
   }
   try {
-    // Direct require works in Node module scope; function guard + try/catch prevent bundler issues
-    return require(moduleName);
+    // Static require with literal path - bundlers can stub this
+    return require('fs');
   } catch {
     return null;
   }
 }
 
-function getFs(): typeof import('fs') | null {
-  return lazyRequire('fs');
-}
-
 function getPath(): typeof import('path') | null {
-  return lazyRequire('path');
+  if (typeof process === 'undefined' || !process.versions?.node) {
+    return null;
+  }
+  try {
+    return require('path');
+  } catch {
+    return null;
+  }
 }
 
 export class MockifyerClass {
@@ -396,13 +400,20 @@ export class MockifyerClass {
   }
 
   constructor(config: MockifyerConfig, capabilities?: NodeCapabilities) {
-    // Import Node capabilities lazily (avoids bundling in browser builds)
+    // Import Node capabilities (static require, bundler handles via package.json exports)
     if (!capabilities) {
-      // Dynamic import for Node capabilities
-      // In Node/Jest: uses require. In browser: capabilities must be passed explicitly.
+      // Static require with literal path - package.json browser field maps to .browser.ts
       if (typeof require !== 'undefined') {
-        const nodeModule = require('./node-capabilities.node');
-        this.capabilities = nodeModule.nodeCapabilities;
+        try {
+          const nodeModule = require('./node-capabilities.node');
+          this.capabilities = nodeModule.nodeCapabilities;
+        } catch (error) {
+          throw new Error(
+            '[Mockifyer] Failed to load node capabilities. ' +
+            'In browser builds, pass capabilities explicitly or use the browser entry point. ' +
+            `Error: ${error}`
+          );
+        }
       } else {
         throw new Error(
           '[Mockifyer] No capabilities provided and require() not available. ' +
@@ -1367,11 +1378,12 @@ export class MockifyerClass {
         queryParams: normalizedParamsForSave,
       };
       // Prefer explicit override / local config; proxy config is fallback only.
-      const recordBodies = resolveLocalRecordResponses(
+      // Use URL-aware resolution for selective recording.
+      const configValue =
         this.recordResponsesOverride ??
-          this.config.recordResponses ??
-          this.config.proxy?.recordResponses
-      );
+        this.config.recordResponses ??
+        this.config.proxy?.recordResponses;
+      const recordBodies = resolveLocalRecordResponsesForUrl(storedRequest.url, configValue, this.config.baseUrl);
       const mockData = buildLocalRecordingMockData({
         request: storedRequest,
         response: {
@@ -1390,7 +1402,9 @@ export class MockifyerClass {
           requestId: hopIds.requestId,
           parentRequestId: hopIds.parentRequestId,
           parentRequestIds: hopIds.parentRequestIds,
-          ...(newRecordingUsesAlwaysUseRealApi() || !recordBodies
+          // Allowlisted URLs (recordBodies=true) should NOT have alwaysUseRealApi
+          // so they replay immediately. Request-only stubs need alwaysUseRealApi.
+          ...(!recordBodies
             ? { alwaysUseRealApi: true as const }
             : {}),
         },
@@ -1434,12 +1448,18 @@ export class MockifyerClass {
               `[Mockifyer] Saved new mock to file: ${currentScenario}/${dir ? `${dir}/` : ''}${filename}`
             );
           }
+
           if (this.config.generateTests?.enabled && this.testGenerator) {
             await this.generateTestForMock(mockData);
           }
         } else {
           console.warn('[Mockifyer] Cannot save mock: no database provider and fs/path not available');
         }
+      }
+
+      // Update domain path rule to allow replay for allowlisted responses
+      if (recordBodies) {
+        this.domainPathRules.enableAutoMockForUrl(storedRequest.url, this.config.baseUrl);
       }
     } finally {
       this.savingResponses.delete(requestKey);
@@ -1596,14 +1616,26 @@ export class MockifyerClass {
 
   /** True when new recordings include response bodies (not request-only stubs). */
   isRecordResponses(): boolean {
-    if (this.config.proxy?.baseUrl) {
-      return resolveRecordResponses(
-        this.recordResponsesOverride ?? this.config.proxy.recordResponses
-      );
+    const configValue = this.recordResponsesOverride ??
+      (this.config.proxy?.baseUrl ? this.config.proxy.recordResponses : this.config.recordResponses);
+    
+    // Check env override first (applies to both boolean and array configs)
+    const { envRecordResponsesOverride } = require('@sgedda/mockifyer-core');
+    const envOverride = envRecordResponsesOverride();
+    if (envOverride !== undefined) {
+      return envOverride;
     }
-    return resolveLocalRecordResponses(
-      this.recordResponsesOverride ?? this.config.recordResponses
-    );
+    
+    // If config is an array, return true if non-empty (at least some URLs will record)
+    if (Array.isArray(configValue)) {
+      return configValue.length > 0;
+    }
+    
+    // For boolean configs, use the old resolvers
+    if (this.config.proxy?.baseUrl) {
+      return resolveRecordResponses(configValue);
+    }
+    return resolveLocalRecordResponses(configValue);
   }
 
   /**

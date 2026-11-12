@@ -49,7 +49,7 @@ export interface DashboardProxyAxiosAdapterOptions {
   proxyBaseUrl: string;
   proxyScenario?: string;
   proxyRecordOnMiss?: boolean;
-  proxyRecordResponses: boolean;
+  proxyRecordResponses: boolean | Array<string | RegExp>;
   strictLaneScenario: boolean;
   upstreamTlsInsecure: boolean;
   clientId?: string;
