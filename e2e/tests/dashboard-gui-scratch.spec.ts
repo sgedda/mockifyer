@@ -28,6 +28,8 @@ const SCENARIO_B = 'e2e-scratch-b';
 const TEMP_A = 55;
 const TEMP_B = 66;
 const FORECAST_HOP = /^GET \/v1\/forecast\?latitude=37\.9838/;
+const STUB_ORIGIN = '127.0.0.1:9100';
+const STUB_ATHENS_ENDPOINT_PREFIX = `http://${STUB_ORIGIN}/v1/forecast?latitude=37.9838`;
 /** The Discover screen's chain: gateway GET /api/discover -> wander-api GET /discover -> Open-Meteo, countries, ... */
 const GATEWAY_DISCOVER_HOP = /^GET \/api\/discover\?destinationKey=atlantis/;
 const DISCOVER_HOP = /^GET \/discover\?destinationKey=atlantis/;
@@ -73,7 +75,7 @@ test.describe('dashboard GUI from scratch', { tag: '@gui' }, () => {
   test('from scratch: mock only the Open-Meteo endpoint, then create and switch scenarios', documented(
     'Starting from an empty dashboard with nothing stored, only the Open-Meteo forecast is turned into a mock through the UI (Hops page); the app then follows edited values in two scenarios created in the UI.',
     [
-      [HELPER, `beforeAll: scripts/scratch-dashboard.sh start (empty branch-build dashboard on ${SCRATCH_DASHBOARD}, fresh sqlite dir); scripts/ww-service.sh wander-api|gateway-api start with MOCKIFYER_DASHBOARD_URL=${SCRATCH_DASHBOARD} WW_RECORD=off (no record env)`],
+      [HELPER, `beforeAll: scripts/open-meteo-stub.sh start (local stub on ${STUB_ORIGIN}); scripts/scratch-dashboard.sh start (empty branch-build dashboard on ${SCRATCH_DASHBOARD}, fresh sqlite dir); scripts/ww-service.sh wander-api|gateway-api start with MOCKIFYER_DASHBOARD_URL=${SCRATCH_DASHBOARD} WW_RECORD=off WEATHER_API_BASE_URL=http://${STUB_ORIGIN} (no record env, wander-api uses stub origin)`],
       [UI, 'Start screen of the empty dashboard: "Temporary (unscoped)" scenario banner, Total Files 0; it waits there while the app signs in'],
       [APP, 'Login screen in a fresh context: type the demo user "wanderer" and the demo password, click Sign in, click the Discover tab'],
       [APP, 'The Temperature tile shows live weather (no lane on this dashboard yet, so strict lane mode passes every call through and stores nothing)'],
@@ -88,7 +90,7 @@ test.describe('dashboard GUI from scratch', { tag: '@gui' }, () => {
       [APP, 'Refetch Discover: the forecast is captured once and then served from the mock; the tile shows that value'],
       [UI, 'Sidebar Hops, expand GET /api/discover and GET /discover again: GET /v1/forecast now shows "Replay"; GET /discover and the other hops stay "Pending" placeholders'],
       [UI, `Sidebar Network (lane ${LANE}): GET /v1/forecast is served as "Mock", while GET /discover and the other APIs (countries, advice) are still "Upstream" (live)`],
-      [UI, 'Sidebar Mocks: Domains tree shows api.open-meteo.com with "1 mocked" and every other host with "0 mocked"'],
+      [UI, `Sidebar Mocks: Domains tree shows ${STUB_ORIGIN} with "1 mocked" and every other host with "0 mocked"`],
       [API, 'Only the Open-Meteo forecast mock has a stored response body; every other entry is a request-only placeholder; the tile shows the stored temperature'],
       [UI, `Settings > Create New Scenario: derive from default, name ${SCENARIO_A}, Create & Switch; Client lanes: lane scenario = ${SCENARIO_A}`],
       [UI, `Sidebar Mocks -> search -> Expand all -> forecast card -> mock editor; Request tab "Use saved mock" (derived scenarios start on live API); Response tab: current.temperature_2m = ${TEMP_A}, Save Changes`],
@@ -139,13 +141,13 @@ test.describe('dashboard GUI from scratch', { tag: '@gui' }, () => {
     await expect(forecastHop).toBeVisible();
     await expect(forecastHop.getByText('Pending', { exact: true })).toBeVisible();
     await dash.openHop(forecastHop);
-    await dash.useSavedMock(CAPTURE_NEXT_TOAST, ATHENS_ENDPOINT_PREFIX);
+    await dash.useSavedMock(CAPTURE_NEXT_TOAST, STUB_ATHENS_ENDPOINT_PREFIX);
 
     // 4. One refetch captures the forecast; from then on it is served from the mock, the rest stays live.
     await appShowsSomeTemperature(page);
     await expect.poll(async () => (await storedMocks('default')).withBody.length, { timeout: 20_000 }).toBe(1);
     const { withBody, count } = await storedMocks('default');
-    expect(withBody[0].endpoint.startsWith(ATHENS_ENDPOINT_PREFIX)).toBe(true);
+    expect(withBody[0].endpoint.startsWith(STUB_ATHENS_ENDPOINT_PREFIX)).toBe(true);
     expect(count).toBeGreaterThan(1);
     await expectTemperatureAfterRefetch(page, withBody[0].mock.response.data.current.temperature_2m);
     expect(await shownTemperature(page)).toBe(withBody[0].mock.response.data.current.temperature_2m);
@@ -159,7 +161,7 @@ test.describe('dashboard GUI from scratch', { tag: '@gui' }, () => {
     await expect(dash.networkHop('Upstream', 'GET /discover').first()).toBeVisible();
     await expect(dash.networkHop('Upstream', 'GET /countries/name/greece').first()).toBeVisible();
     await dash.openFromSidebar('Mocks');
-    await expect(dash.domainFolder('api.open-meteo.com')).toContainText('1 mocked');
+    await expect(dash.domainFolder(STUB_ORIGIN)).toContainText('1 mocked');
     await expect(dash.domainFolder('www.apicountries.com')).toContainText('0 mocked');
     await expect(dash.domainFolder('api.adviceslip.com')).toContainText('0 mocked');
 
