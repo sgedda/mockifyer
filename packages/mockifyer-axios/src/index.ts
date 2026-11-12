@@ -189,7 +189,7 @@ class MockifyerClass {
     }
 
     // Pass recordResponses through (boolean or array) - envelope handles URL matching
-    const resolvedRecordResponses = proxy?.recordResponses ?? false;
+    const resolvedRecordResponses = this.config.recordResponses ?? proxy?.recordResponses ?? false;
     
     return attachDashboardProxyAxiosAdapter(config, {
       proxyBaseUrl,
@@ -569,7 +569,10 @@ class MockifyerClass {
     // Pass recordResponses through (boolean or array) - envelope handles URL matching
     this.httpClient = new AxiosHTTPClient(config.axiosInstance, {
       baseUrl: config.baseUrl,
-      proxy: config.proxy,
+      proxy: config.proxy ? {
+        ...config.proxy,
+        recordResponses: config.recordResponses ?? config.proxy.recordResponses,
+      } : undefined,
       clientId: this.config.clientId,
       getClientId: () => this.config.clientId,
       getStrictLaneScenario: () => resolveProxyStrictLaneScenario(this.config),
@@ -1095,6 +1098,9 @@ class MockifyerClass {
           `[Mockifyer] Domain path rules: replay denied for ${request.method} ${request.url}` +
             (trafficGate.matchedDomainPath ? ` (rule: ${trafficGate.matchedDomainPath})` : ' (allowlist unmatched)')
         );
+        if (this.config.failOnMissingMock) {
+          throw new Error(`No mock data found for request: ${this.generateRequestKey(request)}`);
+        }
         (config as any).__mockifyer_requestKey = requestKey;
         (config as any).__mockifyer_startTime = Date.now();
         return config;
@@ -1187,7 +1193,10 @@ class MockifyerClass {
       }
 
       if (this.config.failOnMissingMock) {
-        throw new Error(`No mock data found for request: ${this.generateRequestKey(request)}`);
+        const hasUsableMock = cachedMock && !cachedMock.mockData.alwaysUseRealApi && !cachedMock.mockData.responsePending && !cachedMock.mockData.refreshOnNextRequest && !cachedMock.mockData.alwaysRefreshFromLive;
+        if (!hasUsableMock) {
+          throw new Error(`No mock data found for request: ${this.generateRequestKey(request)}`);
+        }
       }
 
       // Same key the matcher used. saveResponse after setRecordMode(true) must not invent a second key.
@@ -1436,6 +1445,9 @@ class MockifyerClass {
         const trafficGate = this.domainPathRules.getTrafficGate(request.url, requestBaseUrl);
         (config as any).__mockifyer_domain_path_may_record = trafficGate.mayRecord;
         if (!trafficGate.mayReplay) {
+          if (this.config.failOnMissingMock) {
+            throw new Error(`No mock data found for request: ${this.generateRequestKey(request)}`);
+          }
           (config as any).__mockifyer_requestKey = requestKey;
           (config as any).__mockifyer_startTime = Date.now();
           return config;
@@ -2336,8 +2348,8 @@ class MockifyerClass {
         correlation
       );
 
-      // Use URL-aware resolution for selective recording
-      const configValue = this.config.proxy?.recordResponses ?? this.config.recordResponses;
+      // Use URL-aware resolution for selective recording (local config overrides proxy config)
+      const configValue = this.config.recordResponses ?? this.config.proxy?.recordResponses;
       const baseUrlForPatternMatch = response.config.baseURL || this.config.baseUrl;
       const recordBodies = resolveLocalRecordResponsesForUrl(request.url, configValue, baseUrlForPatternMatch);
       const mockData = buildLocalRecordingMockData({
@@ -2621,7 +2633,7 @@ class MockifyerClass {
 
   /** True when new recordings include response bodies (not request-only stubs). */
   public isRecordResponses(): boolean {
-    const configValue = this.config.proxy?.recordResponses ?? this.config.recordResponses;
+    const configValue = this.config.recordResponses ?? this.config.proxy?.recordResponses;
     const resolved = resolveRecordResponsesConfig(configValue);
     
     // Return true if boolean true or non-empty array

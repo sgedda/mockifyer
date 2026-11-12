@@ -562,7 +562,10 @@ export class MockifyerClass {
     this.httpClient = new FetchHTTPClient({
       baseUrl: config.baseUrl,
       defaultHeaders: config.defaultHeaders,
-      proxy: config.proxy,
+      proxy: config.proxy ? {
+        ...config.proxy,
+        recordResponses: config.recordResponses ?? config.proxy.recordResponses,
+      } : undefined,
       clientId: this.config.clientId,
       getClientId: () => this.config.clientId,
       getStrictLaneScenario: () => resolveProxyStrictLaneScenario(this.config),
@@ -921,6 +924,9 @@ export class MockifyerClass {
           `[Mockifyer-Fetch] Domain path rules: replay denied for ${request.method} ${request.url}` +
             (trafficGate.matchedDomainPath ? ` (rule: ${trafficGate.matchedDomainPath})` : ' (allowlist unmatched)')
         );
+        if (this.config.failOnMissingMock) {
+          throw new Error(`No mock data found for request: ${this.generateRequestKey(request)}`);
+        }
         return config;
       }
       
@@ -1000,20 +1006,23 @@ export class MockifyerClass {
       }
 
       if (this.config.failOnMissingMock) {
-        const scenario = this.capabilities.getCurrentScenario(this.config.mockDataPath, this.config.clientId);
-        const requestKey = this.generateRequestKey(request);
-        throw new Error(
-          `No mock data found for request: ${requestKey}\n` +
-          `\n` +
-          `Scenario: ${scenario}\n` +
-          `Request key: ${requestKey}\n` +
-          `\n` +
-          `In replay mode with failOnMissingMock=true, all requests must have recorded mocks.\n` +
-          `To fix:\n` +
-          `  1. Record this request: set recordMode: true\n` +
-          `  2. Or preload fixture: databaseProvider: { type: 'memory', options: { fixtures: [...] } }\n` +
-          `  3. Or allow passthrough: set failOnMissingMock: false`
-        );
+        const hasUsableMock = cachedMock && !cachedMock.mockData.alwaysUseRealApi && !cachedMock.mockData.responsePending && !cachedMock.mockData.refreshOnNextRequest && !cachedMock.mockData.alwaysRefreshFromLive;
+        if (!hasUsableMock) {
+          const scenario = this.capabilities.getCurrentScenario(this.config.mockDataPath, this.config.clientId);
+          const requestKey = this.generateRequestKey(request);
+          throw new Error(
+            `No mock data found for request: ${requestKey}\n` +
+            `\n` +
+            `Scenario: ${scenario}\n` +
+            `Request key: ${requestKey}\n` +
+            `\n` +
+            `In replay mode with failOnMissingMock=true, all requests must have recorded mocks.\n` +
+            `To fix:\n` +
+            `  1. Record this request: set recordMode: true\n` +
+            `  2. Or preload fixture: databaseProvider: { type: 'memory', options: { fixtures: [...] } }\n` +
+            `  3. Or allow passthrough: set failOnMissingMock: false`
+          );
+        }
       }
 
       return config;
@@ -1371,12 +1380,12 @@ export class MockifyerClass {
         data: response.config?.data,
         queryParams: normalizedParamsForSave,
       };
-      // Prefer explicit override / config; else request-only default (same as proxy).
+      // Prefer explicit override / local config; proxy config is fallback only.
       // Use URL-aware resolution for selective recording.
       const configValue =
         this.recordResponsesOverride ??
-        this.config.proxy?.recordResponses ??
-        this.config.recordResponses;
+        this.config.recordResponses ??
+        this.config.proxy?.recordResponses;
       const recordBodies = resolveLocalRecordResponsesForUrl(storedRequest.url, configValue, this.config.baseUrl);
       const mockData = buildLocalRecordingMockData({
         request: storedRequest,
@@ -1611,7 +1620,8 @@ export class MockifyerClass {
   /** True when new recordings include response bodies (not request-only stubs). */
   isRecordResponses(): boolean {
     const configValue = this.recordResponsesOverride ??
-      (this.config.proxy?.baseUrl ? this.config.proxy.recordResponses : this.config.recordResponses);
+      this.config.recordResponses ??
+      this.config.proxy?.recordResponses;
     
     // Check env override first (applies to both boolean and array configs)
     const { envRecordResponsesOverride } = require('@sgedda/mockifyer-core');
