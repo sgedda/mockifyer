@@ -128,11 +128,17 @@ export const PAGE_SEO: Record<string, PageSeoConfig> = {
 
 /**
  * Helper to format page title with site name suffix.
- * Only adds suffix if it's not already present.
+ * Only adds suffix if it's not already present as " | Mockifyer" or uses the em dash.
  */
 export function formatPageTitle(title: string): string {
-  if (title.includes(SITE_NAME) || title.includes('—')) {
+  // Homepage uses em dash, don't add suffix
+  if (title.includes('—')) {
     return title
   }
+  // Already has the suffix pattern, return as-is
+  if (title.endsWith(` | ${SITE_NAME}`)) {
+    return title
+  }
+  // Add suffix
   return `${title} | ${SITE_NAME}`
 }

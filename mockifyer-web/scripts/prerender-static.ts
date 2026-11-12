@@ -6,9 +6,10 @@
 
 import fs from 'fs';
 import path from 'path';
+import { PAGE_SEO, SITE_URL, SITE_NAME, formatPageTitle } from '../frontend/src/lib/seo-config';
 
-// Import the SEO configuration
-const PAGE_SEO: Record<string, { title: string; description: string; path: string }> = {
+// Deleted duplicate PAGE_SEO - now imported from seo-config.ts
+const DELETED_PAGE_SEO_BLOCK_FOR_REFERENCE = {
   '/': {
     title: 'Mockifyer — Record & Replay HTTP API Mocks',
     description:
@@ -112,19 +113,10 @@ const PAGE_SEO: Record<string, { title: string; description: string; path: strin
     path: '/comparisons',
   },
 };
-
-const SITE_URL = 'https://mockifyer.dev';
-const SITE_NAME = 'Mockifyer';
-
-function formatTitle(title: string): string {
-  if (title.includes(SITE_NAME)) {
-    return title;
-  }
-  return `${title} | ${SITE_NAME}`;
-}
+// End of deleted duplicate block
 
 function generateHtml(routePath: string, seoConfig: typeof PAGE_SEO[string], baseHtml: string): string {
-  const title = formatTitle(seoConfig.title);
+  const title = formatPageTitle(seoConfig.title);
   const canonical = `${SITE_URL}${routePath}`;
   
   // Replace title
