@@ -80,12 +80,31 @@ export interface MockifyerConfig {
   /** When true, records real API responses to mock data files. When false, uses existing mock data. */
   recordMode?: boolean;
   /**
-   * When **false** (default), new local recordings are **request-only** stubs (`responsePending`,
-   * live passthrough) — same default as dashboard proxy `proxy.recordResponses`.
-   * When **true**, store full response bodies (heavier). Env **`MOCKIFYER_RECORD_RESPONSES`** overrides.
-   * Domain-path rule `recordResponses` is a separate allowlist gate (whether the path may record at all).
+   * Selective response recording: controls which URLs save full response bodies vs request-only stubs.
+   * 
+   * - **`false`** or **omitted**: request-only stubs for all URLs (default)
+   * - **`true`**: full response bodies for all URLs
+   * - **`Array<string | RegExp>`**: selective allowlist:
+   *   - **String patterns** match:
+   *     - Host: `"api.example.com"` (exact) or `"*.example.com"` (wildcard subdomain)
+   *     - Host + path: `"api.example.com/v1/*"` (glob)
+   *   - **RegExp**: matches the full URL
+   * 
+   * URLs matching the allowlist save full responses AND replay immediately (no `alwaysUseRealApi`).
+   * Non-matching requests save request-only stubs into `_scratch` (same as today).
+   * 
+   * Env **`MOCKIFYER_RECORD_RESPONSES=true`** captures everything (global override).
+   * Env **`MOCKIFYER_RECORD_RESPONSES_FOR=host1,host2`** sets a comma-separated allowlist.
+   * Precedence: env boolean → env list → config array → config boolean → default (false).
+   * 
+   * Domain-path rule `recordResponses` is a separate gate (whether the path may record at all).
+   * 
+   * Example:
+   * ```typescript
+   * recordResponses: ['api.example.com', '*.staging.com', /\/v2\/users/]
+   * ```
    */
-  recordResponses?: boolean;
+  recordResponses?: boolean | Array<string | RegExp>;
   /** When true, throws an error if no mock data is found for a request. 
    * Note: This is automatically set to false when recordMode is true, as real API calls are needed for recording. */
   failOnMissingMock?: boolean;
@@ -245,11 +264,16 @@ export interface MockifyerConfig {
      */
     recordOnMiss?: boolean;
     /**
-     * When false, proxy stores request-only stubs (`responsePending`) on cache miss instead of full responses.
-     * Defaults to `false` for proxy. Env **`MOCKIFYER_RECORD_RESPONSES`** overrides when set
-     * (also gates local filesystem/hybrid body capture via `resolveLocalRecordResponses`).
+     * Selective response recording for dashboard proxy.
+     * 
+     * - **`false`** or **omitted**: request-only stubs for all URLs (default)
+     * - **`true`**: full response bodies for all URLs
+     * - **`Array<string | RegExp>`**: selective allowlist (same as top-level `recordResponses`)
+     * 
+     * Env **`MOCKIFYER_RECORD_RESPONSES`** / **`MOCKIFYER_RECORD_RESPONSES_FOR`** override.
+     * (Also gates local filesystem/hybrid body capture via `resolveLocalRecordResponses`.)
      */
-    recordResponses?: boolean;
+    recordResponses?: boolean | Array<string | RegExp>;
     /**
      * When true (default when `baseUrl` is set), dashboard Redis proxy does not fall back to global
      * `active_scenario` if `clientId` is set but `client_scenario:{clientId}` is missing — upstream passthrough only.
@@ -594,6 +618,8 @@ export const ENV_VARS = {
    * (dashboard proxy + local filesystem/hybrid saves).
    */
   MOCK_RECORD_RESPONSES: 'MOCKIFYER_RECORD_RESPONSES',
+  /** Comma-separated list of hosts/patterns for selective response recording. */
+  MOCK_RECORD_RESPONSES_FOR: 'MOCKIFYER_RECORD_RESPONSES_FOR',
   /** Overwrite passthrough recordings on each live API response. */
   MOCK_REFRESH_PASSTHROUGH_RECORDINGS: 'MOCKIFYER_REFRESH_PASSTHROUGH_RECORDINGS',
   /** Dashboard origin for optional SDK network log POSTs (`/api/network-events`). */

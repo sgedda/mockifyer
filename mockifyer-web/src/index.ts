@@ -8,9 +8,11 @@ initializeMockifyer();
 
 // Other imports after mockifyer is initialized
 import express from 'express';
+import compression from 'compression';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import path from 'path';
+import fs from 'fs';
 import { weatherRouter } from './routes/weather';
 import { weatherFetchRouter } from './routes/weather-fetch';
 import { weatherUnifiedRouter } from './routes/weather-unified';
@@ -33,6 +35,62 @@ const port = process.env.PORT || 3000;
 
 // Trust proxy to get correct IP addresses (important for IP-based vote tracking)
 app.set('trust proxy', true);
+
+// Disable x-powered-by header
+app.disable('x-powered-by');
+
+// Compression middleware (gzip + Brotli support via Node's native support)
+app.use(compression({
+  filter: (req, res) => {
+    if (req.headers['x-no-compression']) {
+      return false;
+    }
+    const contentType = res.getHeader('Content-Type') as string || '';
+    return /text|javascript|json|xml|css|svg|markdown/.test(contentType);
+  },
+  threshold: 1024, // Only compress responses > 1KB
+}));
+
+// Security headers middleware
+app.use((req, res, next) => {
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  next();
+});
+
+// Trailing slash redirect (301) - must be before other routes
+// Only redirect GET/HEAD requests, exclude /guides directory to prevent redirect loop
+app.use((req, res, next) => {
+  if (
+    (req.method === 'GET' || req.method === 'HEAD') &&
+    req.path !== '/' &&
+    req.path !== '/guides' && // Exclude /guides directory to prevent loop with express.static
+    req.path.endsWith('/')
+  ) {
+    const query = req.url.slice(req.path.length);
+    const safePath = req.path.slice(0, -1);
+    return res.redirect(301, safePath + query);
+  }
+  next();
+});
+
+// Server-side 301 redirects
+const REDIRECTS: Record<string, string> = {
+  '/playground': '/getting-started',
+  '/settings': '/date-config',
+  '/timeline': '/dashboard#network',
+  '/index.html': '/',
+  '/browser-guide': '/guides/browser-record-replay',
+};
+
+app.use((req, res, next) => {
+  const redirect = REDIRECTS[req.path];
+  if (redirect) {
+    return res.redirect(301, redirect);
+  }
+  next();
+});
 
 // Middleware
 app.use(cors({
@@ -455,17 +513,22 @@ app.get('/api/status', (req: express.Request, res: express.Response) => {
 });
 
 // Serve static assets (JS, CSS, etc.) from public directory with cache headers
-app.use('/assets', (req, res, next) => {
-  if (req.method === 'GET' || req.method === 'HEAD') {
-    // Cache assets for 1 year (they have hash-based filenames)
-    express.static(path.join(__dirname, '../public/assets'), {
-      maxAge: '1y',
-      immutable: true
-    })(req, res, next);
-  } else {
-    next();
-  }
-});
+app.use('/assets', express.static(path.join(__dirname, '../public/assets'), {
+  maxAge: '1y',
+  immutable: true,
+  setHeaders: (res, filepath) => {
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  },
+}));
+
+// Serve videos with long cache (they have hash-based filenames)
+app.use('/videos', express.static(path.join(__dirname, '../public/videos'), {
+  maxAge: '1y',
+  immutable: true,
+  setHeaders: (res, filepath) => {
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  },
+}));
 
 // Markdown / llms.txt: explicit content types for crawlers
 app.use((req, res, next) => {
@@ -489,20 +552,58 @@ app.use((req, res, next) => {
   }
 });
 
+// Known HTML routes (for prerendered content)
+const HTML_ROUTES = [
+  '/',
+  '/getting-started',
+  '/date-config',
+  '/config-reference',
+  '/contact',
+  '/e2e-tutorial',
+  '/features',
+  '/faq',
+  '/packages',
+  '/dashboard',
+  '/comparisons',
+  '/guides/mock-at-the-network-edge',
+  '/guides/reproduce-tester-bugs',
+  '/guides/stable-react-native-e2e',
+  '/guides/mock-drift',
+  '/guides/react-native-without-msw',
+  '/guides/browser-record-replay',
+];
+
 // Fallback to index.html for SPA routing (GET requests only)
 app.get('*', (req, res) => {
   // Don't serve index.html for API routes or asset requests
   if (req.path.startsWith('/api/')) {
     return res.status(404).json({ error: 'API endpoint not found', path: req.path });
   }
-  if (req.path.startsWith('/assets/')) {
+  if (req.path.startsWith('/assets/') || req.path.startsWith('/videos/')) {
     return res.status(404).send('Asset not found');
   }
-  // Never cache index.html - always serve fresh version
-  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-  res.setHeader('Pragma', 'no-cache');
-  res.setHeader('Expires', '0');
-  // Serve React app's index.html for all other GET routes
+
+  // Check if this is a known route
+  const isKnownRoute = HTML_ROUTES.includes(req.path);
+  
+  // Check for prerendered HTML file
+  const htmlPath = req.path === '/' 
+    ? path.join(__dirname, '../public/index.html')
+    : path.join(__dirname, `../public${req.path}.html`);
+  
+  // For known routes, try to serve prerendered HTML if it exists
+  if (isKnownRoute && fs.existsSync(htmlPath) && req.path !== '/') {
+    res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+    return res.sendFile(htmlPath);
+  }
+  
+  // Unknown routes get 404 with the SPA (which will render NotFound component)
+  if (!isKnownRoute) {
+    res.status(404);
+  }
+  
+  // HTML should not be cached (must revalidate)
+  res.setHeader('Cache-Control', 'no-cache, must-revalidate');
   res.sendFile(path.join(__dirname, '../public/index.html'));
 });
 

@@ -80,6 +80,7 @@ import {
   isMockRecordingSidecarDir,
 } from '@sgedda/mockifyer-core';
 import { resolveProxyUpstreamTlsInsecure } from '@sgedda/mockifyer-core/utils/proxy-upstream-tls-insecure';
+import { resolveRecordResponsesConfig } from '@sgedda/mockifyer-core/utils/record-responses-matcher';
 import { AxiosHTTPClient } from './clients/axios-client';
 import { attachDashboardProxyAxiosAdapter, resolveAxiosRequestUrl } from './dashboard-proxy-axios-adapter';
 import { HTTPClient, HTTPResponse } from '@sgedda/mockifyer-core';
@@ -96,7 +97,10 @@ import {
   applyRecordingPassthroughFlag,
   resolveRecordResponses,
   resolveLocalRecordResponses,
+  resolveLocalRecordResponsesForUrl,
   buildLocalRecordingMockData,
+  warnRequestOnlyStub,
+  warnSetupWithoutInterception,
   ensureLocalInboundParentStubSaved,
   inboundParentStubFilename,
   readOutboundParentHopFromConfig,
@@ -184,11 +188,14 @@ class MockifyerClass {
       return config;
     }
 
+    // Pass recordResponses through (boolean or array) - envelope handles URL matching
+    const resolvedRecordResponses = proxy?.recordResponses ?? false;
+    
     return attachDashboardProxyAxiosAdapter(config, {
       proxyBaseUrl,
       proxyScenario: proxy?.scenario,
       proxyRecordOnMiss: proxy?.recordOnMiss,
-      proxyRecordResponses: proxy?.recordResponses ?? false,
+      proxyRecordResponses: resolvedRecordResponses,
       strictLaneScenario: resolveProxyStrictLaneScenario(this.config),
       upstreamTlsInsecure: resolveProxyUpstreamTlsInsecure(this.config),
       clientId: this.config.clientId,
@@ -559,6 +566,7 @@ class MockifyerClass {
       this.ensureMockDataDirectory();
     }
 
+    // Pass recordResponses through (boolean or array) - envelope handles URL matching
     this.httpClient = new AxiosHTTPClient(config.axiosInstance, {
       baseUrl: config.baseUrl,
       proxy: config.proxy,
@@ -587,6 +595,21 @@ class MockifyerClass {
       runtimeMode: this.config.runtimeMode,
       headline: this.config.initLog?.headline,
     });
+
+    // Warn if recording is enabled but no interception is configured
+    // For axios: interception is active when useGlobalAxios is true, a proxy is set,
+    // or an axiosInstance is provided (which has interceptors attached)
+    const hasInterception = this.config.useGlobalAxios ||
+      Boolean(this.config.proxy?.baseUrl) ||
+      Boolean(this.config.axiosInstance);
+    
+    if (this.config.recordMode && !hasInterception) {
+      console.warn(
+        '[Mockifyer-Axios] ⚠️  Recording is enabled but no interception is configured. ' +
+        'Requests will not be captured. Set useGlobalAxios: true, provide an axiosInstance, ' +
+        'or configure a dashboard proxy to enable recording.'
+      );
+    }
   }
 
   private applyOutboundLaneHeadersToAxiosRequest(config: any): void {
@@ -2313,9 +2336,10 @@ class MockifyerClass {
         correlation
       );
 
-      const recordBodies = resolveLocalRecordResponses(
-        this.config.proxy?.recordResponses ?? this.config.recordResponses
-      );
+      // Use URL-aware resolution for selective recording
+      const configValue = this.config.proxy?.recordResponses ?? this.config.recordResponses;
+      const baseUrlForPatternMatch = response.config.baseURL || this.config.baseUrl;
+      const recordBodies = resolveLocalRecordResponsesForUrl(request.url, configValue, baseUrlForPatternMatch);
       const mockData = buildLocalRecordingMockData({
         request,
         response: storedResponse,
@@ -2331,11 +2355,23 @@ class MockifyerClass {
           requestId: hopIds.requestId,
           parentRequestId: hopIds.parentRequestId,
           parentRequestIds: hopIds.parentRequestIds,
-          ...(newRecordingUsesAlwaysUseRealApi() || !recordBodies
+          // Allowlisted URLs (recordBodies=true) should NOT have alwaysUseRealApi
+          // so they replay immediately. Request-only stubs need alwaysUseRealApi.
+          ...(!recordBodies
             ? { alwaysUseRealApi: true as const }
             : {}),
         },
       });
+
+      // Warn if this is a request-only stub (first time for this host)
+      if (!recordBodies && saveDecision.action !== 'overwrite') {
+        try {
+          const parsedUrl = new URL(request.url);
+          warnRequestOnlyStub(request.url, `['${parsedUrl.hostname}']`);
+        } catch {
+          warnRequestOnlyStub(request.url);
+        }
+      }
 
       applyRecordingPassthroughFlag(mockData, saveDecision.alwaysUseRealApi);
 
@@ -2366,6 +2402,11 @@ class MockifyerClass {
         logger.info(
           `[Mockifyer] Saved new mock to file: ${currentScenario}/${dir ? `${dir}/` : ''}${filename}`
         );
+      }
+
+      // Update domain path rule to allow replay for allowlisted responses
+      if (recordBodies) {
+        this.domainPathRules.enableAutoMockForUrl(request.url, baseUrlForPatternMatch);
       }
 
       await this.ensureInboundParentStubForChild(hopIds.parentRequestId, response.config);
@@ -2580,9 +2621,17 @@ class MockifyerClass {
 
   /** True when new recordings include response bodies (not request-only stubs). */
   public isRecordResponses(): boolean {
-    return resolveRecordResponses(
-      this.config.proxy?.recordResponses ?? this.config.recordResponses
-    );
+    const configValue = this.config.proxy?.recordResponses ?? this.config.recordResponses;
+    const resolved = resolveRecordResponsesConfig(configValue);
+    
+    // Return true if boolean true or non-empty array
+    if (typeof resolved === 'boolean') {
+      return resolved;
+    }
+    if (Array.isArray(resolved)) {
+      return resolved.length > 0;
+    }
+    return false;
   }
 
   /**

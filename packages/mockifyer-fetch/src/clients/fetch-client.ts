@@ -73,7 +73,7 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
   private proxyScenario?: string;
   /** When set, included as `record` on `/api/proxy`. When unset, dashboard per-scenario default applies. */
   private proxyRecordOnMiss?: boolean;
-  private proxyRecordResponses: boolean;
+  private proxyRecordResponses: boolean | Array<string | RegExp>;
   private getClientId?: () => string | undefined;
   private getStrictLaneScenario?: () => boolean;
   private getUpstreamTlsInsecure?: () => boolean;
@@ -88,7 +88,7 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
       baseUrl: string;
       scenario?: string;
       recordOnMiss?: boolean;
-      recordResponses?: boolean;
+      recordResponses?: boolean | Array<string | RegExp>;
       strictLaneScenario?: boolean;
       mirrorRecordedMocksToClient?: boolean;
     };
@@ -106,6 +106,7 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
     this.proxyBaseUrl = config?.proxy?.baseUrl;
     this.proxyScenario = config?.proxy?.scenario;
     this.proxyRecordOnMiss = config?.proxy?.recordOnMiss;
+    // Pass recordResponses through (boolean or array) - envelope handles URL matching
     this.proxyRecordResponses = config?.proxy?.recordResponses ?? false;
     this.getClientId = config?.getClientId;
     this.getStrictLaneScenario = config?.getStrictLaneScenario;

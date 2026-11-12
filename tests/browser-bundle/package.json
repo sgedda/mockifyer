@@ -16,7 +16,7 @@
     "vite": "^5.0.0"
   },
   "dependencies": {
-    "@sgedda/mockifyer-core": "file:../packages/mockifyer-core",
-    "@sgedda/mockifyer-fetch": "file:../packages/mockifyer-fetch"
+    "@sgedda/mockifyer-core": "file:../../packages/mockifyer-core",
+    "@sgedda/mockifyer-fetch": "file:../../packages/mockifyer-fetch"
   }
 }

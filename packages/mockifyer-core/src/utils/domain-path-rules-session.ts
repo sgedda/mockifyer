@@ -402,6 +402,63 @@ export class DomainPathRulesSession {
   }
 
   /**
+   * Enable autoMock for a URL (allows replay). Called after saving an allowlisted response.
+   */
+  enableAutoMockForUrl(rawUrl: string | null | undefined, baseUrl?: string | null): void {
+    if (!this.isActive() || !rawUrl) {
+      return;
+    }
+
+    const { endpointUrlToDomainPath } = require('./domain-path-rules') as typeof import('./domain-path-rules');
+    const resolved = typeof rawUrl === 'string' ? rawUrl.trim() : '';
+    if (!resolved) {
+      return;
+    }
+
+    let absoluteUrl = resolved;
+    if (baseUrl && !/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(resolved)) {
+      try {
+        absoluteUrl = new URL(resolved, baseUrl).href;
+      } catch {
+        // If URL construction fails, use the original
+      }
+    }
+
+    const domainPath = endpointUrlToDomainPath(absoluteUrl);
+    if (!domainPath) {
+      return;
+    }
+
+    const scenario = this.scenarioName();
+    const rules = this.loadRules();
+    const existing = rules[domainPath];
+    if (!existing) {
+      // No rule exists yet; this shouldn't happen since discover should have created it
+      return;
+    }
+
+    if (existing.autoMock === true) {
+      // Already enabled
+      return;
+    }
+
+    // Update the rule to enable autoMock
+    const updated: DomainPathRulesMap = { ...rules };
+    updated[domainPath] = { ...existing, autoMock: true, updatedAt: new Date().toISOString() };
+    this.rules = updated;
+    this.rulesScenario = scenario;
+
+    // Persist to disk
+    if (this.useFs) {
+      this.persistQueue = this.persistQueue.then(async () => {
+        await this.persistFullRules(updated, scenario);
+      }).catch((err) => {
+        logger.warn('[DomainPathRules] Failed to persist autoMock update:', err);
+      });
+    }
+  }
+
+  /**
    * Upsert discovered domain/path keys and persist (Node fs or Metro POST).
    * Fire-and-forget safe; errors are logged.
    */
