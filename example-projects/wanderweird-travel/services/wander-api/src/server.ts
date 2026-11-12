@@ -201,8 +201,9 @@ async function fetchJson(url: string, init?: RequestInit): Promise<unknown> {
 }
 
 async function getWeather(anchor: DestinationAnchor): Promise<Record<string, unknown>> {
+  const weatherApiBase = process.env.WEATHER_API_BASE_URL || 'https://api.open-meteo.com';
   const url =
-    `https://api.open-meteo.com/v1/forecast?latitude=${anchor.latitude}` +
+    `${weatherApiBase}/v1/forecast?latitude=${anchor.latitude}` +
     `&longitude=${anchor.longitude}&current=temperature_2m,weather_code,wind_speed_10m` +
     `&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=3`;
 
