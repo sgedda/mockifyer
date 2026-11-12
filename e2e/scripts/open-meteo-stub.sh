@@ -31,7 +31,8 @@ stop_stub() {
 
 start_stub() {
   port_open && stop_stub
-  setsid nohup tsx "$SCRIPT_DIR/open-meteo-stub.ts" "$PORT" > "$LOG_FILE" 2>&1 < /dev/null &
+  cd "$SCRIPT_DIR/.."
+  setsid nohup npx tsx "$SCRIPT_DIR/open-meteo-stub.ts" "$PORT" > "$LOG_FILE" 2>&1 < /dev/null &
   for _ in $(seq "$START_WAIT_SECONDS"); do
     curl -sf "http://127.0.0.1:$PORT/v1/forecast?latitude=37.9838&longitude=23.7275&current=temperature_2m&timezone=auto&forecast_days=1" >/dev/null 2>&1 && {
       echo "Open-Meteo stub up on :$PORT"
