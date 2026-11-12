@@ -175,10 +175,12 @@ function generateHtml(routePath, seoConfig, baseHtml) {
     /<meta name="twitter:description"[\s\S]*?content=".*?"[\s\S]*?\/>/,
     `<meta name="twitter:description" content="${seoConfig.description}" />`
   );
-  html = html.replace(
-    /<script type="application\/ld\+json">[\s\S]*?<\/script>/,
-    ""
-  );
+  if (routePath !== "/") {
+    html = html.replace(
+      /<script type="application\/ld\+json">[\s\S]*?<\/script>/,
+      ""
+    );
+  }
   const h1Text = seoConfig.title.replace(" | Mockifyer", "").replace(" | " + SITE_NAME, "").replace(" - Testing Guide", "").replace(" - ", ": ");
   const seoContent = `<div id="root"><div style="max-width:1200px;margin:0 auto;padding:2rem"><h1>${h1Text}</h1><p>${seoConfig.description}</p><noscript><p>This site requires JavaScript to be enabled.</p></noscript></div></div>`;
   html = html.replace(

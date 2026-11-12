@@ -153,14 +153,32 @@ test.describe('SEO: Security headers', () => {
 
 test.describe('SEO: Meta tags and JSON-LD', () => {
   test('Homepage has SoftwareApplication JSON-LD', async ({ page }) => {
-    await page.goto('/');
+    const response = await page.goto('/');
+    const html = await response?.text();
     
+    // Check raw prerendered HTML has JSON-LD before React hydrates
+    expect(html).toContain('application/ld+json');
+    expect(html).toContain('SoftwareApplication');
+    expect(html).toMatch(/"name":\s*"Mockifyer"/);
+    
+    // Also verify after hydration
     const jsonLd = await page.locator('script[type="application/ld+json"]').first().textContent();
     expect(jsonLd).toBeTruthy();
     
     const data = JSON.parse(jsonLd!);
     expect(data['@type']).toBe('SoftwareApplication');
     expect(data.name).toBe('Mockifyer');
+  });
+
+  test('Non-homepage routes strip SoftwareApplication JSON-LD from prerendered HTML', async ({ page }) => {
+    const response = await page.goto('/features');
+    const html = await response?.text();
+    
+    // Raw HTML should NOT have homepage SoftwareApplication JSON-LD
+    expect(html).not.toContain('SoftwareApplication');
+    
+    // After React hydrates, route-specific JSON-LD may be added by client
+    // This test only verifies prerendered HTML doesn't copy homepage schema
   });
 
   test('FAQ page has FAQPage JSON-LD', async ({ page }) => {
