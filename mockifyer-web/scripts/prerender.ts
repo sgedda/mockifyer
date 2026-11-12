@@ -14,11 +14,23 @@ const ROUTES = [
   '/packages',
   '/dashboard',
   '/comparisons',
+  '/guides',
   '/guides/mock-at-the-network-edge',
   '/guides/reproduce-tester-bugs',
   '/guides/stable-react-native-e2e',
   '/guides/mock-drift',
   '/guides/react-native-without-msw',
+  '/guides/browser-record-replay',
+  '/guides/react-native-expo',
+  '/guides/selective-recording',
+  '/guides/record-replay',
+  '/guides/maestro-detox-mocks',
+  '/guides/scenarios',
+  '/comparisons/msw',
+  '/comparisons/pollyjs',
+  '/comparisons/nock',
+  '/comparisons/wiremock',
+  '/comparisons/mockoon',
 ];
 
 async function prerender() {

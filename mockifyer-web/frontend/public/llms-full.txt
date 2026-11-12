@@ -6,12 +6,12 @@
 
 | Package | Version | Purpose |
 |---------|---------|---------|
-| `@sgedda/mockifyer-core` | 1.10.190 | Types, matching, scenarios, dates, activation, AI context |
-| `@sgedda/mockifyer-axios` | 1.10.35 | `setupMockifyer` for Axios |
-| `@sgedda/mockifyer-fetch` | 1.8.106 | fetch, React Native, dashboard proxy |
-| `@sgedda/mockifyer-dashboard` | 1.5.93 | CLI + UI, Redis proxy, client lanes |
-| `@sgedda/mockifyer-mcp` | 0.1.5 | 42 MCP tools for Cursor/Claude (not on npm — build from `packages/mockifyer-mcp`) |
-| `@sgedda/mockifyer-test-helper` | 1.8.9 | Test utilities (not on npm — build from `packages/mockifyer-test-helper`) |
+| `@sgedda/mockifyer-core` | 1.10.190 | Mocks, scenarios, client lanes, date control, activation modes, providers |
+| `@sgedda/mockifyer-axios` | 1.10.35 | Axios integration for Node and backend services |
+| `@sgedda/mockifyer-fetch` | 1.8.106 | fetch, React Native, Metro sync, Atlas tracing (t key in Metro) |
+| `@sgedda/mockifyer-dashboard` | 1.5.93 | Web UI, Redis/SQLite, Network view, scenario/lane management, Date Config |
+| `@sgedda/mockifyer-mcp` | 0.1.5 | 42 MCP tools for Cursor/Claude (search, AI context, field overrides, explain_value) (not on npm — build from `packages/mockifyer-mcp`) |
+| `@sgedda/mockifyer-test-helper` | 1.8.9 | Test utilities and auto-setup for realistic mock data in tests (not on npm — build from `packages/mockifyer-test-helper`) |
 
 ## Setup (axios)
 
@@ -74,10 +74,33 @@ Dashboard mock API also exposes `/api/mocks/:file/ai-context` for lightweight fi
 
 Outbound headers: `x-mockifyer-request-id`, `x-mockifyer-parent-request-id` for multi-hop tracing.
 
+## Content Pages
+
+### Guides
+- [Mock at the Network Edge](https://mockifyer.dev/guides/mock-at-the-network-edge): Stop mocking hooks and components. Test what users see by mocking HTTP at the network edge.
+- [Reproduce Tester Bugs Locally](https://mockifyer.dev/guides/reproduce-tester-bugs): Capture API calls from tester devices and replay bugs locally with full tracing.
+- [Stable React Native E2E Tests](https://mockifyer.dev/guides/stable-react-native-e2e): Lock scenarios with launch arguments, freeze dates, and make Detox, Appium, and Maestro tests deterministic.
+- [Stop Mock Drift](https://mockifyer.dev/guides/mock-drift): Record real responses, re-record when APIs change, and git diff to catch breaking changes.
+- [React Native: Handlers vs Recording](https://mockifyer.dev/guides/react-native-without-msw): Compare MSW and Mockifyer for React Native. Recording works on device with no service worker.
+- [React Native and Expo with Mockifyer](https://mockifyer.dev/guides/react-native-expo): Set up Mockifyer in React Native and Expo apps with Metro sync and device storage.
+- [Selective HTTP Recording, Not Capture-All](https://mockifyer.dev/guides/selective-recording): Requests land as stubs in _scratch and stay live until you activate them.
+- [Record and Replay with Mockifyer](https://mockifyer.dev/guides/record-replay): Record real axios or fetch calls in Node, keep JSON mocks in your repo, and replay in tests.
+- [Mock APIs in Maestro and Detox E2E](https://mockifyer.dev/guides/maestro-detox-mocks): Lock a React Native E2E run to a recorded scenario with launch arguments.
+- [Switch Mock Scenarios for Test Data](https://mockifyer.dev/guides/scenarios): Keep empty, many and error states as scenario folders and switch between them.
+
+### Comparisons
+- [Mockifyer vs MSW (Mock Service Worker)](https://mockifyer.dev/comparisons/msw): Hand-written handlers vs recorded JSON. MSW for GraphQL and browser tests, Mockifyer for scenarios and React Native.
+- [Mockifyer vs Polly.js](https://mockifyer.dev/comparisons/pollyjs): Polly.js pioneered record/replay for JavaScript. Mockifyer adds dashboard, scenarios, and selective recording.
+- [Mockifyer vs Nock](https://mockifyer.dev/comparisons/nock): Nock for assertion-heavy Node unit tests. Mockifyer for recorded JSON scenarios in dev, E2E and React Native.
+- [Mockifyer vs WireMock](https://mockifyer.dev/comparisons/wiremock): WireMock is a standalone, language-agnostic server. Mockifyer runs in-process and records real traffic.
+- [Mockifyer vs Mockoon](https://mockifyer.dev/comparisons/mockoon): Mockoon is a desktop app for designing mock APIs. Mockifyer records a JS app's real traffic. They complement each other.
+
 ## Links
 
 - https://mockifyer.dev
 - https://mockifyer.dev/getting-started.md
 - https://mockifyer.dev/config-reference.md
 - https://mockifyer.dev/e2e-tutorial
+- https://mockifyer.dev/packages
+- https://mockifyer.dev/guides
 - https://github.com/sgedda/mockifyer
