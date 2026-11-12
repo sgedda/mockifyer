@@ -1614,7 +1614,7 @@ export class MockifyerClass {
       (this.config.proxy?.baseUrl ? this.config.proxy.recordResponses : this.config.recordResponses);
     
     // Check env override first (applies to both boolean and array configs)
-    const { envRecordResponsesOverride } = require('@sgedda/mockifyer-core/src/utils/request-only-mock');
+    const { envRecordResponsesOverride } = require('@sgedda/mockifyer-core');
     const envOverride = envRecordResponsesOverride();
     if (envOverride !== undefined) {
       return envOverride;

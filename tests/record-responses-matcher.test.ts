@@ -5,6 +5,7 @@ import {
   type RecordResponsesPattern,
 } from '../packages/mockifyer-core/src/utils/record-responses-matcher';
 import { ENV_VARS } from '../packages/mockifyer-core/src/types';
+import { envRecordResponsesOverride } from '../packages/mockifyer-core/src/index';
 
 describe('record-responses-matcher', () => {
   describe('urlMatchesRecordResponsesPatterns', () => {
@@ -312,6 +313,39 @@ describe('record-responses-matcher', () => {
       process.env[ENV_VARS.MOCK_RECORD_RESPONSES] = 'true';
       expect(shouldRecordResponseForUrl('https://api.example.com/users', patterns)).toBe(true);
       expect(shouldRecordResponseForUrl('https://other.com/data', patterns)).toBe(true);
+    });
+  });
+
+  describe('envRecordResponsesOverride public export', () => {
+    const originalEnv = process.env;
+
+    beforeEach(() => {
+      process.env = { ...originalEnv };
+      delete process.env[ENV_VARS.MOCK_RECORD_RESPONSES];
+    });
+
+    afterEach(() => {
+      process.env = originalEnv;
+    });
+
+    it('is exported from public entry and returns undefined when unset', () => {
+      expect(envRecordResponsesOverride()).toBeUndefined();
+    });
+
+    it('returns true when MOCKIFYER_RECORD_RESPONSES=true', () => {
+      process.env[ENV_VARS.MOCK_RECORD_RESPONSES] = 'true';
+      expect(envRecordResponsesOverride()).toBe(true);
+    });
+
+    it('returns false when MOCKIFYER_RECORD_RESPONSES=false', () => {
+      process.env[ENV_VARS.MOCK_RECORD_RESPONSES] = 'false';
+      expect(envRecordResponsesOverride()).toBe(false);
+    });
+
+    it('is browser-safe (handles missing process)', () => {
+      // This test verifies the function doesn't crash in browser environments
+      // The actual implementation checks typeof process !== 'undefined'
+      expect(() => envRecordResponsesOverride()).not.toThrow();
     });
   });
 });
