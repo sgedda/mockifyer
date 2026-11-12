@@ -569,7 +569,10 @@ class MockifyerClass {
     // Pass recordResponses through (boolean or array) - envelope handles URL matching
     this.httpClient = new AxiosHTTPClient(config.axiosInstance, {
       baseUrl: config.baseUrl,
-      proxy: config.proxy,
+      proxy: config.proxy ? {
+        ...config.proxy,
+        recordResponses: config.recordResponses ?? config.proxy.recordResponses,
+      } : undefined,
       clientId: this.config.clientId,
       getClientId: () => this.config.clientId,
       getStrictLaneScenario: () => resolveProxyStrictLaneScenario(this.config),
