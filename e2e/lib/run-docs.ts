@@ -1,10 +1,10 @@
 import os from 'node:os';
 import path from 'node:path';
 import { ACTOR_LABEL } from './docs';
-import { PRESENTATION_ENV, PRESENTATION_HOLD_MS, PRESENTATION_NAV_HOLD_MS, presentationOn } from './env';
+import { ANDROID_ENV, androidOn, PRESENTATION_ENV, PRESENTATION_HOLD_MS, PRESENTATION_NAV_HOLD_MS, presentationOn } from './env';
 import { E2E_DIR, REPO_ROOT_PLACEHOLDER, type PlaywrightReport, type TestRun } from './report';
-import { ARTIFACT, GUI_VIDEOS_DIR, INDIVIDUAL_DIR, RUN_SUMMARY_FILE } from './videos';
-import { STEP_KIND, WORKFLOW_FILE, type WorkflowStep } from './workflow';
+import { ARTIFACT, clipStartOffsets, GUI_VIDEOS_DIR, INDIVIDUAL_DIR, RUN_SUMMARY_FILE, type ClipTiming } from './videos';
+import { JOB_ID, STEP_KIND, WORKFLOW_FILE, type WorkflowStep } from './workflow';
 
 const ARTIFACTS_SCRIPT = 'npm run artifacts';
 const MS_PER_MINUTE = 60_000;
@@ -30,7 +30,7 @@ export interface TestFiles {
   trace?: string;
 }
 
-function shellQuote(arg: string): string {
+export function shellQuote(arg: string): string {
   return /^[\w@%+=:,./-]+$/.test(arg) ? arg : `'${arg.replace(/'/g, `'\\''`)}'`;
 }
 
@@ -67,6 +67,9 @@ function presentationMode(ctx: RunContext, test?: TestRun): string {
   const value = runEnv(ctx)[PRESENTATION_ENV];
   if (!presentationOn(value)) return `off (\`${PRESENTATION_ENV}\` ${value === undefined ? 'unset' : `= ${value}`}; normal speed)`;
   if (test && !(test.appVideo && test.dashboardVideo)) return `on (\`${PRESENTATION_ENV}=${value}\`), no effect on this test (GUI tests only)`;
+  if (test?.executedSteps) {
+    return `on (\`${PRESENTATION_ENV}=${value}\`): the dashboard side holds ${PRESENTATION_HOLD_MS / 1000} s, outlines the element and types visibly at each value change; the app side (Maestro) holds ${PRESENTATION_NAV_HOLD_MS / 1000} s between login steps and ${PRESENTATION_HOLD_MS / 1000} s on each new value, without outlines (Maestro types with inputText)`;
+  }
   return `on (\`${PRESENTATION_ENV}=${value}\`): GUI tests hold ${PRESENTATION_HOLD_MS / 1000} s, outline the element and type visibly at each value change, and hold ${PRESENTATION_NAV_HOLD_MS / 1000} s on each navigation click`;
 }
 
@@ -105,7 +108,7 @@ function stepsSection(ctx: RunContext): string[] {
     ? 'from this job (GitHub Actions API), statuses as of when the docs were written'
     : `from \`${WORKFLOW_FILE}\` (no job data available)`;
   const lines = [
-    `Steps of \`${WORKFLOW_FILE}\`, job \`e2e\`, in order, ${source}.`,
+    `Steps of \`${WORKFLOW_FILE}\`, job \`${JOB_ID}\`, in order, ${source}.`,
     '',
     ...(withStatus
       ? ['| # | Step | Kind | Status |', '|---|---|---|---|']
@@ -137,11 +140,16 @@ function reproduceEnv(ctx: RunContext): string {
 function reproduceSection(ctx: RunContext, test?: TestRun): string[] {
   const stackSteps = ctx.steps.filter((s) => s.run && (STACK_KINDS.has(s.kind) || /^Wait/.test(s.name)));
   const env = reproduceEnv(ctx);
+  const android = androidOn(runEnv(ctx)[ANDROID_ENV]);
+  const guiProject = android ? 'android' : 'gui';
   const target = test ? `${test.file}:${test.line} --project=${test.project}` : '';
   const lines = [
     'From the repository root, the same commands the workflow ran, each in a subshell so it starts at the root',
     '(Node 20; see the README "Run locally"):',
     '',
+    ...(android
+      ? ['Android: start an emulator first and install Maestro (`~/.maestro/bin` or `PATH`); the APK and Metro steps are below (`e2e/native/README.md`).', '']
+      : []),
   ];
   stackSteps.forEach((step, i) => {
     lines.push(`${i + 1}. ${step.kind}: **${step.name}**`);
@@ -151,7 +159,7 @@ function reproduceSection(ctx: RunContext, test?: TestRun): string[] {
   lines.push(['', '```bash', `cd ${E2E_DIR} && npm ci && npx playwright install chromium`,
     `${env ? `${env} ` : ''}npx playwright test ${target}`.trimEnd(), '```', ''].join('\n'));
   lines.push(`${stackSteps.length + 2}. ${STEP_KIND.helper}: \`${ARTIFACTS_SCRIPT}\` (ffmpeg from the ffmpeg-static devDependency) for the side-by-side videos and these docs. ` +
-    'All GUI tests at once: `npx playwright test --project=gui` (or `--grep @gui`).');
+    `All GUI tests at once: \`npx playwright test --project=${guiProject}\` (or \`--grep @gui\`).`);
   return lines;
 }
 
@@ -162,9 +170,34 @@ function stepsOfTest(test: TestRun): string[] {
   return test.steps.map((s, i) => `${i + 1}. **${ACTOR_LABEL[s.actor]}**: ${s.description}`);
 }
 
+function clipSync(timing: ClipTiming): string {
+  const cut = clipStartOffsets(timing);
+  const [trimmed, seconds] = cut.dashboard > 0 ? ['dashboard', cut.dashboard] : ['app', cut.app];
+  return `the first ${seconds.toFixed(1)} s of the ${trimmed} recording are cut (start times on the host clock) so both panes start together`;
+}
+
+/** Android tests: each Maestro run and dashboard action, with its result and duration. */
+function executedStepsSection(test: TestRun): string[] {
+  if (!test.executedSteps?.length) return [];
+  return [
+    '## Steps as run',
+    '',
+    'Every app step is one `maestro test` run (exact command, in `e2e/`); dashboard steps are the `DashboardUi` actions (`lib/gui.ts`).',
+    '',
+    '| # | Who | Step | Result | Duration |',
+    '|---|---|---|---|---|',
+    ...test.executedSteps.map((step, i) => {
+      const result = step.error ? `${step.status}: ${step.error.replace(/\|/g, '\\|')}` : step.status;
+      return `| ${i + 1} | ${step.actor} | \`${step.title.replace(/\|/g, '\\|')}\` | ${result} | ${duration(step.durationMs)} |`;
+    }),
+    '',
+  ];
+}
+
 function filesRows(test: TestRun, files: TestFiles): string[] {
   const rows: string[] = [];
   if (files.sideBySide) rows.push(`| Side-by-side video | \`${files.sideBySide}\` in \`${ARTIFACT.guiVideos}\` (app left, dashboard right) |`);
+  if (files.sideBySide && test.clipTiming) rows.push(`| Clip sync | ${clipSync(test.clipTiming)} |`);
   if (files.videoError) rows.push(`| Side-by-side video | not composed: ${files.videoError} |`);
   if (files.individual.length) rows.push(`| Individual videos | ${files.individual.map((f) => `\`${f}\``).join(', ')} in \`${ARTIFACT.videos}\` |`);
   if (files.trace) rows.push(`| Trace | \`${files.trace}\` in \`${ARTIFACT.traces}\` (\`npx playwright show-trace <zip>\`) |`);
@@ -194,6 +227,7 @@ export function testDoc(ctx: RunContext, test: TestRun, files: TestFiles): strin
     ...stepsOfTest(test),
     ...test.notes.map((n) => `- Note (${n.type}): ${n.description ?? ''}`),
     '',
+    ...executedStepsSection(test),
     `## Command that produced this ${files.individual.length ? 'recording' : 'test result'}`,
     '',
     ...commandSection(ctx),
