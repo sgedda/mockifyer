@@ -1,0 +1,30 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "http://localhost:4100/api/booking/abc123",
+    "headers": {
+      "accept": "application/json"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "data": {
+      "booking": {
+        "id": "abc123",
+        "bookingId": "xyz789",
+        "status": "confirmed",
+        "price": 1250,
+        "confirmationDate": "2026-11-13T10:00:00Z"
+      },
+      "timestamp": "2026-11-13T10:00:00.000Z"
+    }
+  },
+  "metadata": {
+    "recordedAt": "2026-11-13T10:00:00.000Z",
+    "source": "live"
+  },
+  "scenario": "drift-watch"
+}

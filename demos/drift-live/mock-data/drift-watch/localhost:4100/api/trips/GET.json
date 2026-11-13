@@ -1,0 +1,39 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "http://localhost:4100/api/trips",
+    "headers": {
+      "accept": "application/json"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "data": {
+      "trips": [
+        {
+          "id": "abc123",
+          "destination": "Paris",
+          "duration": 5,
+          "passengers": 2,
+          "departureDate": "2026-12-01"
+        },
+        {
+          "id": "def456",
+          "destination": "Tokyo",
+          "duration": 10,
+          "passengers": 1,
+          "departureDate": "2026-12-01"
+        }
+      ],
+      "timestamp": "2026-11-13T10:00:00.000Z"
+    }
+  },
+  "metadata": {
+    "recordedAt": "2026-11-13T10:00:00.000Z",
+    "source": "live"
+  },
+  "scenario": "drift-watch"
+}
