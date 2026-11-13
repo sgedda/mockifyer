@@ -13,6 +13,7 @@ module.exports = {
   moduleNameMapper: {
     '^@sgedda/mockifyer-core$': '<rootDir>/packages/mockifyer-core/src/index.ts',
     '^@sgedda/mockifyer-core/utils/drift$': '<rootDir>/packages/mockifyer-core/src/utils/drift/index.ts',
+    '^@sgedda/mockifyer-core/dist/utils/drift$': '<rootDir>/packages/mockifyer-core/src/utils/drift/index.ts',
     '^@sgedda/mockifyer-core/(.*)$': '<rootDir>/packages/mockifyer-core/src/$1',
     '^@sgedda/mockifyer-axios$': '<rootDir>/packages/mockifyer-axios/src/index.ts',
     '^@sgedda/mockifyer-axios/(.*)$': '<rootDir>/packages/mockifyer-axios/src/$1',
