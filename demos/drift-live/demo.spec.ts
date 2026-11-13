@@ -226,7 +226,7 @@ test.describe('Drift Detection Demo', () => {
     await runCheckButton2.click();
     
     // Wait for drift to be detected by checking for the "Breaking" badge on an endpoint
-    await expect(page.locator('.badge:has-text("Breaking")').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Breaking').first()).toBeVisible({ timeout: 10000 });
     console.log('✗ Drift detected');
     await page.waitForTimeout(2000);
 
@@ -234,13 +234,14 @@ test.describe('Drift Detection Demo', () => {
     await showCaption(page, 'Step 4: Accept drift changes', 1500);
     console.log('Accepting drift...');
     
-    // Click "Accept Live" button for first drifted endpoint to open dialog
-    const acceptLiveButton = page.locator('button:has-text("Accept Live")').first();
+    // Click "Accept Live" button for the trips endpoint (critical severity, breaking drift)
+    const tripsRow = page.locator('div:has-text("GET"):has-text("/api/trips")').first();
+    const acceptLiveButton = tripsRow.locator('button:has-text("Accept Live")');
     await expect(acceptLiveButton).toBeVisible({ timeout: 5000 });
     await acceptLiveButton.click();
     
-    // Wait for confirmation dialog and click "Accept" button
-    const acceptDialogButton = page.locator('button:has-text("Accept")').filter({ hasNotText: 'Live' });
+    // Wait for confirmation dialog and click "Accept" button (within dialog, not "Accept Live" or "Accept All Warnings")
+    const acceptDialogButton = page.locator('[role="dialog"]').locator('button:has-text("Accept")').filter({ hasNotText: 'Live' }).filter({ hasNotText: 'All' }).filter({ hasNotText: 'Warnings' });
     await expect(acceptDialogButton).toBeVisible({ timeout: 5000 });
     await acceptDialogButton.click();
     
