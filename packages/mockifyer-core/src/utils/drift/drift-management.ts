@@ -96,7 +96,10 @@ export async function acceptDrift(options: {
         ? mockData.request.data
         : JSON.stringify(mockData.request.data);
 
-      if (!headers['content-type']) {
+      const hasContentType = Object.keys(headers).some(
+        key => key.toLowerCase() === 'content-type'
+      );
+      if (!hasContentType) {
         headers['content-type'] = 'application/json';
       }
     }
@@ -182,6 +185,8 @@ export async function acceptAllWarnings(options: {
       ...(fileConfig.endpointConfig || {}),
       ...(options.driftOptions?.endpointConfig || {}),
     },
+    historyRetention: options.driftOptions?.historyRetention ?? fileConfig.historyRetention ?? 30,
+    noHistory: options.driftOptions?.noHistory ?? fileConfig.noHistory ?? false,
   };
 
   // Run drift check first
@@ -301,17 +306,13 @@ export async function addIgnoreField(options: {
 
   let config: any = {};
 
-  // Load existing config from both sources and merge
-  const existingConfig = loadDriftConfigForManagement();
-  config = { ...existingConfig };
-
-  // Try to load existing config file
+  // Load existing config from target file only
   if (fs.existsSync(configPath)) {
     try {
       const fileContent = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-      config = { ...config, ...fileContent };
+      config = { ...fileContent };
     } catch {
-      // Invalid JSON, keep merged config
+      // Invalid JSON, start with empty config
     }
   }
 
@@ -564,13 +565,11 @@ interface DriftConfig {
  * Load drift config from file if it exists.
  */
 function loadDriftConfigForManagement(): DriftConfig {
-  let config: DriftConfig = {};
-  
   // Try mockifyer.drift.json
   if (fs.existsSync('mockifyer.drift.json')) {
     try {
       const content = fs.readFileSync('mockifyer.drift.json', 'utf-8');
-      config = { ...config, ...JSON.parse(content) };
+      return JSON.parse(content);
     } catch {
       // Invalid JSON, ignore
     }
@@ -582,14 +581,14 @@ function loadDriftConfigForManagement(): DriftConfig {
       const content = fs.readFileSync('package.json', 'utf-8');
       const pkg = JSON.parse(content);
       if (pkg.mockifyer?.drift) {
-        config = { ...config, ...pkg.mockifyer.drift };
+        return pkg.mockifyer.drift;
       }
     } catch {
       // Invalid JSON, ignore
     }
   }
 
-  return config;
+  return {};
 }
 
 /**
