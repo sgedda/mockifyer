@@ -19,6 +19,15 @@ export interface DriftIssue {
   message: string;
 }
 
+export interface DriftIssueWithHistory extends DriftIssue {
+  /** ISO 8601 timestamp of first detection */
+  firstSeen: string;
+  /** ISO 8601 timestamp of most recent detection */
+  lastSeen: string;
+  /** Number of consecutive runs this issue appeared */
+  occurrences: number;
+}
+
 export interface MockDriftReport {
   /** Request method */
   method: string;
@@ -42,6 +51,12 @@ export interface MockDriftReport {
   notCheckedReason?: string;
 }
 
+export interface MockDriftReportWithHistory extends MockDriftReport {
+  issues: DriftIssueWithHistory[];
+  /** ISO 8601 timestamp until which this endpoint is snoozed */
+  snoozedUntil?: string;
+}
+
 export interface DriftCheckReport {
   /** Total number of mocks checked */
   totalMocks: number;
@@ -61,6 +76,29 @@ export interface DriftCheckReport {
   summary: string;
   /** Effective failOnWarnings setting (after merging config and CLI) */
   failOnWarnings: boolean;
+}
+
+export interface DriftHistoryReport extends DriftCheckReport {
+  /** Schema version for future compatibility */
+  reportVersion: 1;
+  /** ISO 8601 timestamp of this check */
+  timestamp: string;
+  /** Git commit SHA at time of check (if available) */
+  gitCommit?: string;
+  /** Git branch name at time of check (if available) */
+  gitBranch?: string;
+  /** Per-mock reports with history */
+  mockReports: MockDriftReportWithHistory[];
+}
+
+/**
+ * Per-endpoint drift configuration.
+ */
+export interface EndpointDriftConfig {
+  /** Severity level: critical means breaking fails CI, normal means warnings only */
+  severity?: 'critical' | 'normal';
+  /** JSON paths to ignore for this endpoint */
+  ignorePaths?: string[];
 }
 
 /**
@@ -83,4 +121,10 @@ export interface DriftCheckOptions {
   timeoutMs?: number;
   /** Delay between requests in milliseconds (rate limiting) */
   delayMs?: number;
+  /** Per-endpoint drift configuration */
+  endpointConfig?: Record<string, EndpointDriftConfig>;
+  /** Number of history reports to retain (default: 30) */
+  historyRetention?: number;
+  /** Skip writing history reports */
+  noHistory?: boolean;
 }
