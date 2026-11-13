@@ -12,6 +12,7 @@ import {
   MockDriftReport,
 } from './drift-report';
 import { compareResponses, hasBreakingIssues } from './compare-engine';
+import { omitProxyUpstreamRequestHeaders } from '../proxy-upstream-headers';
 
 interface LoadedMock {
   mock: MockData;
@@ -149,10 +150,19 @@ async function checkSingleMock(
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
+      const sanitizedMockHeaders = omitProxyUpstreamRequestHeaders(mock.request.headers || {});
+      const filteredHeaders: Record<string, string> = {};
+      for (const [key, value] of Object.entries(sanitizedMockHeaders)) {
+        const lowerKey = key.toLowerCase();
+        if (lowerKey !== 'authorization' && !lowerKey.startsWith('x-mockifyer-')) {
+          filteredHeaders[key] = value;
+        }
+      }
+
       const requestInit: RequestInit = {
         method,
         headers: {
-          ...(mock.request.headers || {}),
+          ...filteredHeaders,
           ...(options.headers || {}),
         },
         signal: controller.signal,
@@ -160,9 +170,14 @@ async function checkSingleMock(
 
       // Include request body for POST/PUT/PATCH/DELETE
       if (mock.request.data && method.toUpperCase() !== 'GET' && method.toUpperCase() !== 'HEAD') {
+        const isObject = typeof mock.request.data === 'object' && mock.request.data !== null;
         requestInit.body = typeof mock.request.data === 'string'
           ? mock.request.data
           : JSON.stringify(mock.request.data);
+        
+        if (isObject && !requestInit.headers['content-type'] && !requestInit.headers['Content-Type']) {
+          requestInit.headers['content-type'] = 'application/json';
+        }
       }
 
       const response = await fetch(requestUrl, requestInit);
@@ -239,8 +254,11 @@ function rewriteUrl(originalUrl: string, baseUrl: string): string {
     const original = new URL(originalUrl);
     const base = new URL(baseUrl);
 
-    // Preserve base pathname when present
-    const basePath = base.pathname !== '/' ? base.pathname : '';
+    // Preserve base pathname when present, removing trailing slash to avoid duplication
+    let basePath = base.pathname !== '/' ? base.pathname : '';
+    if (basePath.endsWith('/')) {
+      basePath = basePath.slice(0, -1);
+    }
     return `${base.protocol}//${base.host}${basePath}${original.pathname}${original.search}`;
   } catch {
     // Fallback: simple replacement
