@@ -98,7 +98,7 @@
     "mockifyer-atlas-har": "./src/cli/atlas-har.ts",
     "mockifyer-atlas": "./src/cli/atlas.ts",
     "mockifyer-init-ai": "./bin/mockifyer-init-ai",
-    "mockifyer-drift-check": "./src/cli/drift-check.ts"
+    "mockifyer-drift-check": "./dist/cli/drift-check.js"
   },
   "scripts": {
     "build": "tsc",

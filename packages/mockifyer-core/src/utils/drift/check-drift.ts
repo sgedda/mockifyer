@@ -55,35 +55,45 @@ function isActiveMock(mock: MockData): boolean {
 }
 
 /**
- * Check if the live response is an empty array while the mock had data.
+ * Find all paths where the live response is an empty array while the mock had data.
  * This is common for time-sensitive data (e.g., "upcoming trips" that have passed).
+ * Returns an array of JSON paths.
  */
-function isEmptyLiveList(expected: unknown, actual: unknown): boolean {
+function findEmptyLiveListPaths(
+  expected: unknown,
+  actual: unknown,
+  path: string = ''
+): string[] {
+  const paths: string[] = [];
+
   // If expected is an array with items and actual is an empty array
   if (Array.isArray(expected) && Array.isArray(actual)) {
-    return expected.length > 0 && actual.length === 0;
+    if (expected.length > 0 && actual.length === 0) {
+      paths.push(path || 'root');
+    }
+    return paths;
   }
 
-  // Check if it's wrapped in an object (e.g., { data: [] })
+  // Recursively check nested objects
   if (
     typeof expected === 'object' &&
     expected !== null &&
+    !Array.isArray(expected) &&
     typeof actual === 'object' &&
-    actual !== null
+    actual !== null &&
+    !Array.isArray(actual)
   ) {
     for (const key of Object.keys(expected as Record<string, unknown>)) {
       const expectedValue = (expected as Record<string, unknown>)[key];
       const actualValue = (actual as Record<string, unknown>)[key];
+      const fieldPath = path ? `${path}.${key}` : key;
       
-      if (Array.isArray(expectedValue) && Array.isArray(actualValue)) {
-        if (expectedValue.length > 0 && actualValue.length === 0) {
-          return true;
-        }
-      }
+      const nestedPaths = findEmptyLiveListPaths(expectedValue, actualValue, fieldPath);
+      paths.push(...nestedPaths);
     }
   }
 
-  return false;
+  return paths;
 }
 
 /**
@@ -288,6 +298,7 @@ export async function checkDrift(options: {
     notCheckedCount,
     mockReports,
     summary,
+    failOnWarnings: driftOptions.failOnWarnings ?? false,
   };
 }
 
@@ -368,21 +379,7 @@ async function checkSingleMock(
       // Parse response body
       const actualBody = await parseResponseBody(response);
 
-      // Check for empty live lists (common for time-sensitive data)
-      if (isEmptyLiveList(mock.response.data, actualBody)) {
-        return {
-          method,
-          url,
-          mockFilePath: filePath,
-          hasDrift: false,
-          hasBreakingDrift: false,
-          issues: [],
-          notChecked: true,
-          notCheckedReason: 'Empty live list (e.g., time-sensitive data that has passed)',
-        };
-      }
-
-      // Compare with mock
+      // Compare with mock (always compare status and all fields)
       const issues = compareResponses(
         {
           expectedStatus: mock.response.status,
@@ -393,6 +390,25 @@ async function checkSingleMock(
         options
       );
 
+      // Check if there are empty live lists (mark as info, don't count as drift)
+      const emptyListPaths = findEmptyLiveListPaths(mock.response.data, actualBody);
+      const hasEmptyLists = emptyListPaths.length > 0;
+
+      // If ALL issues are about empty arrays (no other drift), mark as notChecked
+      if (issues.length === 0 && hasEmptyLists) {
+        return {
+          method,
+          url,
+          mockFilePath: filePath,
+          hasDrift: false,
+          hasBreakingDrift: false,
+          issues: [],
+          notChecked: true,
+          notCheckedReason: `Empty live list at ${emptyListPaths.join(', ')}`,
+        };
+      }
+
+      // Otherwise, report normal drift (empty lists don't hide other issues)
       return {
         method,
         url,

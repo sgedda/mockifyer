@@ -472,6 +472,35 @@ describe('drift-compare-engine', () => {
     });
   });
 
+  describe('regression tests', () => {
+    it('should detect nested object differences in array union', () => {
+      // Regression: buildArrayUnionShape should recursively merge nested objects
+      const issues = compareResponses({
+        expectedStatus: 200,
+        actualStatus: 200,
+        expectedBody: {
+          items: [
+            { id: 1, user: { name: 'Alice', email: 'alice@example.com' } },
+            { id: 2, user: { name: 'Bob', role: 'admin' } },
+          ],
+        },
+        actualBody: {
+          items: [
+            { id: 1, user: { name: 'Alice' } },
+            { id: 2, user: { name: 'Bob' } },
+          ],
+        },
+      });
+
+      // Should detect missing email AND role (union of all items)
+      expect(issues.length).toBeGreaterThanOrEqual(2);
+      const emailIssue = issues.find((i) => i.path.includes('email'));
+      const roleIssue = issues.find((i) => i.path.includes('role'));
+      expect(emailIssue).toBeDefined();
+      expect(roleIssue).toBeDefined();
+    });
+  });
+
   describe('edge cases', () => {
     it('should handle empty objects', () => {
       const issues = compareResponses({

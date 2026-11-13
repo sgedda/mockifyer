@@ -555,4 +555,39 @@ describe('drift-check-integration', () => {
     expect(report.totalMocks).toBe(1);
     expect(report.driftedMocks).toBe(0);
   });
+
+  it('should report status changes even with empty arrays (regression)', async () => {
+    // Regression: empty arrays should not hide other drift like status changes
+    // Mock will return 200 but live returns 500 with empty array
+    createMockFile(
+      'default',
+      {
+        request: {
+          method: 'GET',
+          url: `http://localhost:${serverPort}/status`,
+          headers: {},
+          queryParams: {},
+        },
+        response: {
+          status: 200,
+          data: { trips: [{ id: 1 }], status: 'ok' },
+          headers: {},
+        },
+        timestamp: new Date().toISOString(),
+      },
+      'status-with-array.json'
+    );
+
+    const report = await checkDrift({
+      mockDataPath: testDir,
+      scenario: 'default',
+    });
+
+    // Should detect status change (404) as breaking drift
+    // even though there's also an empty array situation
+    expect(report.breakingDriftCount).toBe(1);
+    const statusIssue = report.mockReports[0].issues.find(i => i.path === 'status');
+    expect(statusIssue).toBeDefined();
+    expect(statusIssue?.type).toBe('status_change');
+  });
 });

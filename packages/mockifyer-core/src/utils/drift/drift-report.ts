@@ -59,6 +59,8 @@ export interface DriftCheckReport {
   mockReports: MockDriftReport[];
   /** Overall summary message */
   summary: string;
+  /** Effective failOnWarnings setting (after merging config and CLI) */
+  failOnWarnings: boolean;
 }
 
 /**

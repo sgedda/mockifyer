@@ -1,4 +1,4 @@
-#!/usr/bin/env ts-node
+#!/usr/bin/env node
 
 /**
  * Mockifyer Drift Check CLI
@@ -18,13 +18,13 @@ interface ParsedArgs {
   scenario?: string;
   mockDataPath?: string;
   baseUrl?: string;
-  headers: Record<string, string>;
-  ignorePaths: string[];
-  allowUnsafeMethods: boolean;
-  failOnWarnings: boolean;
-  concurrency: number;
-  timeoutMs: number;
-  delayMs: number;
+  headers?: Record<string, string>;
+  ignorePaths?: string[];
+  allowUnsafeMethods?: boolean;
+  failOnWarnings?: boolean;
+  concurrency?: number;
+  timeoutMs?: number;
+  delayMs?: number;
   json: boolean;
   help: boolean;
 }
@@ -32,13 +32,6 @@ interface ParsedArgs {
 function parseArgs(): ParsedArgs {
   const args = process.argv.slice(2);
   const parsed: ParsedArgs = {
-    headers: {},
-    ignorePaths: [],
-    allowUnsafeMethods: false,
-    failOnWarnings: false,
-    concurrency: 5,
-    timeoutMs: 10000,
-    delayMs: 100,
     json: false,
     help: false,
   };
@@ -55,12 +48,14 @@ function parseArgs(): ParsedArgs {
     } else if (arg === '--base-url' || arg === '-b') {
       parsed.baseUrl = args[++i];
     } else if (arg === '--header' || arg === '-H') {
+      if (!parsed.headers) parsed.headers = {};
       const header = args[++i];
       const [key, ...valueParts] = header.split(':');
       if (key && valueParts.length > 0) {
         parsed.headers[key.trim()] = valueParts.join(':').trim();
       }
     } else if (arg === '--ignore-path' || arg === '-i') {
+      if (!parsed.ignorePaths) parsed.ignorePaths = [];
       parsed.ignorePaths.push(args[++i]);
     } else if (arg === '--allow-unsafe-methods') {
       parsed.allowUnsafeMethods = true;
@@ -144,30 +139,32 @@ async function main() {
   }
 
   // Check for auth headers in environment variables
-  const headers = { ...args.headers };
-  const authEnvVars = ['API_TOKEN', 'API_KEY', 'AUTH_TOKEN', 'AUTHORIZATION'];
-  for (const envVar of authEnvVars) {
-    if (process.env[envVar] && !headers['Authorization']) {
-      // Auto-populate Authorization header from common env vars if not explicitly set
-      const value = process.env[envVar];
-      if (value && !value.startsWith('Bearer ')) {
-        headers['Authorization'] = `Bearer ${value}`;
-      } else if (value) {
-        headers['Authorization'] = value;
+  const headers = args.headers ? { ...args.headers } : undefined;
+  if (headers) {
+    const authEnvVars = ['API_TOKEN', 'API_KEY', 'AUTH_TOKEN', 'AUTHORIZATION'];
+    for (const envVar of authEnvVars) {
+      if (process.env[envVar] && !headers['Authorization']) {
+        // Auto-populate Authorization header from common env vars if not explicitly set
+        const value = process.env[envVar];
+        if (value && !value.startsWith('Bearer ')) {
+          headers['Authorization'] = `Bearer ${value}`;
+        } else if (value) {
+          headers['Authorization'] = value;
+        }
       }
     }
   }
 
-  const driftOptions: DriftCheckOptions = {
-    baseUrl: args.baseUrl,
-    headers,
-    ignorePaths: args.ignorePaths,
-    allowUnsafeMethods: args.allowUnsafeMethods,
-    failOnWarnings: args.failOnWarnings,
-    concurrency: args.concurrency,
-    timeoutMs: args.timeoutMs,
-    delayMs: args.delayMs,
-  };
+  // Only pass options that were explicitly set (so config file values apply)
+  const driftOptions: DriftCheckOptions = {};
+  if (args.baseUrl !== undefined) driftOptions.baseUrl = args.baseUrl;
+  if (headers !== undefined) driftOptions.headers = headers;
+  if (args.ignorePaths !== undefined) driftOptions.ignorePaths = args.ignorePaths;
+  if (args.allowUnsafeMethods !== undefined) driftOptions.allowUnsafeMethods = args.allowUnsafeMethods;
+  if (args.failOnWarnings !== undefined) driftOptions.failOnWarnings = args.failOnWarnings;
+  if (args.concurrency !== undefined) driftOptions.concurrency = args.concurrency;
+  if (args.timeoutMs !== undefined) driftOptions.timeoutMs = args.timeoutMs;
+  if (args.delayMs !== undefined) driftOptions.delayMs = args.delayMs;
 
   try {
     const report = await checkDrift({
@@ -184,10 +181,10 @@ async function main() {
       printReport(report);
     }
 
-    // Exit code logic
+    // Exit code logic: use the effective failOnWarnings from the report
     const hasFailure =
       report.breakingDriftCount > 0 ||
-      (args.failOnWarnings && report.warningOnlyCount > 0);
+      (report.failOnWarnings && report.warningOnlyCount > 0);
 
     process.exit(hasFailure ? 1 : 0);
   } catch (error: any) {

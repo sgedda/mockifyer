@@ -189,7 +189,7 @@ function compareJSONShapes(
 
 /**
  * Build a union shape from all items in an array.
- * For object arrays, merges all keys found across all items.
+ * For object arrays, recursively merges all keys and nested structures.
  * For primitive arrays, returns the first item's type.
  */
 function buildArrayUnionShape(arr: JSONArray): JSONValue {
@@ -205,21 +205,75 @@ function buildArrayUnionShape(arr: JSONArray): JSONValue {
     return firstItem;
   }
 
-  // For object arrays, merge all keys from all items
+  // For object arrays, recursively merge all keys from all items
   const union: JSONObject = {};
   for (const item of arr) {
     if (typeof item === 'object' && item !== null && !Array.isArray(item)) {
       const itemObj = item as JSONObject;
       for (const [key, value] of Object.entries(itemObj)) {
-        // Keep the first encountered value for each key
         if (!(key in union)) {
+          // First time seeing this key
           union[key] = value;
+        } else {
+          // Key exists, need to merge values
+          const existingValue = union[key];
+          const existingType = getCoarseType(existingValue);
+          const newType = getCoarseType(value);
+
+          if (existingType === 'object' && newType === 'object') {
+            // Recursively merge objects
+            union[key] = mergeObjects(existingValue as JSONObject, value as JSONObject);
+          } else if (existingType === 'array' && newType === 'array') {
+            // For arrays, merge the union of their element shapes
+            const mergedArray = [
+              ...(existingValue as JSONArray),
+              ...(value as JSONArray),
+            ];
+            if (mergedArray.length > 0) {
+              union[key] = [buildArrayUnionShape(mergedArray)];
+            }
+          } else if (existingType !== newType) {
+            // Type conflict - keep the existing value but this will be detected as drift
+            // Could also create a union type marker, but keeping first value is simpler
+          }
         }
       }
     }
   }
 
   return union;
+}
+
+/**
+ * Merge two objects, combining all keys from both.
+ */
+function mergeObjects(obj1: JSONObject, obj2: JSONObject): JSONObject {
+  const merged: JSONObject = { ...obj1 };
+
+  for (const [key, value] of Object.entries(obj2)) {
+    if (!(key in merged)) {
+      merged[key] = value;
+    } else {
+      const existingValue = merged[key];
+      const existingType = getCoarseType(existingValue);
+      const newType = getCoarseType(value);
+
+      if (existingType === 'object' && newType === 'object') {
+        merged[key] = mergeObjects(existingValue as JSONObject, value as JSONObject);
+      } else if (existingType === 'array' && newType === 'array') {
+        const mergedArray = [
+          ...(existingValue as JSONArray),
+          ...(value as JSONArray),
+        ];
+        if (mergedArray.length > 0) {
+          merged[key] = [buildArrayUnionShape(mergedArray)];
+        }
+      }
+      // For type conflicts or primitives, keep existing value
+    }
+  }
+
+  return merged;
 }
 
 /**
