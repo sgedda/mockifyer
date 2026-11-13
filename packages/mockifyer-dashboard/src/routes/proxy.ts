@@ -48,7 +48,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { wrapProxyUpstreamFetchError } from '../utils/proxy-upstream-error';
 import { fetchProxyUpstreamAndReadText } from '../utils/proxy-upstream-fetch';
-import { shouldWriteNewProxyRecording } from '../utils/proxy-record-existing';
+import { shouldStoreProxyErrorPlaceholder, shouldWriteNewProxyRecording } from '../utils/proxy-record-existing';
 import { rewriteEmulatorLoopbackUrl } from '../utils/rewrite-emulator-loopback-url';
 import { loadMergedOverrideGroupState } from '../utils/override-group-persist';
 import {
@@ -781,37 +781,45 @@ router.post('/', async (req: Request, res: Response) => {
     if (effectiveRecord === true && resolvedScenarioName && shouldWriteNewProxyRecording(mock as MockData | null)) {
       const scenarioLocked = await store.isScenarioLocked(resolvedScenarioName);
       if (!scenarioLocked) {
-        const requestPayload = {
-          method: upperMethod,
-          url,
-          headers: toPersistedRequestHeaders(headers),
-          data: normalizedRequestBody,
-          queryParams: {},
-        };
-        const errorPlaceholder = buildRequestOnlyMockData(requestPayload as MockData['request'], {
-          alwaysUseRealApi: true,
-        });
         const latestRow = await readLatestRowForCallerMerge(store, hash, resolvedScenarioName, mock as MockData | null);
-        applyProxyCorrelationToMockData(
-          errorPlaceholder,
-          networkLogCtx,
-          hopIdentity,
-          catalogHopIdentityPromise ? await catalogHopIdentityPromise : null,
-          latestRow
-        );
-        await store.setByHashInScenario(hash, errorPlaceholder, resolvedScenarioName);
-        if (redisDisk.mirrorWrites) {
-          runInBackground(Promise.resolve().then(() => mirrorRecordedMockToDisk({
-            mockDataPath,
-            scenarioName: resolvedScenarioName!,
-            hash,
-            mockData: errorPlaceholder,
-          })));
-        }
-        if (debugProxy) {
-          console.log(
-            `[ProxyRoute] error placeholder stored: ${upperMethod} ${url} (hash=${hash.slice(0, 8)}…) (scenario=${resolvedScenarioName}) (lane=${clientId || '—'})`
+        if (!shouldStoreProxyErrorPlaceholder(mock as MockData | null, latestRow as MockData | null)) {
+          if (debugProxy) {
+            console.log(
+              `[ProxyRoute] skip error placeholder (response already captured): ${upperMethod} ${url} (hash=${hash.slice(0, 8)}…) (scenario=${resolvedScenarioName}) (lane=${clientId || '—'})`
+            );
+          }
+        } else {
+          const requestPayload = {
+            method: upperMethod,
+            url,
+            headers: toPersistedRequestHeaders(headers),
+            data: normalizedRequestBody,
+            queryParams: {},
+          };
+          const errorPlaceholder = buildRequestOnlyMockData(requestPayload as MockData['request'], {
+            alwaysUseRealApi: true,
+          });
+          applyProxyCorrelationToMockData(
+            errorPlaceholder,
+            networkLogCtx,
+            hopIdentity,
+            catalogHopIdentityPromise ? await catalogHopIdentityPromise : null,
+            latestRow
           );
+          await store.setByHashInScenario(hash, errorPlaceholder, resolvedScenarioName);
+          if (redisDisk.mirrorWrites) {
+            runInBackground(Promise.resolve().then(() => mirrorRecordedMockToDisk({
+              mockDataPath,
+              scenarioName: resolvedScenarioName!,
+              hash,
+              mockData: errorPlaceholder,
+            })));
+          }
+          if (debugProxy) {
+            console.log(
+              `[ProxyRoute] error placeholder stored: ${upperMethod} ${url} (hash=${hash.slice(0, 8)}…) (scenario=${resolvedScenarioName}) (lane=${clientId || '—'})`
+            );
+          }
         }
       }
     }

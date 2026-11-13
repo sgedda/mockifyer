@@ -1,5 +1,8 @@
 import type { MockData } from '@sgedda/mockifyer-core';
-import { shouldWriteNewProxyRecording } from '../packages/mockifyer-dashboard/src/utils/proxy-record-existing';
+import {
+  shouldStoreProxyErrorPlaceholder,
+  shouldWriteNewProxyRecording,
+} from '../packages/mockifyer-dashboard/src/utils/proxy-record-existing';
 
 const snapshot = (overrides: Partial<MockData> = {}): MockData => ({
   request: { method: 'POST', url: 'http://localhost:4000/graphql', headers: {} },
@@ -33,5 +36,32 @@ describe('shouldWriteNewProxyRecording', () => {
   it('does not replace always-refresh or stored snapshots', () => {
     expect(shouldWriteNewProxyRecording(snapshot({ alwaysRefreshFromLive: true }))).toBe(false);
     expect(shouldWriteNewProxyRecording(snapshot())).toBe(false);
+  });
+});
+
+const pending = (): MockData =>
+  snapshot({
+    responsePending: true,
+    alwaysUseRealApi: true,
+    response: { status: 0, data: null, headers: {} },
+  });
+
+describe('shouldStoreProxyErrorPlaceholder', () => {
+  it('stores a placeholder when this request and the store both have no captured body', () => {
+    expect(shouldStoreProxyErrorPlaceholder(null, null)).toBe(true);
+    expect(shouldStoreProxyErrorPlaceholder(pending(), pending())).toBe(true);
+    expect(shouldStoreProxyErrorPlaceholder(null, undefined)).toBe(true);
+  });
+
+  it('does not replace a body a parallel request stored before the timeout write', () => {
+    expect(shouldStoreProxyErrorPlaceholder(null, snapshot())).toBe(false);
+    expect(shouldStoreProxyErrorPlaceholder(pending(), snapshot({ alwaysUseRealApi: true }))).toBe(
+      false
+    );
+  });
+
+  it('does not replace a snapshot this request already loaded', () => {
+    expect(shouldStoreProxyErrorPlaceholder(snapshot(), null)).toBe(false);
+    expect(shouldStoreProxyErrorPlaceholder(snapshot(), snapshot())).toBe(false);
   });
 });

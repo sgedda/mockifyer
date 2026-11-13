@@ -598,6 +598,57 @@ describe('DomainPathRulesSession persistUpserts', () => {
     expect(onDisk['api.example.com/login'].autoMock).toBe(true);
   });
 
+  it('enables autoMock on the collapsed :id rule discover stored', async () => {
+    const session = new DomainPathRulesSession({
+      config: { mockDataPath: tmpRoot, domainPathRulesMode: 'allowlist' },
+      getRecordMode: () => true,
+    });
+
+    session.discover('https://api.example.com/v1/users/42');
+    await (session as unknown as { persistQueue: Promise<void> }).persistQueue;
+
+    session.enableAutoMockForUrl('https://api.example.com/v1/users/42');
+    await (session as unknown as { persistQueue: Promise<void> }).persistQueue;
+
+    const onDisk = readDomainPathRulesFile(tmpRoot, 'default');
+    expect(onDisk['api.example.com/v1/users/:id']?.autoMock).toBe(true);
+    expect(onDisk['api.example.com/v1/users/42']).toBeUndefined();
+
+    const gate = session.getTrafficGate('https://api.example.com/v1/users/99');
+    expect(gate.mayReplay).toBe(true);
+    expect(gate.matchedDomainPath).toBe('api.example.com/v1/users/:id');
+  });
+
+  it('does not revert other paths when enabling autoMock after a dashboard edit', async () => {
+    writeDomainPathRulesFile(tmpRoot, 'default', {
+      'api.example.com/v1/users': { recordResponses: true, autoMock: false },
+      'api.example.com/billing': { recordResponses: true, autoMock: false },
+    });
+    const session = new DomainPathRulesSession({
+      config: { mockDataPath: tmpRoot, domainPathRulesMode: 'allowlist' },
+      getRecordMode: () => true,
+    });
+    session.getTrafficGate('https://api.example.com/v1/users');
+
+    writeDomainPathRulesFile(tmpRoot, 'default', {
+      'api.example.com/v1/users': { recordResponses: true, autoMock: false },
+      'api.example.com/billing': { recordResponses: false, autoMock: false, updatedAt: '2026-11-13T00:00:00.000Z' },
+    });
+
+    session.enableAutoMockForUrl('https://api.example.com/v1/users');
+    await (session as unknown as { persistQueue: Promise<void> }).persistQueue;
+
+    const onDisk = readDomainPathRulesFile(tmpRoot, 'default');
+    expect(onDisk['api.example.com/v1/users']?.autoMock).toBe(true);
+    expect(onDisk['api.example.com/billing']).toEqual({
+      recordResponses: false,
+      autoMock: false,
+      updatedAt: '2026-11-13T00:00:00.000Z',
+    });
+    expect(session.getTrafficGate('https://api.example.com/billing').mayRecord).toBe(false);
+    expect(session.getTrafficGate('https://api.example.com/v1/users').mayReplay).toBe(true);
+  });
+
   it('preserves concurrent on-disk edits when discovering new keys', async () => {
     writeDomainPathRulesFile(tmpRoot, 'default', {
       'api.example.com': { recordResponses: true, autoMock: true },
@@ -850,6 +901,73 @@ describe('DomainPathRulesSession Metro hydrate (RN Hybrid)', () => {
       recordResponses: true,
       autoMock: false,
     });
+  });
+
+  it('POSTs enableAutoMock for the collapsed key so reload can replay', async () => {
+    const store = {
+      rules: {
+        'api.example.com': { recordResponses: true, autoMock: false },
+        'api.example.com/v1/users/:id': { recordResponses: true, autoMock: false },
+        'api.example.com/billing': { recordResponses: false, autoMock: false },
+      } as DomainPathRulesMap,
+      posts: [] as Array<Record<string, unknown>>,
+    };
+    const fetchFn = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = (init?.method ?? 'GET').toUpperCase();
+      if (url.includes('/mockifyer-domain-path-rules') && method === 'GET') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ success: true, scenario: 'default', rules: store.rules }),
+          text: async () => '',
+        } as Response;
+      }
+      if (url.includes('/mockifyer-domain-path-rules') && method === 'POST') {
+        const body = JSON.parse(String(init?.body ?? '{}')) as {
+          enableAutoMock?: string[];
+          replace?: boolean;
+          rules?: DomainPathRulesMap;
+        };
+        store.posts.push(body);
+        if (Array.isArray(body.enableAutoMock)) {
+          for (const key of body.enableAutoMock) {
+            const current = store.rules[key];
+            if (current && current.autoMock !== true) {
+              store.rules[key] = { ...current, autoMock: true };
+            }
+          }
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ success: true, rules: store.rules }),
+          text: async () => '',
+        } as Response;
+      }
+      throw new Error(`Unexpected fetch: ${method} ${url}`);
+    }) as typeof fetch;
+
+    const session = new DomainPathRulesSession({
+      config: { mockDataPath: './mock-data', domainPathRulesMode: 'allowlist' },
+      useFilesystem: false,
+      fetchFn,
+      getRecordMode: () => true,
+    });
+    await session.hydrate();
+
+    session.enableAutoMockForUrl('https://api.example.com/v1/users/42');
+    await (session as unknown as { persistQueue: Promise<void> }).persistQueue;
+
+    expect(store.posts).toEqual([
+      expect.objectContaining({
+        enableAutoMock: ['api.example.com/v1/users/:id'],
+      }),
+    ]);
+    expect(store.posts[0].replace).toBeUndefined();
+    expect(store.rules['api.example.com/v1/users/:id']?.autoMock).toBe(true);
+    expect(store.rules['api.example.com/billing']?.recordResponses).toBe(false);
+    expect(session.getTrafficGate('https://api.example.com/v1/users/7').mayReplay).toBe(true);
   });
 
   it('does not Metro-POST allowlist discovery when recordMode is off', async () => {

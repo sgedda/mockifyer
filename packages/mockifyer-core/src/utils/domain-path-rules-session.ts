@@ -1,5 +1,6 @@
 import type { DomainPathRulesMode, MockifyerConfig } from '../types';
 import {
+  type DomainPathRule,
   type DomainPathRulesMap,
   type DomainPathTrafficGate,
   discoverDomainPathRulesForUrl,
@@ -409,28 +410,24 @@ export class DomainPathRulesSession {
       return;
     }
 
-    const { endpointUrlToDomainPath } = require('./domain-path-rules') as typeof import('./domain-path-rules');
+    const { findBestDomainPathRuleForUrl, normalizeDomainPathForDiscovery } =
+      require('./domain-path-rules') as typeof import('./domain-path-rules');
     const resolved = typeof rawUrl === 'string' ? rawUrl.trim() : '';
     if (!resolved) {
       return;
     }
 
-    let absoluteUrl = resolved;
-    if (baseUrl && !/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(resolved)) {
-      try {
-        absoluteUrl = new URL(resolved, baseUrl).href;
-      } catch {
-        // If URL construction fails, use the original
-      }
-    }
-
-    const domainPath = endpointUrlToDomainPath(absoluteUrl);
+    const scenario = this.scenarioName();
+    const rules = this.loadRules();
+    // Discovery stores `…/users/:id`, not `…/users/42`. The replay gate matches that
+    // collapsed key, so enabling the raw path leaves `autoMock` false and the
+    // recorded body is never served.
+    const matched = findBestDomainPathRuleForUrl(resolved, rules, baseUrl);
+    const domainPath =
+      matched?.domainPath ?? normalizeDomainPathForDiscovery(resolved, baseUrl ?? this.config.baseUrl);
     if (!domainPath) {
       return;
     }
-
-    const scenario = this.scenarioName();
-    const rules = this.loadRules();
     const existing = rules[domainPath];
     if (!existing) {
       // No rule exists yet; this shouldn't happen since discover should have created it
@@ -442,20 +439,25 @@ export class DomainPathRulesSession {
       return;
     }
 
-    // Update the rule to enable autoMock
-    const updated: DomainPathRulesMap = { ...rules };
-    updated[domainPath] = { ...existing, autoMock: true, updatedAt: new Date().toISOString() };
+    // Update the rule to enable autoMock. Same-session replay reads this map;
+    // persist patches only this key so a stale full snapshot cannot revert
+    // other paths a dashboard edit changed while recording.
+    const nextRule: DomainPathRule = {
+      ...existing,
+      autoMock: true,
+      updatedAt: new Date().toISOString(),
+    };
+    const updated: DomainPathRulesMap = { ...rules, [domainPath]: nextRule };
     this.rules = updated;
     this.rulesScenario = scenario;
 
-    // Persist to disk
-    if (this.useFs) {
-      this.persistQueue = this.persistQueue.then(async () => {
-        await this.persistFullRules(updated, scenario);
-      }).catch((err) => {
+    this.persistQueue = this.persistQueue
+      .then(async () => {
+        await this.persistAutoMockEnabled(domainPath, nextRule, scenario);
+      })
+      .catch((err) => {
         logger.warn('[DomainPathRules] Failed to persist autoMock update:', err);
       });
-    }
   }
 
   /**
@@ -567,6 +569,64 @@ export class DomainPathRulesSession {
     });
   }
 
+  /**
+   * Turn replay on for one domain-path key.
+   *
+   * Re-reads the scenario file and changes only that key. A full-map write of the
+   * in-memory snapshot would put back `recordResponses` / `autoMock` values the
+   * dashboard changed on other paths after the snapshot was taken.
+   *
+   * React Native Hybrid has no Node `fs` (`useFs` is false). Those rules live in
+   * the Metro scenario file; skipping the POST left `autoMock` false after the
+   * next hydrate, so an allowlisted recording stopped replaying on reload.
+   */
+  private async persistAutoMockEnabled(
+    domainPath: string,
+    rule: DomainPathRule,
+    scenario: string
+  ): Promise<void> {
+    if (this.useFs) {
+      try {
+        const {
+          readDomainPathRulesFile,
+          writeDomainPathRulesFile,
+        } = require('./domain-path-rules-file') as typeof import('./domain-path-rules-file');
+        const onDisk = readDomainPathRulesFile(this.config.mockDataPath, scenario);
+        if (onDisk[domainPath]?.autoMock === true) {
+          return;
+        }
+        const current = onDisk[domainPath] ?? rule;
+        const patched: DomainPathRule = {
+          ...current,
+          autoMock: true,
+          updatedAt: new Date().toISOString(),
+        };
+        const merged: DomainPathRulesMap = { ...onDisk, [domainPath]: patched };
+        const wrote = writeDomainPathRulesFile(this.config.mockDataPath, scenario, merged);
+        if (wrote && this.scenarioName() === scenario) {
+          // Adopt the file we just wrote. Patching only this key onto the
+          // pre-write snapshot and then pinning mtime would hide dashboard
+          // edits to other paths for the rest of the process.
+          this.rules = merged;
+          this.rulesScenario = scenario;
+          this.rulesMtimeMs = this.rulesFileMtimeMs(scenario);
+          this.rulesHydrated = true;
+        }
+        if (wrote) {
+          return;
+        }
+      } catch (err) {
+        logger.warn('[Mockifyer] Domain path rules autoMock write failed:', err);
+      }
+    }
+
+    await this.postMetroRules({
+      scenario,
+      enableAutoMock: [domainPath],
+      mode: this.mode,
+    });
+  }
+
   /** Replace the full rules map on disk / Metro (used when enabling record on existing keys). */
   private async persistFullRules(rules: DomainPathRulesMap, scenario: string): Promise<void> {
     if (this.useFs) {
@@ -613,6 +673,8 @@ export class DomainPathRulesSession {
     upserts?: DomainPathRulesMap;
     rules?: DomainPathRulesMap;
     replace?: boolean;
+    /** Domain-path keys whose stored rule should gain `autoMock: true`. */
+    enableAutoMock?: string[];
     mode: DomainPathRulesMode;
   }): Promise<void> {
     const fetchFn = this.resolveFetch();
