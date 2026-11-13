@@ -44,32 +44,6 @@ export default function MockDrift() {
         </p>
       </div>
 
-      {/* TODO: Drift tab demo video placeholder - to be added by demos/drift-live agent
-          Video/GIF will show: green → backend changes → breaking drift → diff view → 
-          ignore field → accept live → green again */}
-      <Card className="border-purple-500/50 bg-purple-500/5">
-        <CardContent className="pt-6">
-          <div className="text-center space-y-3">
-            <p className="text-sm font-semibold text-purple-900 dark:text-purple-200">
-              📹 Dashboard Drift Detection in Action
-            </p>
-            <p className="text-sm text-muted-foreground">
-              Watch the Drift tab detect breaking changes, show a side-by-side diff, 
-              and let you accept or ignore drift with one click.
-            </p>
-            <div className="p-8 bg-muted/30 rounded-md border border-dashed border-purple-500/30">
-              <p className="text-sm text-muted-foreground italic">
-                [Demo video/GIF will be embedded here by demos/drift-live]
-              </p>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Flow: ✅ All green → Backend changes API → 🚨 Breaking drift detected → 
-              View diff → Ignore timestamp field → Accept live response → ✅ Green again
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-      
       <div className="flex justify-center">
         <RunItButton 
           project="mock-drift-detection"
