@@ -14,25 +14,162 @@ import {
 import { compareResponses, hasBreakingIssues } from './compare-engine';
 import { omitProxyUpstreamRequestHeaders } from '../proxy-upstream-headers';
 
+interface DriftConfig {
+  scenario?: string;
+  baseUrl?: string;
+  headers?: Record<string, string>;
+  ignorePaths?: string[];
+  failOnWarnings?: boolean;
+  allowUnsafeMethods?: boolean;
+  concurrency?: number;
+  timeoutMs?: number;
+  delayMs?: number;
+}
+
 interface LoadedMock {
   mock: MockData;
   filePath: string;
 }
 
 /**
+ * Check if a mock would actually be replayed by Mockifyer.
+ * Returns false for request-only stubs, passthrough mocks, and incomplete recordings.
+ */
+function isActiveMock(mock: MockData): boolean {
+  // Skip request-only stubs (responsePending or inboundParentStub)
+  if (mock.responsePending === true || mock.inboundParentStub === true) {
+    return false;
+  }
+
+  // Skip mocks set to always use real API (passthrough)
+  if (mock.alwaysUseRealApi === true) {
+    return false;
+  }
+
+  // Skip incomplete responses (status 0 with null data)
+  if (mock.response.status === 0 && mock.response.data === null) {
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Check if the live response is an empty array while the mock had data.
+ * This is common for time-sensitive data (e.g., "upcoming trips" that have passed).
+ */
+function isEmptyLiveList(expected: unknown, actual: unknown): boolean {
+  // If expected is an array with items and actual is an empty array
+  if (Array.isArray(expected) && Array.isArray(actual)) {
+    return expected.length > 0 && actual.length === 0;
+  }
+
+  // Check if it's wrapped in an object (e.g., { data: [] })
+  if (
+    typeof expected === 'object' &&
+    expected !== null &&
+    typeof actual === 'object' &&
+    actual !== null
+  ) {
+    for (const key of Object.keys(expected as Record<string, unknown>)) {
+      const expectedValue = (expected as Record<string, unknown>)[key];
+      const actualValue = (actual as Record<string, unknown>)[key];
+      
+      if (Array.isArray(expectedValue) && Array.isArray(actualValue)) {
+        if (expectedValue.length > 0 && actualValue.length === 0) {
+          return true;
+        }
+      }
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Load drift config from file if it exists.
+ * Looks for mockifyer.drift.json or a drift section in package.json.
+ */
+function loadDriftConfig(): DriftConfig {
+  // Try mockifyer.drift.json
+  if (fs.existsSync('mockifyer.drift.json')) {
+    try {
+      const content = fs.readFileSync('mockifyer.drift.json', 'utf-8');
+      return JSON.parse(content);
+    } catch {
+      // Invalid JSON, ignore
+    }
+  }
+
+  // Try package.json with mockifyer.drift section
+  if (fs.existsSync('package.json')) {
+    try {
+      const content = fs.readFileSync('package.json', 'utf-8');
+      const pkg = JSON.parse(content);
+      if (pkg.mockifyer?.drift) {
+        return pkg.mockifyer.drift;
+      }
+    } catch {
+      // Invalid JSON, ignore
+    }
+  }
+
+  return {};
+}
+
+/**
+ * Merge config from file with CLI options (CLI options override config).
+ */
+function mergeConfig(
+  fileConfig: DriftConfig,
+  cliOptions: {
+    scenario?: string;
+    mockDataPath?: string;
+    driftOptions?: DriftCheckOptions;
+  }
+): {
+  scenario: string;
+  mockDataPath: string;
+  driftOptions: DriftCheckOptions;
+} {
+  const scenario = cliOptions.scenario ?? fileConfig.scenario ?? 'default';
+  const mockDataPath = cliOptions.mockDataPath ?? detectMockDataPath();
+
+  const driftOptions: DriftCheckOptions = {
+    baseUrl: cliOptions.driftOptions?.baseUrl ?? fileConfig.baseUrl,
+    headers: {
+      ...(fileConfig.headers || {}),
+      ...(cliOptions.driftOptions?.headers || {}),
+    },
+    ignorePaths: [
+      ...(fileConfig.ignorePaths || []),
+      ...(cliOptions.driftOptions?.ignorePaths || []),
+    ],
+    failOnWarnings:
+      cliOptions.driftOptions?.failOnWarnings ?? fileConfig.failOnWarnings ?? false,
+    allowUnsafeMethods:
+      cliOptions.driftOptions?.allowUnsafeMethods ?? fileConfig.allowUnsafeMethods ?? false,
+    concurrency: cliOptions.driftOptions?.concurrency ?? fileConfig.concurrency ?? 5,
+    timeoutMs: cliOptions.driftOptions?.timeoutMs ?? fileConfig.timeoutMs ?? 10000,
+    delayMs: cliOptions.driftOptions?.delayMs ?? fileConfig.delayMs ?? 100,
+  };
+
+  return { scenario, mockDataPath, driftOptions };
+}
+
+/**
  * Main entry point for drift checking.
  * Auto-detects mock data path if not provided.
+ * Loads config from mockifyer.drift.json or package.json if available.
  */
 export async function checkDrift(options: {
   scenario?: string;
   mockDataPath?: string;
   driftOptions?: DriftCheckOptions;
 }): Promise<DriftCheckReport> {
-  const {
-    scenario = 'default',
-    mockDataPath = detectMockDataPath(),
-    driftOptions = {},
-  } = options;
+  // Load config from file and merge with CLI options
+  const fileConfig = loadDriftConfig();
+  const { scenario, mockDataPath, driftOptions } = mergeConfig(fileConfig, options);
 
   const scenarioPath = path.join(mockDataPath, scenario);
 
@@ -44,24 +181,45 @@ export async function checkDrift(options: {
     );
   }
 
-  // Load all mocks from the scenario
-  const mocks = loadMocksFromScenario(scenarioPath);
+  // Skip _scratch scenario
+  if (scenario === '_scratch') {
+    throw new Error(
+      `Cannot check drift for '_scratch' scenario. ` +
+        `_scratch is an ephemeral bucket for temporary traffic. ` +
+        `Use a named scenario (e.g., 'default') instead.`
+    );
+  }
 
-  if (mocks.length === 0) {
+  // Load all mocks from the scenario
+  const allMocks = loadMocksFromScenario(scenarioPath);
+
+  if (allMocks.length === 0) {
     throw new Error(
       `No mocks found in scenario '${scenario}' at ${scenarioPath}. ` +
         `Record some mocks first using Mockifyer's record mode.`
     );
   }
 
-  // Check each mock
+  // Filter to only active mocks (ones that would actually be replayed)
+  const activeMocks = allMocks.filter((m) => isActiveMock(m.mock));
+  const inactiveCount = allMocks.length - activeMocks.length;
+
+  if (activeMocks.length === 0) {
+    throw new Error(
+      `No active mocks found in scenario '${scenario}'. ` +
+        `All ${allMocks.length} mocks are inactive (request-only stubs or set to always use real API). ` +
+        `Record some complete mocks with replay enabled.`
+    );
+  }
+
+  // Check each active mock
   const mockReports: MockDriftReport[] = [];
   const concurrency = driftOptions.concurrency || 5;
   const delayMs = driftOptions.delayMs || 0;
 
   // Process in batches for concurrency control
-  for (let i = 0; i < mocks.length; i += concurrency) {
-    const batch = mocks.slice(i, i + concurrency);
+  for (let i = 0; i < activeMocks.length; i += concurrency) {
+    const batch = activeMocks.slice(i, i + concurrency);
     const batchPromises = batch.map((loadedMock) =>
       checkSingleMock(loadedMock, driftOptions)
     );
@@ -70,26 +228,38 @@ export async function checkDrift(options: {
     mockReports.push(...batchResults);
 
     // Rate limiting delay between batches
-    if (delayMs > 0 && i + concurrency < mocks.length) {
+    if (delayMs > 0 && i + concurrency < activeMocks.length) {
       await sleep(delayMs);
     }
   }
 
   // Generate summary
-  const driftedMocks = mockReports.filter((r) => r.hasDrift && !r.skipped).length;
+  const driftedMocks = mockReports.filter((r) => r.hasDrift && !r.skipped && !r.notChecked).length;
   const breakingDriftCount = mockReports.filter(
-    (r) => r.hasBreakingDrift && !r.skipped
+    (r) => r.hasBreakingDrift && !r.skipped && !r.notChecked
   ).length;
   const warningOnlyCount = mockReports.filter(
-    (r) => r.hasDrift && !r.hasBreakingDrift && !r.skipped
+    (r) => r.hasDrift && !r.hasBreakingDrift && !r.skipped && !r.notChecked
   ).length;
   const skippedCount = mockReports.filter((r) => r.skipped).length;
+  const notCheckedCount = mockReports.filter((r) => r.notChecked).length;
 
   let summary: string;
-  if (driftedMocks === 0 && skippedCount === 0) {
-    summary = `✓ No drift detected in ${mocks.length} mocks`;
-  } else if (driftedMocks === 0 && skippedCount > 0) {
-    summary = `✓ No drift detected in ${mocks.length - skippedCount} mocks (${skippedCount} skipped)`;
+  if (driftedMocks === 0 && skippedCount === 0 && notCheckedCount === 0) {
+    summary = `✓ No drift detected in ${activeMocks.length} mocks`;
+    if (inactiveCount > 0) {
+      summary += ` (${inactiveCount} inactive mocks skipped)`;
+    }
+  } else if (driftedMocks === 0) {
+    const checkedCount = activeMocks.length - skippedCount - notCheckedCount;
+    summary = `✓ No drift detected in ${checkedCount} mocks`;
+    const parts: string[] = [];
+    if (notCheckedCount > 0) parts.push(`${notCheckedCount} not checked`);
+    if (skippedCount > 0) parts.push(`${skippedCount} skipped`);
+    if (inactiveCount > 0) parts.push(`${inactiveCount} inactive`);
+    if (parts.length > 0) {
+      summary += ` (${parts.join(', ')})`;
+    }
   } else {
     const parts: string[] = [];
     if (breakingDriftCount > 0) {
@@ -99,18 +269,23 @@ export async function checkDrift(options: {
       parts.push(`${warningOnlyCount} warning${warningOnlyCount === 1 ? '' : 's'}`);
     }
     const driftSuffix = parts.join(', ');
-    summary = `✗ ${driftedMocks} of ${mocks.length} mocks drifted: ${driftSuffix}`;
-    if (skippedCount > 0) {
-      summary += ` (${skippedCount} skipped)`;
+    summary = `✗ ${driftedMocks} of ${activeMocks.length} mocks drifted: ${driftSuffix}`;
+    const suffixParts: string[] = [];
+    if (notCheckedCount > 0) suffixParts.push(`${notCheckedCount} not checked`);
+    if (skippedCount > 0) suffixParts.push(`${skippedCount} skipped`);
+    if (inactiveCount > 0) suffixParts.push(`${inactiveCount} inactive`);
+    if (suffixParts.length > 0) {
+      summary += ` (${suffixParts.join(', ')})`;
     }
   }
 
   return {
-    totalMocks: mocks.length,
+    totalMocks: activeMocks.length,
     driftedMocks,
     breakingDriftCount,
     warningOnlyCount,
     skippedCount,
+    notCheckedCount,
     mockReports,
     summary,
   };
@@ -159,36 +334,53 @@ async function checkSingleMock(
         }
       }
 
-      const requestInit: RequestInit = {
-        method,
-        headers: {
-          ...filteredHeaders,
-          ...(options.headers || {}),
-        },
-        signal: controller.signal,
+      // Build headers as a plain Record<string, string> before passing to fetch
+      const headers: Record<string, string> = {
+        ...filteredHeaders,
+        ...(options.headers || {}),
       };
 
       // Include request body for POST/PUT/PATCH/DELETE
+      let body: string | undefined;
       if (mock.request.data && method.toUpperCase() !== 'GET' && method.toUpperCase() !== 'HEAD') {
         const isObject = typeof mock.request.data === 'object' && mock.request.data !== null;
-        requestInit.body = typeof mock.request.data === 'string'
+        body = typeof mock.request.data === 'string'
           ? mock.request.data
           : JSON.stringify(mock.request.data);
         
-        const hasContentType = Object.keys(requestInit.headers).some(
+        const hasContentType = Object.keys(headers).some(
           key => key.toLowerCase() === 'content-type'
         );
         if (isObject && !hasContentType) {
-          requestInit.headers['content-type'] = 'application/json';
+          headers['content-type'] = 'application/json';
         }
       }
 
-      const response = await fetch(requestUrl, requestInit);
+      const response = await fetch(requestUrl, {
+        method,
+        headers,
+        body,
+        signal: controller.signal,
+      });
 
       clearTimeout(timeout);
 
       // Parse response body
       const actualBody = await parseResponseBody(response);
+
+      // Check for empty live lists (common for time-sensitive data)
+      if (isEmptyLiveList(mock.response.data, actualBody)) {
+        return {
+          method,
+          url,
+          mockFilePath: filePath,
+          hasDrift: false,
+          hasBreakingDrift: false,
+          issues: [],
+          notChecked: true,
+          notCheckedReason: 'Empty live list (e.g., time-sensitive data that has passed)',
+        };
+      }
 
       // Compare with mock
       const issues = compareResponses(
@@ -289,15 +481,8 @@ function loadMocksFromScenario(scenarioPath: string): LoadedMock[] {
           const mock = JSON.parse(content) as MockData;
 
           // Validate it's a mock file (has request and response)
-          // Skip request-only stubs (responsePending or status 0 with null data)
           if (mock.request && mock.response) {
-            const isRequestOnlyStub = 
-              mock.responsePending === true ||
-              (mock.response.status === 0 && mock.response.data === null);
-            
-            if (!isRequestOnlyStub) {
-              mocks.push({ mock, filePath: fullPath });
-            }
+            mocks.push({ mock, filePath: fullPath });
           }
         } catch (error) {
           // Skip invalid JSON files silently

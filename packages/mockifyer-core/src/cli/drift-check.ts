@@ -215,9 +215,10 @@ function printReport(report: any) {
 
   // Group reports by drift status
   const driftedReports = report.mockReports.filter(
-    (r: MockDriftReport) => r.hasDrift && !r.skipped
+    (r: MockDriftReport) => r.hasDrift && !r.skipped && !r.notChecked
   );
   const skippedReports = report.mockReports.filter((r: MockDriftReport) => r.skipped);
+  const notCheckedReports = report.mockReports.filter((r: MockDriftReport) => r.notChecked);
 
   // Print drifted mocks
   if (driftedReports.length > 0) {
@@ -249,6 +250,18 @@ function printReport(report: any) {
 
       console.log('');
     }
+  }
+
+  // Print not checked mocks (condensed)
+  if (notCheckedReports.length > 0) {
+    console.log(dim(`Not checked ${notCheckedReports.length} mock(s):`));
+    console.log('');
+
+    for (const mockReport of notCheckedReports) {
+      console.log(`  ${dim('–')} ${mockReport.method} ${mockReport.url}`);
+      console.log(`    ${dim(mockReport.notCheckedReason || 'Not checked')}`);
+    }
+    console.log('');
   }
 
   // Print skipped mocks (condensed)

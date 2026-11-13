@@ -36,6 +36,10 @@ export interface MockDriftReport {
   skipped?: boolean;
   /** Reason for skipping (e.g., 'Network error: ECONNREFUSED') */
   skipReason?: string;
+  /** Whether the check was not performed (e.g., empty live list) */
+  notChecked?: boolean;
+  /** Reason for not checking (e.g., 'Empty live list') */
+  notCheckedReason?: string;
 }
 
 export interface DriftCheckReport {
@@ -49,6 +53,8 @@ export interface DriftCheckReport {
   warningOnlyCount: number;
   /** Number of mocks skipped due to errors */
   skippedCount: number;
+  /** Number of mocks not checked (e.g., empty live lists) */
+  notCheckedCount: number;
   /** Per-mock drift reports */
   mockReports: MockDriftReport[];
   /** Overall summary message */

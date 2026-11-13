@@ -140,7 +140,7 @@ describe('drift-compare-engine', () => {
       });
     });
 
-    it('should detect null to object changes', () => {
+    it('should detect null to object changes as warning', () => {
       const issues = compareResponses({
         expectedStatus: 200,
         actualStatus: 200,
@@ -151,6 +151,7 @@ describe('drift-compare-engine', () => {
       expect(issues).toHaveLength(1);
       expect(issues[0]).toMatchObject({
         type: 'type_change',
+        severity: 'warning',
         expected: 'null',
         actual: 'object',
       });
@@ -175,7 +176,7 @@ describe('drift-compare-engine', () => {
   });
 
   describe('arrays', () => {
-    it('should compare array element shapes', () => {
+    it('should compare array element shapes (union of all items)', () => {
       const issues = compareResponses({
         expectedStatus: 200,
         actualStatus: 200,
@@ -189,7 +190,7 @@ describe('drift-compare-engine', () => {
 
       expect(issues).toHaveLength(1);
       expect(issues[0]).toMatchObject({
-        path: 'items[0].name',
+        path: 'items[*].name',
         type: 'missing_key',
         severity: 'breaking',
       });
@@ -209,13 +210,13 @@ describe('drift-compare-engine', () => {
 
       expect(issues).toHaveLength(1);
       expect(issues[0]).toMatchObject({
-        path: 'items[0].status',
+        path: 'items[*].status',
         type: 'extra_key',
         severity: 'warning',
       });
     });
 
-    it('should warn when array becomes empty', () => {
+    it('should not report issues when array becomes empty (time-sensitive data)', () => {
       const issues = compareResponses({
         expectedStatus: 200,
         actualStatus: 200,
@@ -227,13 +228,7 @@ describe('drift-compare-engine', () => {
         },
       });
 
-      expect(issues).toHaveLength(1);
-      expect(issues[0]).toMatchObject({
-        path: 'items',
-        type: 'type_change',
-        severity: 'warning',
-      });
-      expect(issues[0].message).toContain('empty');
+      expect(issues).toHaveLength(0);
     });
 
     it('should not report issues for empty to non-empty arrays', () => {
@@ -245,6 +240,32 @@ describe('drift-compare-engine', () => {
       });
 
       expect(issues).toHaveLength(0);
+    });
+
+    it('should compare union of all array items', () => {
+      const issues = compareResponses({
+        expectedStatus: 200,
+        actualStatus: 200,
+        expectedBody: {
+          items: [
+            { id: 1, name: 'Item 1' },
+            { id: 2, name: 'Item 2', status: 'active' },
+          ],
+        },
+        actualBody: {
+          items: [
+            { id: 1, name: 'Item 1' },
+            { id: 2, name: 'Item 2' },
+          ],
+        },
+      });
+
+      expect(issues).toHaveLength(1);
+      expect(issues[0]).toMatchObject({
+        path: 'items[*].status',
+        type: 'missing_key',
+        severity: 'breaking',
+      });
     });
   });
 
@@ -309,7 +330,7 @@ describe('drift-compare-engine', () => {
 
       expect(issues).toHaveLength(1);
       expect(issues[0]).toMatchObject({
-        path: 'data.teams[0].members[0].role',
+        path: 'data.teams[*].members[*].role',
         type: 'missing_key',
         severity: 'breaking',
       });
@@ -381,7 +402,7 @@ describe('drift-compare-engine', () => {
             items: [{ id: 1 }],
           },
         },
-        { ignorePaths: ['items[0].timestamp'] }
+        { ignorePaths: ['items[*].timestamp'] }
       );
 
       expect(issues).toHaveLength(0);
@@ -474,7 +495,7 @@ describe('drift-compare-engine', () => {
       expect(issues).toHaveLength(0);
     });
 
-    it('should handle mismatched null and object', () => {
+    it('should handle mismatched null and object as warning', () => {
       const issues = compareResponses({
         expectedStatus: 200,
         actualStatus: 200,
@@ -485,6 +506,7 @@ describe('drift-compare-engine', () => {
       expect(issues).toHaveLength(1);
       expect(issues[0]).toMatchObject({
         type: 'type_change',
+        severity: 'warning',
         expected: 'null',
         actual: 'object',
       });

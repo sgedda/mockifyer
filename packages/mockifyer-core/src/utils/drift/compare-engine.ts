@@ -86,10 +86,12 @@ function compareJSONShapes(
 
   // Type mismatch
   if (expectedType !== actualType) {
+    // null <-> value is a warning, not breaking
+    const isNullChange = expectedType === 'null' || actualType === 'null';
     issues.push({
       path: path || 'body',
       type: 'type_change',
-      severity: 'breaking',
+      severity: isNullChange ? 'warning' : 'breaking',
       expected: expectedType,
       actual: actualType,
       message: `Type changed from ${expectedType} to ${actualType}${path ? ` at ${path}` : ''}`,
@@ -159,30 +161,65 @@ function compareJSONShapes(
     const expectedArr = expected as JSONArray;
     const actualArr = actual as JSONArray;
 
+    if (expectedArr.length > 0 && actualArr.length === 0) {
+      // Empty live list - report as info, not warning or breaking
+      // This is common for time-sensitive data (e.g., "upcoming trips" that have passed)
+      // Marked as skipped so it doesn't fail CI
+      return issues;
+    }
+
     if (expectedArr.length > 0 && actualArr.length > 0) {
-      // Compare shape of first elements as representative samples
-      const fieldPath = path ? `${path}[0]` : '[0]';
+      // Compare the union of shapes across ALL items
+      const expectedUnion = buildArrayUnionShape(expectedArr);
+      const actualUnion = buildArrayUnionShape(actualArr);
+
+      const fieldPath = path ? `${path}[*]` : '[*]';
       const arrayIssues = compareJSONShapes(
-        expectedArr[0],
-        actualArr[0],
+        expectedUnion,
+        actualUnion,
         fieldPath,
         ignorePaths
       );
       issues.push(...arrayIssues);
-    } else if (expectedArr.length > 0 && actualArr.length === 0) {
-      // Array went from non-empty to empty (potential issue but warning only)
-      issues.push({
-        path: path || 'array',
-        type: 'type_change',
-        severity: 'warning',
-        expected: `array[${expectedArr.length}]`,
-        actual: 'array[0]',
-        message: `Array became empty${path ? ` at ${path}` : ''}`,
-      });
     }
   }
 
   return issues;
+}
+
+/**
+ * Build a union shape from all items in an array.
+ * For object arrays, merges all keys found across all items.
+ * For primitive arrays, returns the first item's type.
+ */
+function buildArrayUnionShape(arr: JSONArray): JSONValue {
+  if (arr.length === 0) {
+    return {};
+  }
+
+  const firstItem = arr[0];
+  const firstType = getCoarseType(firstItem);
+
+  // For non-object arrays, just use the first item
+  if (firstType !== 'object') {
+    return firstItem;
+  }
+
+  // For object arrays, merge all keys from all items
+  const union: JSONObject = {};
+  for (const item of arr) {
+    if (typeof item === 'object' && item !== null && !Array.isArray(item)) {
+      const itemObj = item as JSONObject;
+      for (const [key, value] of Object.entries(itemObj)) {
+        // Keep the first encountered value for each key
+        if (!(key in union)) {
+          union[key] = value;
+        }
+      }
+    }
+  }
+
+  return union;
 }
 
 /**
@@ -213,19 +250,28 @@ function getSortedKeys(obj: JSONObject): string[] {
 /**
  * Check if a path should be ignored based on the ignore patterns.
  * Supports exact matches and prefix matches.
+ * Array wildcards [*] are normalized to [0] for matching.
  */
 function shouldIgnorePath(path: string, ignorePaths: string[]): boolean {
   if (!path) {
     return false;
   }
 
+  // Normalize array wildcards for matching
+  const normalizedPath = path.replace(/\[\*\]/g, '[0]');
+
   for (const ignorePath of ignorePaths) {
+    const normalizedIgnorePath = ignorePath.replace(/\[\*\]/g, '[0]');
+
     // Exact match
-    if (path === ignorePath) {
+    if (normalizedPath === normalizedIgnorePath) {
       return true;
     }
     // Prefix match (e.g., 'data.meta' ignores 'data.meta.timestamp')
-    if (path.startsWith(ignorePath + '.') || path.startsWith(ignorePath + '[')) {
+    if (
+      normalizedPath.startsWith(normalizedIgnorePath + '.') ||
+      normalizedPath.startsWith(normalizedIgnorePath + '[')
+    ) {
       return true;
     }
   }

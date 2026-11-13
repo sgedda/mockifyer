@@ -2,7 +2,11 @@
 
 **Contract drift detection** — catch API changes before they break production.
 
-Drift check compares your recorded mock responses with live API responses to detect structural changes: status codes, missing/new keys, and type changes. Never exposes actual values (only types and paths), so secrets stay safe.
+Mockifyer provides the `mockifyer-drift-check` command and `checkDrift()` function. **Your project decides when to run it** — typically as a scheduled CI job (nightly), not in your main test suite.
+
+Drift check compares your recorded mock responses with live API responses to detect **structural changes**: status codes, missing/new keys, and type changes. **It ignores changing values** (dates, IDs, request timestamps) — use [Mockifyer's date manipulation](#time-sensitive-data--date-freezing) for time-sensitive replay data.
+
+Security: Never exposes actual values (only types and paths), so secrets stay safe.
 
 ## Quick Start
 
@@ -20,18 +24,21 @@ npx mockifyer-drift-check --base-url https://staging.api.example.com
 npx mockifyer-drift-check --header "Authorization: Bearer ${API_TOKEN}"
 ```
 
-## Use in CI
+## Recommended Setup: Nightly CI Job
 
-Add drift check to your CI pipeline to catch breaking API changes:
+**Do NOT run drift check in your normal `npm test` suite.** Drift checking hits live APIs and is slower than unit tests. Instead, run it on a schedule (e.g., nightly) or on-demand.
+
+### Copy-paste GitHub Actions workflow (recommended)
+
+Create `.github/workflows/drift-check.yml`:
 
 ```yaml
-# .github/workflows/drift-check.yml
 name: API Drift Check
 
 on:
   schedule:
-    - cron: '0 9 * * *'  # Daily at 9am
-  workflow_dispatch:
+    - cron: '0 3 * * *'  # Nightly at 3am UTC
+  workflow_dispatch:      # Allow manual runs
 
 jobs:
   drift-check:
@@ -50,7 +57,7 @@ jobs:
       - name: Check for API drift
         run: npx mockifyer-drift-check --scenario production --header "Authorization: Bearer ${{ secrets.API_TOKEN }}"
         
-      - name: Upload drift report
+      - name: Upload drift report (on failure)
         if: failure()
         uses: actions/upload-artifact@v4
         with:
@@ -58,7 +65,13 @@ jobs:
           path: drift-report.json
 ```
 
-**GitLab CI:**
+This workflow:
+- Runs nightly at 3am UTC (adjust `cron` to your timezone)
+- Can be triggered manually from the Actions tab (`workflow_dispatch`)
+- Fails the job if breaking drift is detected
+- Uploads a JSON report on failure for debugging
+
+### GitLab CI (scheduled pipeline)
 
 ```yaml
 api-drift-check:
@@ -69,8 +82,53 @@ api-drift-check:
     when: on_failure
     paths:
       - drift-report.json
-  only:
-    - schedules
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"  # Only on scheduled runs
+```
+
+## Optional: Opt-in Test (Gated by Env Var)
+
+If you want drift check available in `npm test` but not running by default, gate it with an environment variable:
+
+**`tests/drift-check.test.ts`:**
+
+```typescript
+import { checkDrift } from '@sgedda/mockifyer-core/utils/drift';
+
+// Only run when explicitly enabled
+const DRIFT_CHECK_ENABLED = process.env.DRIFT_CHECK === '1';
+
+(DRIFT_CHECK_ENABLED ? describe : describe.skip)('API Drift Check', () => {
+  it('should detect no drift in production scenario', async () => {
+    const report = await checkDrift({
+      scenario: 'production',
+      driftOptions: {
+        baseUrl: process.env.API_BASE_URL,
+        headers: {
+          Authorization: `Bearer ${process.env.API_TOKEN}`,
+        },
+      },
+    });
+
+    expect(report.breakingDriftCount).toBe(0);
+  }, 30000); // 30s timeout for live API calls
+});
+```
+
+**Run it manually:**
+
+```bash
+DRIFT_CHECK=1 npm test
+```
+
+**Or in CI:**
+
+```yaml
+- name: Run drift check (as test)
+  run: DRIFT_CHECK=1 npm test
+  env:
+    API_BASE_URL: https://api.example.com
+    API_TOKEN: ${{ secrets.API_TOKEN }}
 ```
 
 ## Options
@@ -89,18 +147,78 @@ api-drift-check:
 | `--delay <ms>` | Delay between request batches | `100` |
 | `--json` | Output JSON report | `false` |
 
+## Config File (Optional)
+
+Store drift check settings in `mockifyer.drift.json` or `package.json`:
+
+**`mockifyer.drift.json`:**
+
+```json
+{
+  "scenario": "production",
+  "baseUrl": "https://api.example.com",
+  "headers": {
+    "Authorization": "Bearer ${API_TOKEN}"
+  },
+  "ignorePaths": ["timestamp", "meta.requestId"],
+  "failOnWarnings": false,
+  "concurrency": 10,
+  "timeoutMs": 15000
+}
+```
+
+**Or in `package.json`:**
+
+```json
+{
+  "name": "my-app",
+  "mockifyer": {
+    "drift": {
+      "scenario": "production",
+      "baseUrl": "https://api.example.com",
+      "ignorePaths": ["timestamp", "meta.requestId"]
+    }
+  }
+}
+```
+
+**CLI flags override config.** Config headers support env var references (`${VAR_NAME}`).
+
+## Time-Sensitive Data & Date Freezing
+
+Drift check **ignores changing values** (only compares structure). For time-sensitive data like "upcoming trips" or "recent orders":
+
+1. **Empty live lists are not errors:** When a live API returns an empty array (e.g., upcoming trips have passed), drift check reports it as "not checked" and does **not fail CI**.
+
+2. **Use Mockifyer's date manipulation for replay:** If your tests depend on specific dates, use [Mockifyer's date manipulation features](../README.md#date-configuration) to freeze time during replay:
+
+```typescript
+setupMockifyer({
+  mockDataPath: './mock-data',
+  dateManipulation: {
+    fixedDate: '2024-01-15T00:00:00Z',  // Freeze at Jan 15, 2024
+  },
+});
+```
+
+This keeps "upcoming trips" in the future during tests, while drift check can still validate the API structure against a live staging environment.
+
+**See also:** [Date Configuration in the main README](../README.md#date-configuration)
+
 ## What Drift Check Detects
+
+Drift check compares **structure** (keys and types), not **values**. Changing dates, IDs, and request timestamps are ignored — only schema-level changes are reported.
 
 ### Breaking Changes (Exit 1)
 
 - **Status change:** HTTP status differs (e.g., 200 → 404)
 - **Missing key:** Expected field removed from response
-- **Type change:** Field type changed (e.g., `number` → `string`)
+- **Type change (non-null):** Field type changed (e.g., `number` → `string`)
 
 ### Warnings (Exit 0 unless `--fail-on-warnings`)
 
 - **New key:** New field added to response
-- **Empty array:** Array with items became empty
+- **Null change:** Field became `null` or vice versa (less critical than type changes)
 
 ## Output
 
