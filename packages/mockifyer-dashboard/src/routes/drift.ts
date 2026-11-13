@@ -7,11 +7,9 @@ import {
   acceptAllWarnings,
   snoozeEndpoint,
   addIgnoreField,
-} from '@sgedda/mockifyer-core/dist/utils/drift';
-import type {
-  DriftHistoryReport,
-  DriftCheckOptions,
-} from '@sgedda/mockifyer-core/dist/utils/drift';
+  type DriftHistoryReport,
+  type DriftCheckOptions,
+} from '@sgedda/mockifyer-core/utils/drift';
 import { getDashboardContext } from '../utils/dashboard-context';
 import * as fs from 'fs';
 import * as path from 'path';
