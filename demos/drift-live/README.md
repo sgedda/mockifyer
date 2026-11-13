@@ -85,18 +85,24 @@ npx mockifyer-drift-check --mock-data-path ./mock-data
 
 ```
 demos/drift-live/
-├── backend.js                 # Express server (v1/v2 modes)
-├── cli-demo.sh                # Automated CLI workflow
-├── mockifyer.drift.json       # Drift check configuration
-├── package.json               # Dependencies and scripts
+├── backend.js                           # Express server (v1/v2 modes)
+├── cli-demo.sh                          # Automated CLI workflow
+├── demo.spec.ts                         # Playwright dashboard demo
+├── playwright.config.ts                 # Playwright configuration
+├── mockifyer.drift.json                 # Drift check configuration
+├── package.json                         # Dependencies and scripts
+├── drift-workflow-demo.mp4              # Recorded dashboard video
+├── drift-workflow-demo.gif              # Recorded dashboard GIF
 ├── mock-data/
-│   └── drift-watch/           # Recorded mocks from v1
+│   └── drift-watch/                     # Recorded mocks (v1 baseline)
 │       ├── domain-path-rules.json
 │       └── localhost:4100/
 │           └── api/
-│               ├── trips/GET.json
-│               └── booking/GET_abc123.json
-└── README.md                  # This file
+│               ├── trips/
+│               │   └── GET_2026-11-10_12-00-00.json
+│               └── booking/
+│                   └── GET_abc123_2026-11-10_12-00-00.json
+└── README.md                            # This file
 ```
 
 ## Configuration
@@ -108,24 +114,25 @@ demos/drift-live/
   "scenario": "drift-watch",
   "baseUrl": "http://localhost:4100",
   "ignorePaths": [
-    "trips[].id",
-    "timestamp",
-    "booking.bookingId"
+    "timestamp"
   ],
   "endpointConfig": {
     "GET /api/trips": {
-      "severity": "critical"
+      "severity": "critical",
+      "ignorePaths": []
     },
     "GET /api/booking/*": {
-      "severity": "normal"
+      "severity": "normal",
+      "ignorePaths": []
     }
   }
 }
 ```
 
-- **`ignorePaths`**: Volatile fields (IDs, timestamps) that change on every request
-- **`severity: "critical"`**: Breaking changes fail CI
-- **`severity: "normal"`**: Downgrades all drift to warnings
+- **`ignorePaths`**: Global volatile fields (e.g., `timestamp`) that change on every request
+- **`severity: "critical"`**: Breaking changes fail CI; warnings are informational
+- **`severity: "normal"`**: Downgrades all drift to warnings only
+- **`endpointConfig[].ignorePaths`**: Per-endpoint volatile fields
 
 ## Dashboard UI Workflow (Future)
 

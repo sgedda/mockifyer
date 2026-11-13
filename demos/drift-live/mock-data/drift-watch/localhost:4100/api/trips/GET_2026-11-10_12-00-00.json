@@ -12,20 +12,18 @@
           "id": "TRP-001",
           "destination": "Paris",
           "duration": 5,
-          "passengers": "2",
-          "departsAt": "2026-12-01",
-          "class": "economy"
+          "passengers": 2,
+          "departureDate": "2026-12-01"
         },
         {
           "id": "TRP-002",
           "destination": "Tokyo",
           "duration": 10,
-          "passengers": "1",
-          "departsAt": "2026-12-01",
-          "class": "economy"
+          "passengers": 1,
+          "departureDate": "2026-12-01"
         }
       ],
-      "timestamp": "2026-11-13T18:49:46.311Z"
+      "timestamp": "2026-11-10T12:00:00Z"
     },
     "headers": {
       "content-type": "application/json"

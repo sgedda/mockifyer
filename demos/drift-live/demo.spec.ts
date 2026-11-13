@@ -258,6 +258,9 @@ function stopProcesses() {
   }
 }
 
+const FIXTURE_DIR = path.join(__dirname, 'mock-data/drift-watch/localhost:4100');
+const BACKUP_DIR = path.join(__dirname, 'mock-data/.backup');
+
 test.describe('Drift Detection Demo', () => {
   test.beforeAll(async () => {
     // Clean drift history from previous runs
@@ -266,6 +269,29 @@ test.describe('Drift Detection Demo', () => {
       fs.rmSync(driftDir, { recursive: true });
       console.log('Cleared drift history');
     }
+    
+    // Backup baseline fixtures so --accept steps don't mutate committed files
+    if (fs.existsSync(BACKUP_DIR)) {
+      fs.rmSync(BACKUP_DIR, { recursive: true });
+    }
+    fs.mkdirSync(BACKUP_DIR, { recursive: true });
+    
+    function copyDir(src: string, dest: string) {
+      fs.mkdirSync(dest, { recursive: true });
+      const entries = fs.readdirSync(src, { withFileTypes: true });
+      for (const entry of entries) {
+        const srcPath = path.join(src, entry.name);
+        const destPath = path.join(dest, entry.name);
+        if (entry.isDirectory()) {
+          copyDir(srcPath, destPath);
+        } else {
+          fs.copyFileSync(srcPath, destPath);
+        }
+      }
+    }
+    
+    copyDir(FIXTURE_DIR, BACKUP_DIR);
+    console.log('Backed up baseline fixtures');
     
     console.log('Starting backend v1...');
     await startBackend('v1');
@@ -276,6 +302,31 @@ test.describe('Drift Detection Demo', () => {
   test.afterAll(() => {
     console.log('Stopping processes...');
     stopProcesses();
+    
+    // Restore baseline fixtures from backup
+    if (fs.existsSync(BACKUP_DIR)) {
+      if (fs.existsSync(FIXTURE_DIR)) {
+        fs.rmSync(FIXTURE_DIR, { recursive: true });
+      }
+      
+      function copyDir(src: string, dest: string) {
+        fs.mkdirSync(dest, { recursive: true });
+        const entries = fs.readdirSync(src, { withFileTypes: true });
+        for (const entry of entries) {
+          const srcPath = path.join(src, entry.name);
+          const destPath = path.join(dest, entry.name);
+          if (entry.isDirectory()) {
+            copyDir(srcPath, destPath);
+          } else {
+            fs.copyFileSync(srcPath, destPath);
+          }
+        }
+      }
+      
+      copyDir(BACKUP_DIR, FIXTURE_DIR);
+      fs.rmSync(BACKUP_DIR, { recursive: true });
+      console.log('Restored baseline fixtures');
+    }
   });
 
   test('Full drift detection workflow', async ({ page }) => {
