@@ -149,6 +149,13 @@ function stopProcesses() {
 
 test.describe('Drift Detection Demo', () => {
   test.beforeAll(async () => {
+    // Clean drift history from previous runs
+    const driftDir = path.join(__dirname, 'mock-data/drift-watch/.drift');
+    if (fs.existsSync(driftDir)) {
+      fs.rmSync(driftDir, { recursive: true });
+      console.log('Cleared drift history');
+    }
+    
     console.log('Starting backend v1...');
     await startBackend('v1');
     console.log('Starting dashboard...');
@@ -310,14 +317,10 @@ test.describe('Drift Detection Demo', () => {
     await showCaption(page, 'Step 5: Accept changes', 1500);
     console.log('Accepting drift...');
     
-    // Find the trips endpoint card (breaking drift) and click its Accept Live button
-    // Look for the card containing "/api/trips" text
-    const tripsCard = page.locator('div').filter({ hasText: '/api/trips' }).first();
-    await expect(tripsCard).toBeVisible({ timeout: 5000 });
-    
-    const tripsAcceptButton = tripsCard.locator('button:has-text("Accept Live")').first();
+    // Use exact data-testid to target trips endpoint Accept button
+    const tripsAcceptButton = page.locator('[data-testid="accept-live-GET-http---localhost-4100-api-trips"]');
     await expect(tripsAcceptButton).toBeVisible({ timeout: 5000 });
-    console.log('Found Accept Live button for trips endpoint');
+    console.log('Found trips Accept Live button with data-testid');
     await tripsAcceptButton.click();
     
     // Wait for confirmation dialog and click "Accept" button
