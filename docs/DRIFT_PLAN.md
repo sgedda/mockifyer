@@ -118,8 +118,9 @@ Stored in `mockifyer.drift.json` or `package.json` `mockifyer.drift`:
 
 **Severity Levels:**
 - `critical` (default for endpoints with config) — breaking changes fail CI (exit 1)
-- `normal` — warnings only, unless `--fail-on-warnings` is set
+- `normal` — all drift issues downgraded to warnings, unless `--fail-on-warnings` is set
 - Pattern matching supports exact paths (`GET /api/users`) and wildcards (`GET /api/trips/*`)
+  - Wildcards match **single path segments** only (e.g., `/api/trips/*` matches `/api/trips/123` but not `/api/trips/123/driver`)
 
 **Rationale:** Config map keeps mock files clean and readable, supports pattern matching, centralizes drift rules in one place. Does not pollute the mock data schema.
 
@@ -240,8 +241,12 @@ mockifyer-drift-check --snooze "GET /api/users/123" --days 30
 **Implementation Notes:**
 
 1. **`--accept <method> <path>`**
-   - Finds the mock file matching `method` and `path`
-   - Makes a live request (using `baseUrl` and `headers` from config)
+   - Finds the mock file matching `method` and `path` (with or without query strings)
+   - Guards against unsafe methods (requires `--allow-unsafe-methods` for non-GET)
+   - Makes a live request using:
+     - `baseUrl` and `headers` from config
+     - Preserved mock request headers (filtered)
+   - Rejects error responses (4xx/5xx status codes)
    - Overwrites `response.data` and `response.status` in the mock JSON
    - Preserves `request`, `metadata`, `scenario`, and all other fields
    - Writes a minimal diff (only `response` changes)
@@ -516,6 +521,37 @@ mockifyer-drift-check --ignore-field "GET /api/users/123" "lastLoginAt"
 # Snooze an endpoint for 30 days
 mockifyer-drift-check --snooze "GET /api/users/123" --days 30
 ```
+
+---
+
+## Implementation Notes (Bugbot Fixes)
+
+**Behavioral Changes in Phase 2:**
+
+1. **Accept Safety Guards**
+   - `acceptDrift` now requires `allowUnsafeMethods: true` for non-GET requests (matches drift check behavior)
+   - Rejects 4xx/5xx responses (prevents accepting error payloads)
+   - Preserves mock request headers (ensures consistent replay)
+
+2. **Severity Implementation**
+   - `severity: "normal"` now **downgrades all issues to warnings** (breaking → warning)
+   - `severity: "critical"` (or unset) preserves default behavior (breaking fails CI)
+   - Applied per-endpoint or per-pattern
+
+3. **Wildcard Pattern Matching**
+   - `*` matches **single path segment** only: `/api/trips/*` matches `/api/trips/123` but not `/api/trips/123/driver`
+   - Use multiple patterns for nested paths: `GET /api/trips/*` and `GET /api/trips/*/driver`
+
+4. **Config Merging**
+   - Management commands (`--accept`, `--snooze`) load config file (scenario, baseUrl, headers)
+   - `--ignore-field` merges with existing `package.json` or `mockifyer.drift.json` config (preserves other settings)
+
+5. **Flexible Path Matching**
+   - Accept/snooze match endpoints **with or without query strings**
+   - CLI: `--accept "GET /api/users"` matches `/api/users?page=1`
+   - Endpoint config: `GET /api/users` matches both `/api/users` and `/api/users?page=1`
+
+**API Compatibility:** All changes are **backward-compatible**. Existing code continues to work, with safer defaults and newly functional severity feature.
 
 ---
 
