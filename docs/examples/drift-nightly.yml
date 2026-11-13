@@ -1,0 +1,205 @@
+# GitHub Actions workflow for nightly API drift detection
+# Copy this file to .github/workflows/drift-check.yml to enable it
+
+name: API Drift Check
+
+on:
+  schedule:
+    # Run nightly at 3:00 AM UTC (adjust to your timezone)
+    - cron: '0 3 * * *'
+  
+  # Allow manual runs from Actions tab
+  workflow_dispatch:
+
+jobs:
+  drift-check:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run drift check
+        id: drift
+        # Continue on error so we can create/update the issue
+        continue-on-error: true
+        run: |
+          npx mockifyer-drift-check \
+            --scenario drift-watch \
+            --header "Authorization: Bearer ${{ secrets.API_TOKEN }}" \
+            --json > drift-report.json
+          
+          # Capture exit code (0 = clean, 1 = drift, 2 = error)
+          echo "exit_code=$?" >> $GITHUB_OUTPUT
+      
+      - name: Parse drift report
+        id: parse
+        if: always()
+        run: |
+          # Check if report exists
+          if [ ! -f drift-report.json ]; then
+            echo "summary=Drift check failed to run" >> $GITHUB_OUTPUT
+            echo "has_drift=error" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Extract key metrics
+          breaking=$(jq -r '.breakingDriftCount // 0' drift-report.json)
+          warnings=$(jq -r '.warningOnlyCount // 0' drift-report.json)
+          total=$(jq -r '.totalMocks // 0' drift-report.json)
+          
+          echo "breaking=$breaking" >> $GITHUB_OUTPUT
+          echo "warnings=$warnings" >> $GITHUB_OUTPUT
+          echo "total=$total" >> $GITHUB_OUTPUT
+          
+          # Determine if we have drift
+          if [ "$breaking" -gt 0 ]; then
+            echo "has_drift=breaking" >> $GITHUB_OUTPUT
+            echo "summary=🚨 $breaking breaking changes, $warnings warnings (checked $total mocks)" >> $GITHUB_OUTPUT
+          elif [ "$warnings" -gt 0 ]; then
+            echo "has_drift=warnings" >> $GITHUB_OUTPUT
+            echo "summary=⚠️  $warnings warnings (checked $total mocks)" >> $GITHUB_OUTPUT
+          else
+            echo "has_drift=no" >> $GITHUB_OUTPUT
+            echo "summary=✅ All $total mocks are in sync" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Generate issue body
+        id: issue_body
+        if: always() && steps.parse.outputs.has_drift != 'no'
+        run: |
+          cat > issue-body.md << 'EOF'
+          ## API Drift Detected
+          
+          **Summary:** ${{ steps.parse.outputs.summary }}
+          
+          **Run:** [${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          **Commit:** ${{ github.sha }}
+          **Date:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          
+          ---
+          
+          ### Drifted Endpoints
+          
+          EOF
+          
+          # Extract drifted endpoints
+          jq -r '.mockReports[] | select(.hasDrift == true) | 
+            "#### \(.method) `\(.url)`\n\n" +
+            if .hasBreakingDrift then "**Status:** 🚨 Breaking\n\n" else "**Status:** ⚠️  Warning\n\n" end +
+            "**Issues:**\n" +
+            (.issues[] | "- `\(.path)`: \(.message)\n") +
+            "\n**Accept command:**\n```bash\nnpx mockifyer-drift-check --accept \"\(.method) \(.url | split("?")[0])\"\n```\n\n---\n\n"
+          ' drift-report.json >> issue-body.md || echo "Failed to parse endpoints" >> issue-body.md
+          
+          # Add instructions
+          cat >> issue-body.md << 'EOF'
+          
+          ### What to do
+          
+          1. **Review the changes** — Are they expected API updates?
+          2. **Accept breaking changes** individually or **accept all warnings**:
+             ```bash
+             # Accept a specific endpoint (re-records from live)
+             npx mockifyer-drift-check --accept "GET /api/endpoint"
+             
+             # Accept all warnings (non-breaking changes)
+             npx mockifyer-drift-check --accept-all-warnings
+             ```
+          3. **Ignore fields** that change frequently (timestamps, IDs):
+             ```bash
+             npx mockifyer-drift-check --ignore-field "GET /api/endpoint" "fieldPath"
+             ```
+          4. **Snooze** if the drift is temporary or expected:
+             ```bash
+             npx mockifyer-drift-check --snooze "GET /api/endpoint" --days 7
+             ```
+          5. **Commit and push** your changes after accepting/ignoring.
+          
+          ### Documentation
+          
+          - [Drift Check Guide](../DRIFT_CHECK.md)
+          - [Dashboard Drift Tab](http://localhost:3002/drift) (when running locally)
+          
+          ---
+          
+          _This issue is automatically created/updated by the [API Drift Check workflow](.github/workflows/drift-check.yml)._
+          EOF
+          
+          # Save for issue creation
+          echo "body<<EOF" >> $GITHUB_OUTPUT
+          cat issue-body.md >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+      
+      - name: Find existing drift issue
+        id: find_issue
+        if: always() && steps.parse.outputs.has_drift != 'no'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          issue_number=$(gh issue list \
+            --label "api-drift" \
+            --state open \
+            --json number \
+            --jq '.[0].number // empty')
+          
+          if [ -n "$issue_number" ]; then
+            echo "issue_number=$issue_number" >> $GITHUB_OUTPUT
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Create or update drift issue
+        if: always() && steps.parse.outputs.has_drift == 'breaking'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ steps.find_issue.outputs.exists }}" = "true" ]; then
+            # Update existing issue
+            gh issue edit ${{ steps.find_issue.outputs.issue_number }} \
+              --title "🚨 API Drift: ${{ steps.parse.outputs.breaking }} breaking changes" \
+              --body "${{ steps.issue_body.outputs.body }}"
+            
+            # Add a comment
+            gh issue comment ${{ steps.find_issue.outputs.issue_number }} \
+              --body "Updated: ${{ steps.parse.outputs.summary }} (run #${{ github.run_number }})"
+          else
+            # Create new issue
+            gh issue create \
+              --title "🚨 API Drift: ${{ steps.parse.outputs.breaking }} breaking changes" \
+              --body "${{ steps.issue_body.outputs.body }}" \
+              --label "api-drift"
+          fi
+      
+      - name: Close drift issue if clean
+        if: always() && steps.parse.outputs.has_drift == 'no' && steps.find_issue.outputs.exists == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue close ${{ steps.find_issue.outputs.issue_number }} \
+            --comment "✅ Drift resolved. All mocks are now in sync with the live API." \
+            --reason completed
+      
+      - name: Upload drift report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: drift-report
+          path: drift-report.json
+          retention-days: 30
+      
+      - name: Fail workflow on breaking drift
+        if: steps.parse.outputs.has_drift == 'breaking'
+        run: |
+          echo "::error::Breaking API drift detected. Review and accept changes."
+          exit 1

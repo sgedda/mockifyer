@@ -1262,3 +1262,117 @@ export async function getMemoryStats(scenario?: string): Promise<import('@/types
   return response.json()
 }
 
+export async function getDriftLatest(scenario?: string): Promise<{
+  scenario: string
+  found: boolean
+  report?: import('@/types').DriftHistoryReport
+  message?: string
+}> {
+  const url = scenario
+    ? `${API_BASE}/drift/latest?scenario=${encodeURIComponent(scenario)}`
+    : `${API_BASE}/drift/latest`
+  const response = await fetchApi(url, noStore)
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to load drift report'))
+  }
+  return response.json()
+}
+
+export async function getDriftHistory(scenario?: string): Promise<{
+  scenario: string
+  reports: Array<{
+    timestamp: string
+    breakingDriftCount: number
+    warningOnlyCount: number
+    totalMocks: number
+  }>
+}> {
+  const url = scenario
+    ? `${API_BASE}/drift/history?scenario=${encodeURIComponent(scenario)}`
+    : `${API_BASE}/drift/history`
+  const response = await fetchApi(url, noStore)
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to load drift history'))
+  }
+  return response.json()
+}
+
+export async function runDriftCheck(scenario?: string): Promise<{
+  success: boolean
+  report: import('@/types').DriftHistoryReport
+}> {
+  const response = await fetchApi(`${API_BASE}/drift/check`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scenario }),
+  })
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to run drift check'))
+  }
+  return response.json()
+}
+
+export async function acceptDrift(params: {
+  method: string
+  path: string
+  scenario?: string
+}): Promise<{ success: boolean; message: string; filePath?: string }> {
+  const response = await fetchApi(`${API_BASE}/drift/accept`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  })
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to accept drift'))
+  }
+  return response.json()
+}
+
+export async function acceptAllWarnings(scenario?: string): Promise<{
+  accepted: number
+  failed: number
+  messages: string[]
+}> {
+  const response = await fetchApi(`${API_BASE}/drift/accept-all-warnings`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scenario }),
+  })
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to accept all warnings'))
+  }
+  return response.json()
+}
+
+export async function snoozeDrift(params: {
+  method: string
+  path: string
+  days: number
+  scenario?: string
+}): Promise<{ success: boolean; message: string; expiresAt: string }> {
+  const response = await fetchApi(`${API_BASE}/drift/snooze`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  })
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to snooze endpoint'))
+  }
+  return response.json()
+}
+
+export async function ignoreField(params: {
+  endpoint: string
+  jsonPath: string
+}): Promise<{ success: boolean; message: string }> {
+  const response = await fetchApi(`${API_BASE}/drift/ignore-field`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  })
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to ignore field'))
+  }
+  return response.json()
+}
+
