@@ -9,19 +9,20 @@
     "data": {
       "booking": {
         "id": "abc123",
-        "bookingId": "booking1",
+        "bookingId": "BK-2026-001",
         "status": "confirmed",
-        "price": 1250,
-        "confirmationDate": "2026-11-13T10:00:00Z"
+        "price": "1250",
+        "confirmedAt": "2026-11-13T10:00:00Z",
+        "currency": "USD"
       },
-      "timestamp": "2026-11-10T12:00:00.000Z"
+      "timestamp": "2026-11-13T14:41:56.144Z"
     },
     "headers": {
       "content-type": "application/json"
     }
   },
-  "timestamp": "2026-11-10T12:00:00.000Z",
+  "timestamp": "2026-11-10T12:00:00Z",
   "duration": 45,
-  "sessionId": "drift-demo-v1",
-  "requestId": "booking-v1"
+  "sessionId": "test-session",
+  "requestId": "test-req-002"
 }

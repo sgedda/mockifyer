@@ -9,28 +9,28 @@
     "data": {
       "trips": [
         {
-          "id": "trip1",
+          "id": "TRP-001",
           "destination": "Paris",
           "duration": 5,
           "passengers": 2,
           "departureDate": "2026-12-01"
         },
         {
-          "id": "trip2",
+          "id": "TRP-002",
           "destination": "Tokyo",
           "duration": 10,
           "passengers": 1,
           "departureDate": "2026-12-01"
         }
       ],
-      "timestamp": "2026-11-10T12:00:00.000Z"
+      "timestamp": "2026-11-10T12:00:00Z"
     },
     "headers": {
       "content-type": "application/json"
     }
   },
-  "timestamp": "2026-11-10T12:00:00.000Z",
+  "timestamp": "2026-11-10T12:00:00Z",
   "duration": 50,
-  "sessionId": "drift-demo-v1",
-  "requestId": "trips-v1"
+  "sessionId": "test-session",
+  "requestId": "test-req-001"
 }

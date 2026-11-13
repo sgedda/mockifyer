@@ -2,9 +2,7 @@
   "scenario": "drift-watch",
   "baseUrl": "http://localhost:4100",
   "ignorePaths": [
-    "trips[].id",
-    "timestamp",
-    "booking.bookingId"
+    "timestamp"
   ],
   "endpointConfig": {
     "GET /api/trips": {

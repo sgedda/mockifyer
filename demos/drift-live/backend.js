@@ -23,13 +23,13 @@ function generateId() {
 app.get('/api/trips', (req, res) => {
   const baseTrips = [
     {
-      id: generateId(),
+      id: 'TRP-001',
       destination: 'Paris',
       duration: 5,
       passengers: 2,
     },
     {
-      id: generateId(),
+      id: 'TRP-002',
       destination: 'Tokyo',
       duration: 10,
       passengers: 1,
@@ -62,7 +62,7 @@ app.get('/api/trips', (req, res) => {
 app.get('/api/booking/:id', (req, res) => {
   const baseBooking = {
     id: req.params.id,
-    bookingId: generateId(),
+    bookingId: 'BK-2026-001',  // Fixed ID for demo consistency
     status: 'confirmed',
     price: 1250,
   };
