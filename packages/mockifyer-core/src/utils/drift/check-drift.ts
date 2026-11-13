@@ -149,11 +149,23 @@ async function checkSingleMock(
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-      const response = await fetch(requestUrl, {
+      const requestInit: RequestInit = {
         method,
-        headers: options.headers || {},
+        headers: {
+          ...(mock.request.headers || {}),
+          ...(options.headers || {}),
+        },
         signal: controller.signal,
-      });
+      };
+
+      // Include request body for POST/PUT/PATCH/DELETE
+      if (mock.request.data && method.toUpperCase() !== 'GET' && method.toUpperCase() !== 'HEAD') {
+        requestInit.body = typeof mock.request.data === 'string'
+          ? mock.request.data
+          : JSON.stringify(mock.request.data);
+      }
+
+      const response = await fetch(requestUrl, requestInit);
 
       clearTimeout(timeout);
 
@@ -208,10 +220,11 @@ async function parseResponseBody(response: Response): Promise<unknown> {
   const contentType = response.headers.get('content-type') || '';
 
   if (contentType.includes('application/json')) {
+    const text = await response.text();
     try {
-      return await response.json();
+      return JSON.parse(text);
     } catch {
-      return await response.text();
+      return text;
     }
   }
 
@@ -226,7 +239,9 @@ function rewriteUrl(originalUrl: string, baseUrl: string): string {
     const original = new URL(originalUrl);
     const base = new URL(baseUrl);
 
-    return `${base.protocol}//${base.host}${original.pathname}${original.search}`;
+    // Preserve base pathname when present
+    const basePath = base.pathname !== '/' ? base.pathname : '';
+    return `${base.protocol}//${base.host}${basePath}${original.pathname}${original.search}`;
   } catch {
     // Fallback: simple replacement
     return originalUrl;
@@ -253,8 +268,15 @@ function loadMocksFromScenario(scenarioPath: string): LoadedMock[] {
           const mock = JSON.parse(content) as MockData;
 
           // Validate it's a mock file (has request and response)
+          // Skip request-only stubs (responsePending or status 0 with null data)
           if (mock.request && mock.response) {
-            mocks.push({ mock, filePath: fullPath });
+            const isRequestOnlyStub = 
+              mock.responsePending === true ||
+              (mock.response.status === 0 && mock.response.data === null);
+            
+            if (!isRequestOnlyStub) {
+              mocks.push({ mock, filePath: fullPath });
+            }
           }
         } catch (error) {
           // Skip invalid JSON files silently
