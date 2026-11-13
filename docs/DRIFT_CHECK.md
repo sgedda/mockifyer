@@ -36,46 +36,41 @@ npx mockifyer-drift-check --accept-all-warnings
 
 ### Copy-paste GitHub Actions workflow (recommended)
 
-Create `.github/workflows/drift-check.yml`:
+**See the complete example:** [`docs/examples/drift-nightly.yml`](./examples/drift-nightly.yml)
 
-```yaml
-name: API Drift Check
+The example workflow includes:
+- Nightly drift check at 3:00 AM UTC (adjustable)
+- Manual trigger from Actions tab
+- Automatic issue creation/update with drift summary and accept commands
+- Issue closure when drift is resolved
+- JSON report artifact upload
 
-on:
-  schedule:
-    - cron: '0 3 * * *'  # Nightly at 3am UTC
-  workflow_dispatch:      # Allow manual runs
+**Quick setup:**
 
-jobs:
-  drift-check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      
-      - name: Install dependencies
-        run: npm ci
-      
-      - name: Check for API drift
-        run: npx mockifyer-drift-check --scenario production --header "Authorization: Bearer ${{ secrets.API_TOKEN }}"
-        
-      - name: Upload drift report (on failure)
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: drift-report
-          path: drift-report.json
-```
+1. Copy the example to your repository:
+   ```bash
+   cp docs/examples/drift-nightly.yml .github/workflows/drift-check.yml
+   ```
 
-This workflow:
-- Runs nightly at 3am UTC (adjust `cron` to your timezone)
-- Can be triggered manually from the Actions tab (`workflow_dispatch`)
-- Fails the job if breaking drift is detected
-- Uploads a JSON report on failure for debugging
+2. Add your API token as a GitHub secret:
+   - Go to Settings → Secrets → Actions
+   - Add `API_TOKEN` with your API authentication token
+
+3. Customize the workflow:
+   - Adjust the `cron` schedule to your timezone
+   - Change `--scenario` if you use a different drift-watch scenario name
+   - Modify the `--header` flag if your API uses different authentication
+
+**What it does:**
+- Runs `mockifyer-drift-check` against your drift-watch scenario
+- On **breaking drift**, creates or updates ONE GitHub issue labeled `api-drift` with:
+  - Summary of breaking changes and warnings
+  - List of drifted endpoints with their issues
+  - Copy-paste accept commands for each endpoint
+  - Instructions for ignoring fields or snoozing
+- On **warnings only**, updates the issue but doesn't fail the workflow
+- When drift is **resolved**, closes the issue automatically
+- Uploads the full JSON report as a workflow artifact
 
 ### GitLab CI (scheduled pipeline)
 

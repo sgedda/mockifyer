@@ -371,3 +371,58 @@ export interface MemoryStats {
   }
 }
 
+export type DriftSeverity = 'breaking' | 'warning'
+
+export interface DriftIssue {
+  path: string
+  type: 'status_change' | 'missing_key' | 'extra_key' | 'type_change'
+  severity: DriftSeverity
+  expected?: string
+  actual?: string
+  message: string
+}
+
+export interface DriftIssueWithHistory extends DriftIssue {
+  firstSeen: string
+  lastSeen: string
+  occurrences: number
+}
+
+export interface MockDriftReport {
+  method: string
+  url: string
+  mockFilePath?: string
+  hasDrift: boolean
+  hasBreakingDrift: boolean
+  issues: DriftIssue[]
+  skipped?: boolean
+  skipReason?: string
+  notChecked?: boolean
+  notCheckedReason?: string
+}
+
+export interface MockDriftReportWithHistory extends MockDriftReport {
+  issues: DriftIssueWithHistory[]
+  snoozedUntil?: string
+}
+
+export interface DriftCheckReport {
+  totalMocks: number
+  driftedMocks: number
+  breakingDriftCount: number
+  warningOnlyCount: number
+  skippedCount: number
+  notCheckedCount: number
+  mockReports: MockDriftReport[]
+  summary: string
+  failOnWarnings: boolean
+}
+
+export interface DriftHistoryReport extends DriftCheckReport {
+  reportVersion: 1
+  timestamp: string
+  gitCommit?: string
+  gitBranch?: string
+  mockReports: MockDriftReportWithHistory[]
+}
+
