@@ -37,11 +37,10 @@ export default function MockDrift() {
         </div>
       </div>
 
-      {/* TODO: set exact version at release */}
       <div className="p-4 border border-blue-500/50 bg-blue-500/10 rounded-md">
         <p className="text-blue-900 dark:text-blue-200 text-sm">
           <strong>New:</strong> The <code className="bg-muted px-1 py-0.5 rounded">mockifyer-drift-check</code> CLI 
-          (available from the next <code className="bg-muted px-1 py-0.5 rounded">@sgedda/mockifyer-core</code> release) 
+          (requires <code className="bg-muted px-1 py-0.5 rounded">@sgedda/mockifyer-core</code> ≥1.10.194) 
           compares recorded mocks with live APIs. Run it nightly in GitHub Actions to catch breaking changes before they ship.
         </p>
       </div>
@@ -53,6 +52,36 @@ export default function MockDrift() {
           size="default"
         />
       </div>
+
+      <Card className="border-primary/30">
+        <CardHeader>
+          <CardTitle className="text-xl">📹 See It In Action</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            <video 
+              controls 
+              muted
+              className="w-full rounded-lg border"
+              poster="/videos/drift-demo/drift-workflow-demo.gif"
+            >
+              <source src="/videos/drift-demo/drift-workflow-demo.mp4" type="video/mp4" />
+              <img 
+                src="/videos/drift-demo/drift-workflow-demo.gif" 
+                alt="Drift detection workflow: dashboard shows green status on v1, API switches to v2 with breaking changes, drift detected, accept live response, green again"
+                className="w-full"
+              />
+            </video>
+            <p className="text-sm text-muted-foreground">
+              Dashboard workflow: <code className="bg-muted px-1 rounded">GET /api/trips</code> is green on v1 → 
+              live API switches to v2 (<code className="bg-muted px-1 rounded">departureDate</code> removed, 
+              <code className="bg-muted px-1 rounded">departsAt</code> added, 
+              <code className="bg-muted px-1 rounded">passengers</code> type changed) → 
+              breaking drift detected → accept live response → green again
+            </p>
+          </div>
+        </CardContent>
+      </Card>
 
       <section id="why-mocks-drift">
         <h2 className="text-3xl font-semibold tracking-tight mb-4">Why Mocks Drift</h2>
@@ -274,6 +303,24 @@ Drifted mocks:
               <CodeBlock language="bash" code={`npx mockifyer-drift-check --json > drift-report.json`} />
               <p className="text-sm text-muted-foreground mt-2">
                 JSON mode outputs a structured report for CI integration. See <code className="bg-muted px-1 rounded">docs/examples/drift-nightly.yml</code> for a full example.
+              </p>
+            </div>
+
+            <div className="pt-4 border-t">
+              <h4 className="font-semibold mb-3 text-sm">CLI Workflow Demo</h4>
+              <div className="rounded-lg border overflow-hidden bg-muted/30">
+                <img 
+                  src="/videos/drift-demo/drift-cli-demo.gif" 
+                  alt="Terminal demo: drift check v1 passes, v2 fails with breaking changes, accept and accept-all-warnings fix drift, final check passes"
+                  className="w-full"
+                  loading="lazy"
+                />
+              </div>
+              <p className="text-sm text-muted-foreground mt-2">
+                Terminal: Check v1 ✓ (exit 0) → Check v2 ✗ (breaking drift, exit 1) → 
+                <code className="bg-muted px-1 rounded">--accept</code> endpoint → 
+                <code className="bg-muted px-1 rounded">--accept-all-warnings</code> → 
+                Check v2 ✓ (exit 0)
               </p>
             </div>
           </CardContent>
@@ -500,26 +547,29 @@ diff -u mock-data/drift-watch/staging.wanderweird.dev/trips/GET_123.json \\
         </div>
       </section>
 
-      {/* TODO: set exact version at release */}
       <section id="cli-availability">
         <h2 className="text-3xl font-semibold tracking-tight mb-4">CLI Availability</h2>
         
         <Card>
           <CardContent className="pt-6">
             <p className="mb-3">
-              The <code className="bg-muted px-1 rounded">mockifyer-drift-check</code> CLI is available from the 
-              next <code className="bg-muted px-1 rounded">@sgedda/mockifyer-core</code> release.
+              The <code className="bg-muted px-1 rounded">mockifyer-drift-check</code> CLI is available in 
+              <code className="bg-muted px-1 rounded">@sgedda/mockifyer-core</code> ≥1.10.194.
             </p>
 
-            <p className="text-sm text-muted-foreground">
-              After upgrading to the release that includes drift check, the CLI will be available via <code className="bg-muted px-1 rounded">npx mockifyer-drift-check</code>.
+            <p className="text-sm text-muted-foreground mb-3">
+              The dashboard Drift tab is available in 
+              <code className="bg-muted px-1 rounded">@sgedda/mockifyer-dashboard</code> ≥1.5.97.
             </p>
 
             <CodeBlock language="bash" code={`# Check installed version
 npm list @sgedda/mockifyer-core
 
 # Upgrade to latest:
-npm install @sgedda/mockifyer-core@latest`} />
+npm install @sgedda/mockifyer-core@latest
+
+# For dashboard drift features:
+npm install @sgedda/mockifyer-dashboard@latest`} />
           </CardContent>
         </Card>
       </section>
