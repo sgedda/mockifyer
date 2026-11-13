@@ -14,6 +14,11 @@ This directory contains video and GIF assets for the drift detection guide.
    - Animated GIF version for quick preview
    - 8 fps, 960px width, optimized for web
 
+3. **drift-cli-demo.gif** (201 KB)
+   - Terminal CLI workflow recording (~6s)
+   - Shows: v1 check (pass) → v2 check (fail) → accept changes → final check (pass)
+   - Generated from `demos/drift-live/cli-demo.sh` using asciinema + agg
+
 See `demos/drift-live/RECORDING_NOTES.md` for detailed recording analysis.
 
 ## Regenerating (if needed)
@@ -113,4 +118,29 @@ Or for a simpler GIF-only embed:
     </p>
   </div>
 </div>
+```
+
+### CLI Terminal Demo
+
+For the terminal CLI workflow (compact version):
+
+```tsx
+<Card>
+  <CardHeader>
+    <CardTitle>CLI Workflow</CardTitle>
+    <CardDescription>
+      Command-line drift detection and acceptance
+    </CardDescription>
+  </CardHeader>
+  <CardContent>
+    <img 
+      src="/videos/drift-demo/drift-cli-demo.gif" 
+      alt="Terminal CLI drift detection demo"
+      className="w-full rounded-lg border"
+    />
+    <p className="text-sm text-muted-foreground mt-2">
+      Terminal: v1 ✓ → v2 ✗ (exit 1) → --accept → --accept-all-warnings → v2 ✓ (exit 0)
+    </p>
+  </CardContent>
+</Card>
 ```

@@ -12,7 +12,8 @@ This document provides the exact asset paths and code snippets for integrating t
 mockifyer-web/frontend/public/videos/drift-demo/
 ├── README.md                    # Recording instructions
 ├── drift-workflow-demo.mp4      # Video file (1.1 MB) ✅
-└── drift-workflow-demo.gif      # GIF file (3.5 MB) ✅
+├── drift-workflow-demo.gif      # GIF file (3.5 MB) ✅
+└── drift-cli-demo.gif           # CLI terminal GIF (201 KB) ✅
 ```
 
 ### Public URLs
@@ -205,6 +206,7 @@ For the most compact integration:
 - [x] Record dashboard UI demo with Playwright
 - [x] Create `drift-workflow-demo.mp4` (1.1 MB)
 - [x] Create `drift-workflow-demo.gif` (3.5 MB)
+- [x] Create `drift-cli-demo.gif` (201 KB) with asciinema + agg
 - [x] Place files in `mockifyer-web/frontend/public/videos/drift-demo/`
 - [x] Commit files (force-added from public/)
 - [x] CLI demo verified working (`demos/drift-live/cli-demo.sh`)
@@ -214,10 +216,6 @@ For the most compact integration:
 - [ ] Replace placeholder in `MockDrift.tsx` with provided code snippet
 - [ ] Test video loads in development (`npm run dev`)
 - [ ] Verify both PRs are merged before deployment
-
-**Optional**:
-
-- [ ] Create CLI demo GIF with asciinema (instructions in README.md)
 
 ## Notes
 

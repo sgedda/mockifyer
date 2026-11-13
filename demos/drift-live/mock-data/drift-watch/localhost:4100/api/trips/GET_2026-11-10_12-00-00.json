@@ -1,0 +1,36 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "http://localhost:4100/api/trips",
+    "headers": {}
+  },
+  "response": {
+    "status": 200,
+    "data": {
+      "trips": [
+        {
+          "id": "trip1",
+          "destination": "Paris",
+          "duration": 5,
+          "passengers": 2,
+          "departureDate": "2026-12-01"
+        },
+        {
+          "id": "trip2",
+          "destination": "Tokyo",
+          "duration": 10,
+          "passengers": 1,
+          "departureDate": "2026-12-01"
+        }
+      ],
+      "timestamp": "2026-11-10T12:00:00.000Z"
+    },
+    "headers": {
+      "content-type": "application/json"
+    }
+  },
+  "timestamp": "2026-11-10T12:00:00.000Z",
+  "duration": 50,
+  "sessionId": "drift-demo-v1",
+  "requestId": "trips-v1"
+}
