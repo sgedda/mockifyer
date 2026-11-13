@@ -85,10 +85,6 @@
       "types": "./dist/utils/drift/index.d.ts",
       "default": "./dist/utils/drift/index.js"
     },
-    "./dist/utils/drift": {
-      "types": "./dist/utils/drift/index.d.ts",
-      "default": "./dist/utils/drift/index.js"
-    },
     "./react": {
       "react-native": "./dist/react/index.native.js",
       "types": "./dist/react/index.d.ts",
