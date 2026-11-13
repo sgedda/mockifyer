@@ -259,7 +259,7 @@ test.describe('Drift Detection Demo', () => {
     await expect(page.getByText(/API Drift Detection/i)).toBeVisible({ timeout: 10000 });
     console.log('Drift page loaded');
     
-    await showCaption(page, 'Step 1: Check v1 API (expect ✓)', 2000);
+    await showCaption(page, '🟢 Live API: v1 (matches baseline mocks)', 2500);
 
     // Step 2: Run check against v1
     console.log('Running drift check against v1...');
@@ -270,16 +270,19 @@ test.describe('Drift Detection Demo', () => {
     // Wait for check to complete and verify success
     await expect(page.getByText(/no drift detected/i).first()).toBeVisible({ timeout: 10000 });
     console.log('✓ v1 check passed');
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(2000);
 
-    // Step 3: Switch backend to v2
-    await showCaption(page, 'Step 2: Switch to v2 API', 1500);
+    // Step 3: Switch backend to v2 with detailed explanation
+    await showCaption(page, '⚠️ Switching Live API to v2...', 2000);
     console.log('Switching backend to v2...');
     await startBackend('v2');
+    await page.waitForTimeout(1000);
+    
+    await showCaption(page, '🔴 Live API: v2 schema changes:\n• departureDate → departsAt\n• passengers: number → string\n• + class field', 3000);
     await page.waitForTimeout(500);
 
     // Step 4: Run check against v2
-    await showCaption(page, 'Step 3: Check v2 (expect drift)', 1500);
+    await showCaption(page, 'Running drift check against v2...', 1500);
     console.log('Running drift check against v2...');
     
     // We're already on /drift from step 1, dashboard doesn't navigate away
@@ -309,12 +312,12 @@ test.describe('Drift Detection Demo', () => {
     console.log('Page contains "Accept Live":', pageText?.includes('Accept Live'));
     console.log('Page contains "Run Check Now":', pageText?.includes('Run Check Now'));
     
-    await showCaption(page, 'Step 4: Drift detected', 1500);
+    await showCaption(page, '⚠️ Drift detected: 1 breaking + 1 warning', 2500);
     console.log('✗ Drift detected');
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(3000);
 
     // Step 5: Accept drift
-    await showCaption(page, 'Step 5: Accept changes', 1500);
+    await showCaption(page, 'Accepting breaking endpoint (trips)...', 2000);
     console.log('Accepting drift...');
     
     // Use exact data-testid to target trips endpoint Accept button
@@ -334,7 +337,7 @@ test.describe('Drift Detection Demo', () => {
     console.log('✓ Drift accepted');
 
     // Step 5b: Accept all remaining warnings (booking endpoint)
-    await showCaption(page, 'Step 5: Accept all warnings', 1000);
+    await showCaption(page, 'Accepting warnings (booking endpoint)...', 2000);
     console.log('Accepting all warnings...');
     const acceptAllWarningsButton = page.locator('button:has-text("Accept All Warnings")');
     if (await acceptAllWarningsButton.isVisible().catch(() => false)) {
@@ -344,7 +347,7 @@ test.describe('Drift Detection Demo', () => {
     }
 
     // Step 6: Run final check
-    await showCaption(page, 'Step 5: Verify resolution', 1500);
+    await showCaption(page, 'Final check: verify all drift resolved', 2000);
     console.log('Running final drift check...');
     
     // Navigate back to Drift page if needed
@@ -364,8 +367,8 @@ test.describe('Drift Detection Demo', () => {
     await page.waitForTimeout(1500);
 
     // Final frame
-    await showCaption(page, '✓ Drift resolved!', 1500);
-    await page.waitForTimeout(1000);
+    await showCaption(page, '✅ All endpoints in sync with v2 API!', 2500);
+    await page.waitForTimeout(1500);
 
     console.log('Demo completed successfully!');
   });

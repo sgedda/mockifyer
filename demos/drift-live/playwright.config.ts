@@ -19,6 +19,10 @@ export default defineConfig({
     },
     screenshot: 'on',
     trace: 'on',
+    actionTimeout: 10_000,
+    launchOptions: {
+      slowMo: 300,
+    },
   },
   projects: [
     {
