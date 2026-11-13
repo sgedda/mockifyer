@@ -55,36 +55,41 @@ async function showCaption(page: Page, text: string, durationMs = 3000) {
 
 function startBackend(version: 'v1' | 'v2'): Promise<void> {
   return new Promise((resolve, reject) => {
+    const startNew = () => {
+      backendProcess = spawn('node', ['backend.js'], {
+        cwd: __dirname,
+        env: { ...process.env, API_VERSION: version, PORT: BACKEND_PORT.toString() },
+        stdio: 'pipe',
+      });
+
+      let started = false;
+
+      backendProcess.stdout?.on('data', (data) => {
+        const output = data.toString();
+        console.log(`[backend ${version}]`, output.trim());
+        if (output.includes('running on') && !started) {
+          started = true;
+          setTimeout(() => resolve(), 1000);
+        }
+      });
+
+      backendProcess.stderr?.on('data', (data) => {
+        console.error(`[backend ${version} error]`, data.toString().trim());
+      });
+
+      backendProcess.on('error', reject);
+
+      setTimeout(() => {
+        if (!started) reject(new Error(`Backend ${version} failed to start`));
+      }, 10000);
+    };
+
     if (backendProcess) {
       backendProcess.kill();
+      setTimeout(startNew, 1500);
+    } else {
+      startNew();
     }
-
-    backendProcess = spawn('node', ['backend.js'], {
-      cwd: __dirname,
-      env: { ...process.env, API_VERSION: version, PORT: BACKEND_PORT.toString() },
-      stdio: 'pipe',
-    });
-
-    let started = false;
-
-    backendProcess.stdout?.on('data', (data) => {
-      const output = data.toString();
-      console.log(`[backend ${version}]`, output.trim());
-      if (output.includes('running on') && !started) {
-        started = true;
-        setTimeout(() => resolve(), 1000);
-      }
-    });
-
-    backendProcess.stderr?.on('data', (data) => {
-      console.error(`[backend ${version} error]`, data.toString().trim());
-    });
-
-    backendProcess.on('error', reject);
-
-    setTimeout(() => {
-      if (!started) reject(new Error(`Backend ${version} failed to start`));
-    }, 10000);
   });
 }
 
@@ -220,8 +225,8 @@ test.describe('Drift Detection Demo', () => {
     await expect(runCheckButton2).toBeEnabled({ timeout: 5000 });
     await runCheckButton2.click();
     
-    // Wait for drift to be detected
-    await expect(page.getByText(/breaking/i).first()).toBeVisible({ timeout: 10000 });
+    // Wait for drift to be detected by checking for the "Breaking" badge on an endpoint
+    await expect(page.locator('.badge:has-text("Breaking")').first()).toBeVisible({ timeout: 10000 });
     console.log('✗ Drift detected');
     await page.waitForTimeout(2000);
 
@@ -229,14 +234,27 @@ test.describe('Drift Detection Demo', () => {
     await showCaption(page, 'Step 4: Accept drift changes', 1500);
     console.log('Accepting drift...');
     
-    // Click "Accept Live" button for first drifted endpoint
+    // Click "Accept Live" button for first drifted endpoint to open dialog
     const acceptLiveButton = page.locator('button:has-text("Accept Live")').first();
     await expect(acceptLiveButton).toBeVisible({ timeout: 5000 });
     await acceptLiveButton.click();
     
-    // Wait for success toast/message (no confirmation dialog for Accept Live)
+    // Wait for confirmation dialog and click "Accept" button
+    const acceptDialogButton = page.locator('button:has-text("Accept")').filter({ hasNotText: 'Live' });
+    await expect(acceptDialogButton).toBeVisible({ timeout: 5000 });
+    await acceptDialogButton.click();
+    
+    // Wait for success toast/message
     await page.waitForTimeout(3000);
     console.log('✓ Drift accepted');
+
+    // Step 5b: Accept all remaining warnings (booking endpoint)
+    console.log('Accepting all warnings...');
+    const acceptAllWarningsButton = page.locator('button:has-text("Accept All Warnings")');
+    await expect(acceptAllWarningsButton).toBeVisible({ timeout: 5000 });
+    await acceptAllWarningsButton.click();
+    await page.waitForTimeout(3000);
+    console.log('✓ All warnings accepted');
 
     // Step 6: Run final check
     await showCaption(page, 'Step 5: Verify resolution', 1500);
@@ -253,8 +271,8 @@ test.describe('Drift Detection Demo', () => {
     await expect(runCheckButton3).toBeVisible({ timeout: 10000 });
     await runCheckButton3.click();
     
-    // Verify no drift
-    await expect(page.getByText(/no drift detected/i).first()).toBeVisible({ timeout: 10000 });
+    // Verify no drift - check for "All N endpoints are in sync" text
+    await expect(page.getByText(/all.*endpoints are in sync/i).first()).toBeVisible({ timeout: 10000 });
     console.log('✓ Final check passed');
     await page.waitForTimeout(1500);
 
