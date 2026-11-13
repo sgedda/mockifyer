@@ -37,9 +37,11 @@ export default function MockDrift() {
         </div>
       </div>
 
+      {/* TODO: set exact version at release */}
       <div className="p-4 border border-blue-500/50 bg-blue-500/10 rounded-md">
         <p className="text-blue-900 dark:text-blue-200 text-sm">
-          <strong>New in Mockifyer 1.11+:</strong> The <code className="bg-muted px-1 py-0.5 rounded">mockifyer-drift-check</code> CLI 
+          <strong>New:</strong> The <code className="bg-muted px-1 py-0.5 rounded">mockifyer-drift-check</code> CLI 
+          (available from the next <code className="bg-muted px-1 py-0.5 rounded">@sgedda/mockifyer-core</code> release) 
           compares recorded mocks with live APIs. Run it nightly in GitHub Actions to catch breaking changes before they ship.
         </p>
       </div>
@@ -382,18 +384,11 @@ jobs:
 
           <Card className="border-blue-500/50 bg-blue-500/5">
             <CardHeader>
-              <CardTitle>Dashboard Drift Tab (Coming in PR #523)</CardTitle>
+              <CardTitle>Dashboard Drift Tab</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="p-3 border border-amber-500/50 bg-amber-500/10 rounded-md">
-                <p className="text-amber-900 dark:text-amber-200 text-sm">
-                  <strong>Not merged yet:</strong> PR #523 adds a Drift tab to the dashboard. 
-                  Features described here may change before merge.
-                </p>
-              </div>
-
               <p className="text-sm text-muted-foreground">
-                PR #523 adds a Drift tab at <code className="bg-muted px-1 rounded">http://localhost:3002/drift</code> with:
+                The Mockifyer dashboard includes a Drift tab at <code className="bg-muted px-1 rounded">http://localhost:3002/drift</code> with:
               </p>
 
               <ul className="text-sm text-muted-foreground space-y-2 list-disc list-inside">
@@ -505,30 +500,25 @@ diff -u mock-data/drift-watch/staging.wanderweird.dev/trips/GET_123.json \\
         </div>
       </section>
 
+      {/* TODO: set exact version at release */}
       <section id="cli-availability">
         <h2 className="text-3xl font-semibold tracking-tight mb-4">CLI Availability</h2>
         
         <Card>
           <CardContent className="pt-6">
             <p className="mb-3">
-              The <code className="bg-muted px-1 rounded">mockifyer-drift-check</code> CLI ships in <code className="bg-muted px-1 rounded">@sgedda/mockifyer-core</code> 1.11+.
-            </p>
-
-            <p className="text-sm text-muted-foreground mb-3">
-              <strong>Current published version:</strong> 1.10.193 (as of Nov 13, 2026). The drift check CLI is in the repository but not yet published to npm.
+              The <code className="bg-muted px-1 rounded">mockifyer-drift-check</code> CLI is available from the 
+              next <code className="bg-muted px-1 rounded">@sgedda/mockifyer-core</code> release.
             </p>
 
             <p className="text-sm text-muted-foreground">
-              <strong>To use it now:</strong> Pull the latest <code className="bg-muted px-1 rounded">main</code> branch, 
-              build <code className="bg-muted px-1 rounded">mockifyer-core</code>, 
-              and use <code className="bg-muted px-1 rounded">file:</code> dependencies. 
-              Or wait for the next release (version will be 1.11.0 or higher).
+              After upgrading to the release that includes drift check, the CLI will be available via <code className="bg-muted px-1 rounded">npx mockifyer-drift-check</code>.
             </p>
 
             <CodeBlock language="bash" code={`# Check installed version
 npm list @sgedda/mockifyer-core
 
-# Once 1.11+ is published, upgrade:
+# Upgrade to latest:
 npm install @sgedda/mockifyer-core@latest`} />
           </CardContent>
         </Card>
