@@ -13,6 +13,11 @@ import {
 } from './drift-report';
 import { compareResponses, hasBreakingIssues } from './compare-engine';
 import { omitProxyUpstreamRequestHeaders } from '../proxy-upstream-headers';
+import {
+  loadDriftHistory,
+  writeDriftHistory,
+  enhanceReportWithHistory,
+} from './drift-management';
 
 interface DriftConfig {
   scenario?: string;
@@ -24,6 +29,9 @@ interface DriftConfig {
   concurrency?: number;
   timeoutMs?: number;
   delayMs?: number;
+  endpointConfig?: Record<string, import('./drift-report').EndpointDriftConfig>;
+  historyRetention?: number;
+  noHistory?: boolean;
 }
 
 interface LoadedMock {
@@ -162,6 +170,12 @@ function mergeConfig(
     concurrency: cliOptions.driftOptions?.concurrency ?? fileConfig.concurrency ?? 5,
     timeoutMs: cliOptions.driftOptions?.timeoutMs ?? fileConfig.timeoutMs ?? 10000,
     delayMs: cliOptions.driftOptions?.delayMs ?? fileConfig.delayMs ?? 100,
+    endpointConfig: {
+      ...(fileConfig.endpointConfig || {}),
+      ...(cliOptions.driftOptions?.endpointConfig || {}),
+    },
+    historyRetention: cliOptions.driftOptions?.historyRetention ?? fileConfig.historyRetention ?? 30,
+    noHistory: cliOptions.driftOptions?.noHistory ?? fileConfig.noHistory ?? false,
   };
 
   return { scenario, mockDataPath, driftOptions };
@@ -222,6 +236,9 @@ export async function checkDrift(options: {
     );
   }
 
+  // Load previous history for tracking
+  const previousHistory = loadDriftHistory(mockDataPath, scenario);
+
   // Check each active mock
   const mockReports: MockDriftReport[] = [];
   const concurrency = driftOptions.concurrency || 5;
@@ -231,7 +248,7 @@ export async function checkDrift(options: {
   for (let i = 0; i < activeMocks.length; i += concurrency) {
     const batch = activeMocks.slice(i, i + concurrency);
     const batchPromises = batch.map((loadedMock) =>
-      checkSingleMock(loadedMock, driftOptions)
+      checkSingleMock(loadedMock, driftOptions, previousHistory)
     );
 
     const batchResults = await Promise.all(batchPromises);
@@ -289,7 +306,7 @@ export async function checkDrift(options: {
     }
   }
 
-  return {
+  const report = {
     totalMocks: activeMocks.length,
     driftedMocks,
     breakingDriftCount,
@@ -300,6 +317,19 @@ export async function checkDrift(options: {
     summary,
     failOnWarnings: driftOptions.failOnWarnings ?? false,
   };
+
+  // Write history unless disabled
+  if (!driftOptions.noHistory) {
+    const historyReport = enhanceReportWithHistory(report, previousHistory);
+    await writeDriftHistory(
+      historyReport,
+      mockDataPath,
+      scenario,
+      driftOptions.historyRetention || 30
+    );
+  }
+
+  return report;
 }
 
 /**
@@ -307,10 +337,33 @@ export async function checkDrift(options: {
  */
 async function checkSingleMock(
   loadedMock: LoadedMock,
-  options: DriftCheckOptions
+  options: DriftCheckOptions,
+  previousHistory: any
 ): Promise<MockDriftReport> {
   const { mock, filePath } = loadedMock;
   const { method, url } = mock.request;
+
+  // Check if endpoint is snoozed
+  if (previousHistory) {
+    const previousMock = previousHistory.mockReports.find(
+      (r: any) => r.method === method && r.url === url
+    );
+    if (previousMock?.snoozedUntil) {
+      const snoozeExpires = new Date(previousMock.snoozedUntil);
+      if (snoozeExpires > new Date()) {
+        return {
+          method,
+          url,
+          mockFilePath: filePath,
+          hasDrift: false,
+          hasBreakingDrift: false,
+          issues: [],
+          skipped: true,
+          skipReason: `Snoozed until ${previousMock.snoozedUntil}`,
+        };
+      }
+    }
+  }
 
   // Skip non-GET requests unless explicitly allowed
   if (!options.allowUnsafeMethods && method.toUpperCase() !== 'GET') {
@@ -325,6 +378,21 @@ async function checkSingleMock(
       skipReason: `Skipped ${method} request (use --allow-unsafe-methods to check non-GET requests)`,
     };
   }
+
+  // Get endpoint-specific config
+  const endpointKey = getEndpointKey(method, url);
+  const endpointConfig = getEndpointConfig(endpointKey, options.endpointConfig || {});
+  
+  // Merge ignorePaths: global + endpoint-specific
+  const mergedIgnorePaths = [
+    ...(options.ignorePaths || []),
+    ...(endpointConfig?.ignorePaths || []),
+  ];
+
+  const mergedOptions = {
+    ...options,
+    ignorePaths: mergedIgnorePaths,
+  };
 
   try {
     // Build request URL
@@ -387,7 +455,7 @@ async function checkSingleMock(
           expectedBody: mock.response.data,
           actualBody,
         },
-        options
+        mergedOptions
       );
 
       // Check if there are empty live lists (mark as info, don't count as drift)
@@ -537,4 +605,50 @@ function detectMockDataPath(): string {
  */
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Get endpoint key for config lookup (method + path).
+ */
+function getEndpointKey(method: string, url: string): string {
+  try {
+    const parsedUrl = new URL(url);
+    return `${method} ${parsedUrl.pathname}`;
+  } catch {
+    return `${method} ${url}`;
+  }
+}
+
+/**
+ * Get endpoint-specific config, matching exact paths or patterns.
+ */
+function getEndpointConfig(
+  endpointKey: string,
+  endpointConfigs: Record<string, import('./drift-report').EndpointDriftConfig>
+): import('./drift-report').EndpointDriftConfig | undefined {
+  // Try exact match first
+  if (endpointConfigs[endpointKey]) {
+    return endpointConfigs[endpointKey];
+  }
+
+  // Try pattern matching
+  for (const [pattern, config] of Object.entries(endpointConfigs)) {
+    if (matchesPattern(endpointKey, pattern)) {
+      return config;
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Check if an endpoint key matches a pattern (supports wildcards).
+ */
+function matchesPattern(endpointKey: string, pattern: string): boolean {
+  // Convert pattern to regex
+  const regexPattern = pattern
+    .replace(/\*/g, '.*')
+    .replace(/\//g, '\\/');
+  const regex = new RegExp(`^${regexPattern}$`);
+  return regex.test(endpointKey);
 }
