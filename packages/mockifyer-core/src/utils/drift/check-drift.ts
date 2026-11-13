@@ -175,7 +175,10 @@ async function checkSingleMock(
           ? mock.request.data
           : JSON.stringify(mock.request.data);
         
-        if (isObject && !requestInit.headers['content-type'] && !requestInit.headers['Content-Type']) {
+        const hasContentType = Object.keys(requestInit.headers).some(
+          key => key.toLowerCase() === 'content-type'
+        );
+        if (isObject && !hasContentType) {
           requestInit.headers['content-type'] = 'application/json';
         }
       }
