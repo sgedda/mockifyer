@@ -28,7 +28,7 @@ export interface DashboardContextConfig {
    * Also configurable via `MOCKIFYER_REDIS_MIRROR_DISK` and `MOCKIFYER_REDIS_DISK_READ_FALLBACK`.
    */
   redisDiskMirror?: RedisDiskMirrorConfigInput;
-  /** Path to drift config file. Defaults to `mockifyer.drift.json` one level above mockDataPath. */
+  /** Path to drift config file. Defaults to `mockifyer.drift.json` in the dashboard's working directory (matches CLI default). */
   driftConfigPath?: string;
 }
 
