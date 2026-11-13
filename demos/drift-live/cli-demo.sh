@@ -70,17 +70,12 @@ echo "------------------------------------------------------"
 npx mockifyer-drift-check --accept "GET /api/trips" --mock-data-path ./mock-data
 
 echo ""
-echo "Step 5: Show git diff of accepted mock"
-echo "---------------------------------------"
-git diff --no-index --no-pager mock-data/drift-watch/localhost:4100/api/trips/GET.json.backup mock-data/drift-watch/localhost:4100/api/trips/GET.json 2>/dev/null || echo "(No backup found - this is expected on first run)"
-
-echo ""
-echo "Step 6: Accept all remaining warnings (booking endpoint)"
+echo "Step 5: Accept all remaining warnings (booking endpoint)"
 echo "---------------------------------------------------------"
 npx mockifyer-drift-check --accept-all-warnings --mock-data-path ./mock-data
 
 echo ""
-echo "Step 7: Run drift check again (should pass cleanly)"
+echo "Step 6: Run drift check again (should pass cleanly)"
 echo "----------------------------------------------------"
 npx mockifyer-drift-check --mock-data-path ./mock-data
 
