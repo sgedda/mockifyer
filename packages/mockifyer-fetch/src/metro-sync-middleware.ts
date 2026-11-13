@@ -2143,6 +2143,11 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
             rules?: DomainPathRulesMap;
             /** When true, replace the scenario file with `rules` (enable-record migrations). */
             replace?: boolean;
+            /**
+             * Keys to mark `autoMock: true` on the file as it exists now.
+             * Applied alone so a stale client snapshot cannot rewrite other paths.
+             */
+            enableAutoMock?: string[];
           };
           const scenarioName =
             typeof parsed.scenario === "string" && parsed.scenario.trim() !== ""
@@ -2153,6 +2158,39 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
             res.setHeader("Content-Type", "application/json");
             res.end(
               JSON.stringify({ success: false, error: "Invalid scenario name" }),
+            );
+            return;
+          }
+
+          if (Array.isArray(parsed.enableAutoMock)) {
+            const existing = readDomainPathRulesFile(mockDataPath, scenarioName);
+            let changed = false;
+            for (const rawKey of parsed.enableAutoMock) {
+              if (typeof rawKey !== 'string') continue;
+              const key = rawKey.trim().replace(/^\/+|\/+$/g, '');
+              if (!key || key.includes('..') || key.includes('\\') || key.includes('\0')) {
+                continue;
+              }
+              const current = existing[key];
+              if (!current || current.autoMock === true) continue;
+              existing[key] = {
+                ...current,
+                autoMock: true,
+                updatedAt: new Date().toISOString(),
+              };
+              changed = true;
+            }
+            if (changed) {
+              writeDomainPathRulesFile(mockDataPath, scenarioName, existing);
+            }
+            res.setHeader("Content-Type", "application/json");
+            res.end(
+              JSON.stringify({
+                success: true,
+                changed,
+                scenario: scenarioName,
+                rules: existing,
+              }),
             );
             return;
           }

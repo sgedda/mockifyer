@@ -15,7 +15,7 @@ import {
   tryGetScenarioFromLaunchArguments,
   resolveMockifyerRuntimeMode,
   logMockifyerNotActivated,
-  resolveRecordResponses,
+  resolveRecordResponsesConfig,
   resolveStrictScenarioResolution,
   resolveRuntimeEnabledStorage,
   loadPersistedRuntimeEnabled,
@@ -66,6 +66,19 @@ export type SetupMockifyerForReactNativeResult =
 /**
  * Type guard: `true` when {@link setupMockifyerForReactNative} patched `fetch` and returned an instance.
  */
+/**
+ * Record-responses value forwarded on the dashboard proxy.
+ * Allowlist arrays are kept so the proxy envelope can match each URL.
+ * A boolean env override (`MOCKIFYER_RECORD_RESPONSES`) still wins.
+ */
+export function resolveReactNativeProxyRecordResponses(
+  explicit: boolean | Array<string | RegExp> | undefined,
+  fromProxy: boolean | Array<string | RegExp> | undefined,
+  fromTopLevel: boolean | Array<string | RegExp> | undefined
+): boolean | Array<string | RegExp> {
+  return resolveRecordResponsesConfig(explicit ?? fromProxy ?? fromTopLevel);
+}
+
 export function isMockifyerReactNativeActive(
   result: SetupMockifyerForReactNativeResult
 ): result is { readonly status: 'active'; readonly instance: MockifyerInstance } {
@@ -124,9 +137,10 @@ export interface ReactNativeMockifyerConfig {
   proxyRecordOnMiss?: boolean;
   /**
    * When false, dashboard proxy stores request-only stubs on cache miss (Responses: Off).
-   * Defaults to `false`. Env **`MOCKIFYER_RECORD_RESPONSES`** overrides when set.
+   * An allowlist array records full bodies only for matching URLs.
+   * Defaults to `false`. Env **`MOCKIFYER_RECORD_RESPONSES`** / **`MOCKIFYER_RECORD_RESPONSES_FOR`** override when set.
    */
-  proxyRecordResponses?: boolean;
+  proxyRecordResponses?: boolean | Array<string | RegExp>;
   /**
    * When true, skip `GET /api/health` and always wire dashboard proxy (same as Node preset).
    */
@@ -259,9 +273,13 @@ export async function setupMockifyerForReactNative(
   } = options;
 
   const proxyShouldRecordOnMiss = proxyRecordOnMiss ?? recordMode;
-  const recordResponsesConfig = proxyRecordResponses ?? userConfig.proxy?.recordResponses;
-  const proxyShouldRecordResponses = resolveRecordResponses(
-    typeof recordResponsesConfig === 'boolean' ? recordResponsesConfig : false
+  // Arrays must survive. Coercing a non-boolean to `false` made an allowlist
+  // record request-only stubs, and `proxy.recordResponses: false` then hid
+  // `config.recordResponses` (`??` does not fall through boolean false).
+  const proxyShouldRecordResponses = resolveReactNativeProxyRecordResponses(
+    proxyRecordResponses,
+    userConfig.proxy?.recordResponses,
+    userConfig.recordResponses
   );
 
   const launchClientIdKey =

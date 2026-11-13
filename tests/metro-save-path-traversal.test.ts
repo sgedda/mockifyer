@@ -2,6 +2,7 @@ import { EventEmitter } from 'events';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { readDomainPathRulesFile, writeDomainPathRulesFile } from '@sgedda/mockifyer-core';
 import { createMockSyncMiddleware } from '../packages/mockifyer-fetch/src/metro-sync-middleware';
 
 interface MiddlewareResult {
@@ -154,5 +155,32 @@ describe('Metro save paths stay inside mock-data', () => {
     expect(
       fs.existsSync(path.join(mockDataPath, 'checkout', 'domain-path-rules.json'))
     ).toBe(true);
+  });
+
+  it('enableAutoMock flips only that key and ignores traversal keys', async () => {
+    writeDomainPathRulesFile(mockDataPath, 'default', {
+      'api.example.com/v1/users/:id': { recordResponses: true, autoMock: false },
+      'api.example.com/billing': {
+        recordResponses: false,
+        autoMock: false,
+        updatedAt: '2026-11-13T00:00:00.000Z',
+      },
+    });
+
+    const result = await invokeMiddleware(middleware, 'POST', '/mockifyer-domain-path-rules', {
+      scenario: 'default',
+      enableAutoMock: ['api.example.com/v1/users/:id', '../outside', ''],
+    });
+
+    expect(result.body).toMatchObject({ success: true, changed: true, scenario: 'default' });
+    const rules = readDomainPathRulesFile(mockDataPath, 'default');
+    expect(rules['api.example.com/v1/users/:id']?.autoMock).toBe(true);
+    expect(rules['api.example.com/billing']).toEqual({
+      recordResponses: false,
+      autoMock: false,
+      updatedAt: '2026-11-13T00:00:00.000Z',
+    });
+    expect(rules['../outside']).toBeUndefined();
+    expect(fs.existsSync(path.join(projectRoot, 'outside'))).toBe(false);
   });
 });
