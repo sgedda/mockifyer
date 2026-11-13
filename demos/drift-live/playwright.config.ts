@@ -12,10 +12,10 @@ export default defineConfig({
   ],
   use: {
     headless: process.env.HEADLESS !== 'false',
-    viewport: { width: 1280, height: 900 },
+    viewport: { width: 1280, height: 720 },
     video: {
       mode: 'on',
-      size: { width: 1280, height: 900 },
+      size: { width: 1280, height: 720 },
     },
     screenshot: 'on',
     trace: 'on',

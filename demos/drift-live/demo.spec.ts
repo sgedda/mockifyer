@@ -53,6 +53,117 @@ async function showCaption(page: Page, text: string, durationMs = 3000) {
   }
 }
 
+/**
+ * Set persistent API version badge in corner
+ */
+async function setApiBadge(page: Page, version: 'v1' | 'v2') {
+  await page.evaluate((ver) => {
+    let badge = document.getElementById('api-version-badge') as HTMLDivElement;
+    if (!badge) {
+      badge = document.createElement('div');
+      badge.id = 'api-version-badge';
+      Object.assign(badge.style, {
+        position: 'fixed',
+        bottom: '70px',
+        left: '20px',
+        padding: '8px 16px',
+        fontSize: '14px',
+        fontWeight: '700',
+        borderRadius: '6px',
+        zIndex: '999998',
+        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.25)',
+        transition: 'all 0.3s ease',
+      });
+      document.body.appendChild(badge);
+    }
+    
+    badge.textContent = `Live API: ${ver.toUpperCase()}`;
+    if (ver === 'v1') {
+      badge.style.backgroundColor = '#10b981';
+      badge.style.color = 'white';
+    } else {
+      badge.style.backgroundColor = '#ef4444';
+      badge.style.color = 'white';
+    }
+  }, version);
+}
+
+/**
+ * Show large centered overlay with v1 vs v2 API diff
+ */
+async function showApiDiffOverlay(page: Page, durationMs = 4000) {
+  await page.evaluate((duration) => {
+    const overlay = document.createElement('div');
+    overlay.id = 'api-diff-overlay';
+    Object.assign(overlay.style, {
+      position: 'fixed',
+      top: '0',
+      left: '0',
+      width: '100%',
+      height: '100%',
+      backgroundColor: 'rgba(0, 0, 0, 0.7)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: '9999999',
+    });
+
+    const panel = document.createElement('div');
+    Object.assign(panel.style, {
+      backgroundColor: 'white',
+      borderRadius: '12px',
+      padding: '32px',
+      width: '60%',
+      maxHeight: '80%',
+      overflow: 'auto',
+      boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
+    });
+
+    panel.innerHTML = `
+      <h2 style="margin: 0 0 24px 0; font-size: 24px; font-weight: 700; color: #111;">
+        Live API changed: v1 → v2
+      </h2>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; font-family: monospace; font-size: 13px;">
+        <div>
+          <h3 style="margin: 0 0 12px 0; font-size: 14px; font-weight: 600; color: #059669;">v1 Response</h3>
+          <pre style="margin: 0; padding: 16px; background: #f0fdf4; border: 2px solid #059669; border-radius: 6px; overflow-x: auto; line-height: 1.6;">{
+  "id": "TRP-001",
+  "destination": "Paris",
+  "duration": 5,
+  <span style="background: #fecaca; padding: 2px 4px; border-radius: 3px;">"passengers": 2</span>,
+  <span style="background: #fecaca; padding: 2px 4px; border-radius: 3px;">"departureDate": "2026-12-01"</span>
+}</pre>
+        </div>
+        <div>
+          <h3 style="margin: 0 0 12px 0; font-size: 14px; font-weight: 600; color: #dc2626;">v2 Response</h3>
+          <pre style="margin: 0; padding: 16px; background: #fef2f2; border: 2px solid #dc2626; border-radius: 6px; overflow-x: auto; line-height: 1.6;">{
+  "id": "TRP-001",
+  "destination": "Paris",
+  "duration": 5,
+  <span style="background: #bbf7d0; padding: 2px 4px; border-radius: 3px;">"passengers": "2"</span>,
+  <span style="background: #bbf7d0; padding: 2px 4px; border-radius: 3px;">"departsAt": "2026-12-01"</span>,
+  <span style="background: #bbf7d0; padding: 2px 4px; border-radius: 3px;">"class": "economy"</span>
+}</pre>
+        </div>
+      </div>
+      <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e5e7eb; color: #6b7280; font-size: 14px;">
+        <strong>Breaking changes:</strong> Field renamed, type changed, new required field
+      </div>
+    `;
+
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+
+    setTimeout(() => {
+      overlay.style.transition = 'opacity 0.5s';
+      overlay.style.opacity = '0';
+      setTimeout(() => overlay.remove(), 500);
+    }, duration);
+  }, durationMs);
+  
+  await page.waitForTimeout(durationMs + 500);
+}
+
 function startBackend(version: 'v1' | 'v2'): Promise<void> {
   return new Promise((resolve, reject) => {
     const startNew = () => {
@@ -259,6 +370,8 @@ test.describe('Drift Detection Demo', () => {
     await expect(page.getByText(/API Drift Detection/i)).toBeVisible({ timeout: 10000 });
     console.log('Drift page loaded');
     
+    // Set persistent v1 badge
+    await setApiBadge(page, 'v1');
     await showCaption(page, '🟢 Live API: v1 (matches baseline mocks)', 2500);
 
     // Step 2: Run check against v1
@@ -276,10 +389,11 @@ test.describe('Drift Detection Demo', () => {
     await showCaption(page, '⚠️ Switching Live API to v2...', 2000);
     console.log('Switching backend to v2...');
     await startBackend('v2');
-    await page.waitForTimeout(1000);
     
-    await showCaption(page, '🔴 Live API: v2 schema changes:\n• departureDate → departsAt\n• passengers: number → string\n• + class field', 3000);
+    // Update badge to v2 and show large diff overlay
+    await setApiBadge(page, 'v2');
     await page.waitForTimeout(500);
+    await showApiDiffOverlay(page, 4000);
 
     // Step 4: Run check against v2
     await showCaption(page, 'Running drift check against v2...', 1500);
