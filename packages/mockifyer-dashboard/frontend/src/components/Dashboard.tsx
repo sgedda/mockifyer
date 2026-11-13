@@ -11,6 +11,7 @@ import DateConfig from './DateConfig'
 import OverridesView from './OverridesView'
 import ApiReference from './ApiReference'
 import Memory from './Memory'
+import Drift from './Drift'
 import SidebarNav from './SidebarNav'
 import ClientConnectionsPanel from './ClientConnectionsPanel'
 import { getMocks, getScenarioConfig, getProxyConfig, searchMocks, setScenario, updateProxyConfig } from '@/lib/api'
@@ -80,6 +81,7 @@ export default function Dashboard({
     if (path === '/hops' || path.endsWith('/hops')) return 'hops'
     if (path === '/overrides' || path.endsWith('/overrides')) return 'overrides'
     if (path === '/network' || path.endsWith('/network')) return 'network'
+    if (path === '/drift' || path.endsWith('/drift')) return 'drift'
     if (path === '/date-config' || path.endsWith('/date-config')) return 'date-config'
     if (path === '/memory' || path.endsWith('/memory')) return 'memory'
     if (path === '/api-reference' || path.endsWith('/api-reference')) return 'api'
@@ -286,6 +288,7 @@ export default function Dashboard({
       'hops': '/hops',
       'overrides': '/overrides',
       'network': '/network',
+      'drift': '/drift',
       'stats': '/',
       'date-config': '/date-config',
       'memory': '/memory',
@@ -668,6 +671,7 @@ export default function Dashboard({
             />
             <Route path="/atlas" element={<Navigate to={{ pathname: '/network', search: location.search }} replace />} />
             <Route path="/network" element={<Network scenario={scenario} />} />
+            <Route path="/drift" element={<Drift scenario={scenario} />} />
             <Route
               path="/fixture-pool"
               element={<Navigate to={{ pathname: '/mocks', search: location.search }} replace />}

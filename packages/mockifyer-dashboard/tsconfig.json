@@ -12,7 +12,10 @@
     "resolveJsonModule": true,
     "declaration": true,
     "declarationMap": true,
-    "sourceMap": true
+    "sourceMap": true,
+    "paths": {
+      "@sgedda/mockifyer-core/utils/drift": ["./node_modules/@sgedda/mockifyer-core/dist/utils/drift/index.d.ts"]
+    }
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"],

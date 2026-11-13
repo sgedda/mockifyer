@@ -13,6 +13,12 @@
 import { checkDrift } from '../utils/drift/check-drift';
 import { DriftCheckOptions } from '../utils/drift/drift-report';
 import { MockDriftReport } from '../utils/drift/drift-report';
+import {
+  acceptDrift,
+  acceptAllWarnings,
+  snoozeEndpoint,
+  addIgnoreField,
+} from '../utils/drift/drift-management';
 
 interface ParsedArgs {
   scenario?: string;
@@ -25,6 +31,12 @@ interface ParsedArgs {
   concurrency?: number;
   timeoutMs?: number;
   delayMs?: number;
+  noHistory?: boolean;
+  accept?: string;
+  acceptAllWarnings?: boolean;
+  ignoreField?: { endpoint: string; path: string };
+  snooze?: string;
+  days?: number;
   json: boolean;
   help: boolean;
 }
@@ -67,6 +79,20 @@ function parseArgs(): ParsedArgs {
       parsed.timeoutMs = parseInt(args[++i], 10);
     } else if (arg === '--delay') {
       parsed.delayMs = parseInt(args[++i], 10);
+    } else if (arg === '--no-history') {
+      parsed.noHistory = true;
+    } else if (arg === '--accept') {
+      parsed.accept = args[++i];
+    } else if (arg === '--accept-all-warnings') {
+      parsed.acceptAllWarnings = true;
+    } else if (arg === '--ignore-field') {
+      const endpoint = args[++i];
+      const path = args[++i];
+      parsed.ignoreField = { endpoint, path };
+    } else if (arg === '--snooze') {
+      parsed.snooze = args[++i];
+    } else if (arg === '--days') {
+      parsed.days = parseInt(args[++i], 10);
     } else if (arg === '--json') {
       parsed.json = true;
     }
@@ -98,8 +124,16 @@ OPTIONS
   -c, --concurrency <n>          Max concurrent requests (default: 5)
       --timeout <ms>             Request timeout in milliseconds (default: 10000)
       --delay <ms>               Delay between request batches (default: 100)
+      --no-history               Skip writing history (for ad-hoc checks)
       --json                     Output report as JSON
   -h, --help                     Show this help
+
+MANAGEMENT COMMANDS
+      --accept <method path>           Re-fetch and update one endpoint
+      --accept-all-warnings            Accept all endpoints with warnings only
+      --ignore-field <endpoint> <path> Add ignore rule for specific endpoint
+      --snooze <method path>           Snooze endpoint (default 7 days)
+      --days <n>                       Days to snooze (use with --snooze)
 
 EXAMPLES
   # Zero-config: check default scenario against recorded URLs
@@ -114,6 +148,18 @@ EXAMPLES
 
   # CI mode: fail on any drift, output JSON report
   mockifyer-drift-check --fail-on-warnings --json > drift-report.json
+
+  # Accept one endpoint's drift (re-record from live)
+  mockifyer-drift-check --accept "GET /api/users/123"
+
+  # Accept all warnings
+  mockifyer-drift-check --accept-all-warnings
+
+  # Ignore a field for a specific endpoint
+  mockifyer-drift-check --ignore-field "GET /api/users/123" "lastLoginAt"
+
+  # Snooze an endpoint for 30 days
+  mockifyer-drift-check --snooze "GET /api/users/123" --days 30
 
 ENVIRONMENT VARIABLES
   Headers can be read from environment variables. Use --header with env vars:
@@ -165,6 +211,97 @@ async function main() {
   if (args.concurrency !== undefined) driftOptions.concurrency = args.concurrency;
   if (args.timeoutMs !== undefined) driftOptions.timeoutMs = args.timeoutMs;
   if (args.delayMs !== undefined) driftOptions.delayMs = args.delayMs;
+  if (args.noHistory !== undefined) driftOptions.noHistory = args.noHistory;
+
+  // Handle management commands (accept, snooze, ignore-field)
+  if (args.accept) {
+    try {
+      const [method, ...pathParts] = args.accept.split(' ');
+      const path = pathParts.join(' ');
+      const result = await acceptDrift({
+        method,
+        path,
+        mockDataPath: args.mockDataPath,
+        scenario: args.scenario,
+        driftOptions,
+      });
+      if (result.success) {
+        console.log(green('✓') + ` ${result.message}`);
+        process.exit(0);
+      } else {
+        console.error(red('✗') + ` ${result.message}`);
+        process.exit(2);
+      }
+    } catch (error: any) {
+      console.error(red('Error:') + ` ${error.message}`);
+      process.exit(2);
+    }
+  }
+
+  if (args.acceptAllWarnings) {
+    try {
+      const result = await acceptAllWarnings({
+        mockDataPath: args.mockDataPath,
+        scenario: args.scenario,
+        driftOptions,
+      });
+      console.log('');
+      console.log(`Accepted: ${result.accepted}, Failed: ${result.failed}`);
+      console.log('');
+      for (const message of result.messages) {
+        console.log(`  ${message}`);
+      }
+      console.log('');
+      process.exit(result.failed > 0 ? 2 : 0);
+    } catch (error: any) {
+      console.error(red('Error:') + ` ${error.message}`);
+      process.exit(2);
+    }
+  }
+
+  if (args.ignoreField) {
+    try {
+      const result = await addIgnoreField({
+        endpoint: args.ignoreField.endpoint,
+        jsonPath: args.ignoreField.path,
+      });
+      if (result.success) {
+        console.log(green('✓') + ` ${result.message}`);
+        process.exit(0);
+      } else {
+        console.error(red('✗') + ` ${result.message}`);
+        process.exit(2);
+      }
+    } catch (error: any) {
+      console.error(red('Error:') + ` ${error.message}`);
+      process.exit(2);
+    }
+  }
+
+  if (args.snooze) {
+    try {
+      const [method, ...pathParts] = args.snooze.split(' ');
+      const path = pathParts.join(' ');
+      const days = args.days || 7;
+      const result = await snoozeEndpoint({
+        method,
+        path,
+        days,
+        mockDataPath: args.mockDataPath,
+        scenario: args.scenario,
+      });
+      if (result.success) {
+        console.log(green('✓') + ` ${result.message}`);
+        process.exit(0);
+      } else {
+        console.error(red('✗') + ` ${result.message}`);
+        process.exit(2);
+      }
+    } catch (error: any) {
+      console.error(red('Error:') + ` ${error.message}`);
+      process.exit(2);
+    }
+  }
 
   try {
     const report = await checkDrift({

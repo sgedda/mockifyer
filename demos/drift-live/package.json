@@ -1,0 +1,22 @@
+{
+  "name": "drift-live-demo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Live drift detection demo with Playwright recording",
+  "scripts": {
+    "backend:v1": "API_VERSION=v1 node backend.js",
+    "backend:v2": "API_VERSION=v2 node backend.js",
+    "demo": "npx playwright test demo.spec.ts --headed",
+    "demo:record": "npx playwright test demo.spec.ts --headed",
+    "cli-demo": "bash cli-demo.sh",
+    "test": "npx playwright test demo.spec.ts"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.40.0",
+    "@sgedda/mockifyer-core": "file:../../packages/mockifyer-core",
+    "@sgedda/mockifyer-dashboard": "file:../../packages/mockifyer-dashboard"
+  }
+}

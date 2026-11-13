@@ -17,6 +17,7 @@ import { atlasRouter } from './routes/atlas';
 import overrideGroupsRouter from './routes/override-groups';
 import { favoritesRouter } from './routes/favorites';
 import { memoryRouter } from './routes/memory';
+import driftRouter from './routes/drift';
 import { dashboardApiNoCache } from './utils/api-no-cache';
 import { dashboardCors } from './utils/cors';
 import {
@@ -54,7 +55,11 @@ export function createServer(
   config: DashboardContextConfig = { provider: 'filesystem' }
 ): express.Application {
   const app = express();
-  const dashboardConfig = { ...config, mockDataPath };
+  const dashboardConfig = {
+    ...config,
+    mockDataPath,
+    driftConfigPath: config.driftConfigPath || path.join(process.cwd(), 'mockifyer.drift.json'),
+  };
   app.locals.mockDataPath = mockDataPath;
   app.locals.dashboardConfig = dashboardConfig;
   // Live JSON must not 304: fetch() treats 304 as !ok with an empty body.
@@ -100,10 +105,11 @@ export function createServer(
   app.use('/api/override-groups', overrideGroupsRouter);
   app.use('/api/favorites', favoritesRouter);
   app.use('/api/memory', memoryRouter);
+  app.use('/api/drift', driftRouter);
   
   // Log route registration (for debugging)
   console.log(
-    '[Server] Registered API routes: /api/mocks, /api/stats, /api/health, /api/date-config, /api/scenario-config (export/import/clear-mocks/delete/rename), /api/proxy, /api/proxy-config, /api/client-lanes, /api/override-sets, /api/network-events (incl. /trace), /api/fixture-pool, /api/atlas, /api/override-groups, /api/favorites, /api/memory'
+    '[Server] Registered API routes: /api/mocks, /api/stats, /api/health, /api/date-config, /api/scenario-config (export/import/clear-mocks/delete/rename), /api/proxy, /api/proxy-config, /api/client-lanes, /api/override-sets, /api/network-events (incl. /trace), /api/fixture-pool, /api/atlas, /api/override-groups, /api/favorites, /api/memory, /api/drift'
   );
 
   // Atlas interactive HTML trace (Trace / Waterfall / Journey) — written under mock-data/atlas-html
@@ -140,7 +146,7 @@ export function createServer(
    * Keep page names in sync with frontend `DASHBOARD_PAGE_SUFFIXES` (includes `/mock`).
    */
   const spaPageAssetPrefix =
-    /^\/(mocks|mock|hops|overrides|timeline|atlas|network|fixture-pool|date-config|api-reference|settings|memory)\/assets\//;
+    /^\/(mocks|mock|hops|overrides|timeline|atlas|network|drift|fixture-pool|date-config|api-reference|settings|memory)\/assets\//;
   app.use((req, res, next) => {
     if (req.method !== 'GET' && req.method !== 'HEAD') {
       return next();

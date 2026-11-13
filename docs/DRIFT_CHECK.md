@@ -15,13 +15,19 @@ Security: Never exposes actual values (only types and paths), so secrets stay sa
 npx mockifyer-drift-check
 
 # Check a specific scenario
-npx mockifyer-drift-check --scenario staging
+npx mockifyer-drift-check --scenario drift-watch
 
 # Override base URL (e.g., test against staging API)
 npx mockifyer-drift-check --base-url https://staging.api.example.com
 
 # With authentication
 npx mockifyer-drift-check --header "Authorization: Bearer ${API_TOKEN}"
+
+# Accept one endpoint's drift (re-record from live)
+npx mockifyer-drift-check --accept "GET /api/users/123"
+
+# Accept all warnings (non-breaking changes)
+npx mockifyer-drift-check --accept-all-warnings
 ```
 
 ## Recommended Setup: Nightly CI Job
@@ -30,46 +36,41 @@ npx mockifyer-drift-check --header "Authorization: Bearer ${API_TOKEN}"
 
 ### Copy-paste GitHub Actions workflow (recommended)
 
-Create `.github/workflows/drift-check.yml`:
+**See the complete example:** [`docs/examples/drift-nightly.yml`](./examples/drift-nightly.yml)
 
-```yaml
-name: API Drift Check
+The example workflow includes:
+- Nightly drift check at 3:00 AM UTC (adjustable)
+- Manual trigger from Actions tab
+- Automatic issue creation/update with drift summary and accept commands
+- Issue closure when drift is resolved
+- JSON report artifact upload
 
-on:
-  schedule:
-    - cron: '0 3 * * *'  # Nightly at 3am UTC
-  workflow_dispatch:      # Allow manual runs
+**Quick setup:**
 
-jobs:
-  drift-check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      
-      - name: Install dependencies
-        run: npm ci
-      
-      - name: Check for API drift
-        run: npx mockifyer-drift-check --scenario production --header "Authorization: Bearer ${{ secrets.API_TOKEN }}"
-        
-      - name: Upload drift report (on failure)
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: drift-report
-          path: drift-report.json
-```
+1. Copy the example to your repository:
+   ```bash
+   cp docs/examples/drift-nightly.yml .github/workflows/drift-check.yml
+   ```
 
-This workflow:
-- Runs nightly at 3am UTC (adjust `cron` to your timezone)
-- Can be triggered manually from the Actions tab (`workflow_dispatch`)
-- Fails the job if breaking drift is detected
-- Uploads a JSON report on failure for debugging
+2. Add your API token as a GitHub secret:
+   - Go to Settings → Secrets → Actions
+   - Add `API_TOKEN` with your API authentication token
+
+3. Customize the workflow:
+   - Adjust the `cron` schedule to your timezone
+   - Change `--scenario` if you use a different drift-watch scenario name
+   - Modify the `--header` flag if your API uses different authentication
+
+**What it does:**
+- Runs `mockifyer-drift-check` against your drift-watch scenario
+- On **breaking drift**, creates or updates ONE GitHub issue labeled `api-drift` with:
+  - Summary of breaking changes and warnings
+  - List of drifted endpoints with their issues
+  - Copy-paste accept commands for each endpoint
+  - Instructions for ignoring fields or snoozing
+- On **warnings only**, updates the issue but doesn't fail the workflow
+- When drift is **resolved**, closes the issue automatically
+- Uploads the full JSON report as a workflow artifact
 
 ### GitLab CI (scheduled pipeline)
 
@@ -85,6 +86,140 @@ api-drift-check:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"  # Only on scheduled runs
 ```
+
+## History Tracking
+
+**New in Phase 2:** Drift check automatically records history in `.drift/` under each scenario folder.
+
+```
+mock-data/
+  drift-watch/
+    .drift/
+      latest.json               ← Most recent report
+      2026-11-13T12-00-00Z.json ← Timestamped reports
+      2026-11-14T12-00-00Z.json
+    api.example.com/
+      users/
+        GET_123.json
+```
+
+**History features:**
+- Tracks when each drift first appeared (`firstSeen`) and last occurred (`lastSeen`)
+- Counts consecutive occurrences for persistent issues
+- Records git commit and branch (if available)
+- Retains last 30 reports by default (configurable via `historyRetention`)
+- Snoozed endpoints are marked in history
+
+**Skip history (for ad-hoc checks):**
+
+```bash
+mockifyer-drift-check --no-history
+```
+
+---
+
+## Per-Endpoint Configuration
+
+Configure drift detection per endpoint or pattern in `mockifyer.drift.json`:
+
+```json
+{
+  "scenario": "drift-watch",
+  "endpointConfig": {
+    "GET /api/users": {
+      "severity": "critical",
+      "ignorePaths": ["lastLoginAt", "createdAt"]
+    },
+    "POST /api/orders": {
+      "severity": "normal",
+      "ignorePaths": ["orderNumber", "timestamp"]
+    },
+    "GET /api/trips/*": {
+      "severity": "critical",
+      "ignorePaths": ["estimatedArrival"]
+    }
+  }
+}
+```
+
+**Severity levels:**
+- `critical` — Breaking changes fail CI (exit 1)
+- `normal` — Warnings only (unless `--fail-on-warnings`)
+
+**Pattern matching:** Use `*` wildcards in paths (e.g., `/api/trips/*` matches `/api/trips/123`, `/api/trips/456`, etc.)
+
+---
+
+## Management Commands
+
+### Accept Drift (Re-record)
+
+When drift is expected (API update), accept it by re-fetching the live endpoint:
+
+```bash
+# Accept one endpoint
+mockifyer-drift-check --accept "GET /api/users/123"
+
+# Accept all warnings (non-breaking changes only)
+mockifyer-drift-check --accept-all-warnings
+```
+
+This:
+- Fetches the latest response from the live API
+- Updates the mock file's `response.status` and `response.data`
+- Preserves all other mock fields (request, metadata, etc.)
+- Writes a minimal git diff (only response changes)
+
+**Review before committing:** Always review the diff to ensure changes are intentional.
+
+---
+
+### Ignore Fields
+
+Add an ignore rule for a specific endpoint:
+
+```bash
+mockifyer-drift-check --ignore-field "GET /api/users/123" "lastLoginAt"
+```
+
+This appends the ignore path to `mockifyer.drift.json`:
+
+```json
+{
+  "endpointConfig": {
+    "GET /api/users/123": {
+      "ignorePaths": ["lastLoginAt"]
+    }
+  }
+}
+```
+
+---
+
+### Snooze Endpoints
+
+Acknowledge known drift and suppress warnings for N days:
+
+```bash
+# Snooze for 7 days (default)
+mockifyer-drift-check --snooze "GET /api/users/123"
+
+# Snooze for 30 days
+mockifyer-drift-check --snooze "GET /api/users/123" --days 30
+```
+
+Snoozed endpoints:
+- Are marked in history (`snoozedUntil`)
+- Don't fail CI during the snooze period
+- Appear as "snoozed" in reports
+- Expire automatically after the snooze period
+
+Use snooze when:
+- Drift is known and planned (e.g., API migration in progress)
+- You need time to update mocks manually
+- Endpoint is temporarily unreliable
+
+---
 
 ## Optional: Opt-in Test (Gated by Env Var)
 
@@ -145,7 +280,18 @@ DRIFT_CHECK=1 npm test
 | `-c, --concurrency <n>` | Max concurrent requests | `5` |
 | `--timeout <ms>` | Request timeout | `10000` |
 | `--delay <ms>` | Delay between request batches | `100` |
+| `--no-history` | Skip writing history (for ad-hoc checks) | `false` |
 | `--json` | Output JSON report | `false` |
+
+### Management Commands
+
+| Command | Description |
+|---------|-------------|
+| `--accept <method path>` | Re-fetch live endpoint and update mock |
+| `--accept-all-warnings` | Accept all endpoints with warnings only |
+| `--ignore-field <endpoint> <path>` | Add ignore rule for specific endpoint |
+| `--snooze <method path>` | Snooze endpoint drift for N days |
+| `--days <n>` | Days to snooze (use with `--snooze`, default: 7) |
 
 ## Config File (Optional)
 
@@ -155,7 +301,7 @@ Store drift check settings in `mockifyer.drift.json` or `package.json`:
 
 ```json
 {
-  "scenario": "production",
+  "scenario": "drift-watch",
   "baseUrl": "https://api.example.com",
   "headers": {
     "Authorization": "Bearer ${API_TOKEN}"
@@ -163,7 +309,18 @@ Store drift check settings in `mockifyer.drift.json` or `package.json`:
   "ignorePaths": ["timestamp", "meta.requestId"],
   "failOnWarnings": false,
   "concurrency": 10,
-  "timeoutMs": 15000
+  "timeoutMs": 15000,
+  "historyRetention": 30,
+  "endpointConfig": {
+    "GET /api/users": {
+      "severity": "critical",
+      "ignorePaths": ["lastLoginAt"]
+    },
+    "GET /api/trips/*": {
+      "severity": "critical",
+      "ignorePaths": ["estimatedArrival"]
+    }
+  }
 }
 ```
 
@@ -174,9 +331,16 @@ Store drift check settings in `mockifyer.drift.json` or `package.json`:
   "name": "my-app",
   "mockifyer": {
     "drift": {
-      "scenario": "production",
+      "scenario": "drift-watch",
       "baseUrl": "https://api.example.com",
-      "ignorePaths": ["timestamp", "meta.requestId"]
+      "ignorePaths": ["timestamp", "meta.requestId"],
+      "historyRetention": 30,
+      "endpointConfig": {
+        "GET /api/users": {
+          "severity": "critical",
+          "ignorePaths": ["lastLoginAt"]
+        }
+      }
     }
   }
 }
@@ -304,10 +468,18 @@ mockifyer-drift-check --ignore-path meta
 Use drift check in your own scripts:
 
 ```typescript
-import { checkDrift } from '@sgedda/mockifyer-core/utils/drift';
+import {
+  checkDrift,
+  acceptDrift,
+  acceptAllWarnings,
+  snoozeEndpoint,
+  addIgnoreField,
+  loadDriftHistory,
+} from '@sgedda/mockifyer-core/utils/drift';
 
+// Check for drift
 const report = await checkDrift({
-  scenario: 'production',
+  scenario: 'drift-watch',
   mockDataPath: './mock-data',
   driftOptions: {
     baseUrl: 'https://api.example.com',
@@ -316,6 +488,8 @@ const report = await checkDrift({
     },
     ignorePaths: ['timestamp', 'meta.requestId'],
     failOnWarnings: false,
+    noHistory: false,
+    historyRetention: 30,
   },
 });
 
@@ -324,6 +498,50 @@ console.log(report.summary);
 if (report.breakingDriftCount > 0) {
   console.error('Breaking changes detected!');
   process.exit(1);
+}
+
+// Accept one endpoint's drift
+const acceptResult = await acceptDrift({
+  method: 'GET',
+  path: '/api/users/123',
+  mockDataPath: './mock-data',
+  scenario: 'drift-watch',
+  driftOptions: {
+    baseUrl: 'https://api.example.com',
+    headers: { 'Authorization': `Bearer ${process.env.API_TOKEN}` },
+  },
+});
+
+// Accept all warnings
+const acceptAllResult = await acceptAllWarnings({
+  mockDataPath: './mock-data',
+  scenario: 'drift-watch',
+  driftOptions: {
+    baseUrl: 'https://api.example.com',
+  },
+});
+
+// Snooze an endpoint
+const snoozeResult = await snoozeEndpoint({
+  method: 'GET',
+  path: '/api/users/123',
+  days: 30,
+  mockDataPath: './mock-data',
+  scenario: 'drift-watch',
+});
+
+// Add ignore field
+const ignoreResult = await addIgnoreField({
+  endpoint: 'GET /api/users/123',
+  jsonPath: 'lastLoginAt',
+  configPath: 'mockifyer.drift.json',
+});
+
+// Load history
+const history = loadDriftHistory('./mock-data', 'drift-watch');
+if (history) {
+  console.log(`Last check: ${history.timestamp}`);
+  console.log(`Git commit: ${history.gitCommit}`);
 }
 ```
 
