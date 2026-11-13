@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.10.194 / 1.5.97] - 2026-11-13
+
+### Added
+- **Dashboard**: Drift detection tab with configuration, execution, and review workflow
+- **Core**: `./utils/drift` export for programmatic drift detection API
+- **Core**: `mockifyer-drift-check` CLI tool for CI/CD integration
+
 ## [1.4.0] - 2025-11-23
 
 ### Added
