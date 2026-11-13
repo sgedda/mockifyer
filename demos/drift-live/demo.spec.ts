@@ -91,7 +91,7 @@ async function setApiBadge(page: Page, version: 'v1' | 'v2') {
 /**
  * Show large centered overlay with v1 vs v2 API diff
  */
-async function showApiDiffOverlay(page: Page, durationMs = 4000) {
+async function showApiDiffOverlay(page: Page, durationMs = 5000) {
   await page.evaluate((duration) => {
     const overlay = document.createElement('div');
     overlay.id = 'api-diff-overlay';
@@ -120,34 +120,34 @@ async function showApiDiffOverlay(page: Page, durationMs = 4000) {
     });
 
     panel.innerHTML = `
-      <h2 style="margin: 0 0 24px 0; font-size: 24px; font-weight: 700; color: #111;">
+      <h2 style="margin: 0 0 24px 0; font-size: 24px; font-weight: 700; color: #111827;">
         Live API changed: v1 → v2
       </h2>
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; font-family: monospace; font-size: 13px;">
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; font-family: monospace; font-size: 15px;">
         <div>
-          <h3 style="margin: 0 0 12px 0; font-size: 14px; font-weight: 600; color: #059669;">v1 Response</h3>
-          <pre style="margin: 0; padding: 16px; background: #f0fdf4; border: 2px solid #059669; border-radius: 6px; overflow-x: auto; line-height: 1.6;">{
+          <h3 style="margin: 0 0 12px 0; font-size: 15px; font-weight: 600; color: #059669;">v1 Response</h3>
+          <pre style="margin: 0; padding: 16px; background: #f9fafb; border: 2px solid #059669; border-radius: 6px; overflow-x: auto; line-height: 1.8; color: #374151;">{
   "id": "TRP-001",
   "destination": "Paris",
   "duration": 5,
-  <span style="background: #fecaca; padding: 2px 4px; border-radius: 3px;">"passengers": 2</span>,
-  <span style="background: #fecaca; padding: 2px 4px; border-radius: 3px;">"departureDate": "2026-12-01"</span>
+  <span style="background: #fecaca; color: #991b1b; padding: 2px 4px; border-radius: 3px; font-weight: 600;">"passengers": 2</span>,
+  <span style="background: #fecaca; color: #991b1b; padding: 2px 4px; border-radius: 3px; font-weight: 600;">"departureDate": "2026-12-01"</span>
 }</pre>
         </div>
         <div>
-          <h3 style="margin: 0 0 12px 0; font-size: 14px; font-weight: 600; color: #dc2626;">v2 Response</h3>
-          <pre style="margin: 0; padding: 16px; background: #fef2f2; border: 2px solid #dc2626; border-radius: 6px; overflow-x: auto; line-height: 1.6;">{
+          <h3 style="margin: 0 0 12px 0; font-size: 15px; font-weight: 600; color: #dc2626;">v2 Response</h3>
+          <pre style="margin: 0; padding: 16px; background: #f9fafb; border: 2px solid #dc2626; border-radius: 6px; overflow-x: auto; line-height: 1.8; color: #374151;">{
   "id": "TRP-001",
   "destination": "Paris",
   "duration": 5,
-  <span style="background: #bbf7d0; padding: 2px 4px; border-radius: 3px;">"passengers": "2"</span>,
-  <span style="background: #bbf7d0; padding: 2px 4px; border-radius: 3px;">"departsAt": "2026-12-01"</span>,
-  <span style="background: #bbf7d0; padding: 2px 4px; border-radius: 3px;">"class": "economy"</span>
+  <span style="background: #bbf7d0; color: #166534; padding: 2px 4px; border-radius: 3px; font-weight: 600;">"passengers": "2"</span>,
+  <span style="background: #bbf7d0; color: #166534; padding: 2px 4px; border-radius: 3px; font-weight: 600;">"departsAt": "2026-12-01"</span>,
+  <span style="background: #bbf7d0; color: #166534; padding: 2px 4px; border-radius: 3px; font-weight: 600;">"class": "economy"</span>
 }</pre>
         </div>
       </div>
       <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e5e7eb; color: #6b7280; font-size: 14px;">
-        <strong>Breaking changes:</strong> Field renamed, type changed, new required field
+        <strong style="color: #111827;">Breaking changes:</strong> Field renamed, type changed, new required field
       </div>
     `;
 
@@ -444,7 +444,7 @@ test.describe('Drift Detection Demo', () => {
     // Update badge to v2 and show large diff overlay
     await setApiBadge(page, 'v2');
     await page.waitForTimeout(500);
-    await showApiDiffOverlay(page, 4000);
+    await showApiDiffOverlay(page, 5000);
 
     // Step 4: Run check against v2
     await showCaption(page, 'Running drift check against v2...', 1500);
