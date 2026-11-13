@@ -1,9 +1,0 @@
-{
-  "endpointConfig": {
-    "GET /users/123": {
-      "ignorePaths": [
-        "email"
-      ]
-    }
-  }
-}

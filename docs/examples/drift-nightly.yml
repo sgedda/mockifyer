@@ -14,6 +14,9 @@ on:
 jobs:
   drift-check:
     runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
     
     steps:
       - name: Checkout repository
@@ -77,7 +80,7 @@ jobs:
         id: issue_body
         if: always() && steps.parse.outputs.has_drift != 'no'
         run: |
-          cat > issue-body.md << 'EOF'
+          cat > issue-body.md << EOF
           ## API Drift Detected
           
           **Summary:** ${{ steps.parse.outputs.summary }}
@@ -92,14 +95,14 @@ jobs:
           
           EOF
           
-          # Extract drifted endpoints
-          jq -r '.mockReports[] | select(.hasDrift == true) | 
+          # Extract drifted endpoints grouped by endpoint
+          jq -r '[.mockReports[] | select(.hasDrift == true)] | map(
             "#### \(.method) `\(.url)`\n\n" +
-            if .hasBreakingDrift then "**Status:** 🚨 Breaking\n\n" else "**Status:** ⚠️  Warning\n\n" end +
+            (if .hasBreakingDrift then "**Status:** 🚨 Breaking\n\n" else "**Status:** ⚠️  Warning\n\n" end) +
             "**Issues:**\n" +
-            (.issues[] | "- `\(.path)`: \(.message)\n") +
-            "\n**Accept command:**\n```bash\nnpx mockifyer-drift-check --accept \"\(.method) \(.url | split("?")[0])\"\n```\n\n---\n\n"
-          ' drift-report.json >> issue-body.md || echo "Failed to parse endpoints" >> issue-body.md
+            ([.issues[] | "- `\(.path)`: \(.message)"] | join("\n")) +
+            "\n\n**Accept command:**\n```bash\nnpx mockifyer-drift-check --accept \"\(.method) \(.url | split("?")[0] | sub("^https?://[^/]+"; ""))\"\n```\n\n---\n"
+          ) | join("\n")' drift-report.json >> issue-body.md || echo "Failed to parse endpoints" >> issue-body.md
           
           # Add instructions
           cat >> issue-body.md << 'EOF'
@@ -134,15 +137,10 @@ jobs:
           
           _This issue is automatically created/updated by the [API Drift Check workflow](.github/workflows/drift-check.yml)._
           EOF
-          
-          # Save for issue creation
-          echo "body<<EOF" >> $GITHUB_OUTPUT
-          cat issue-body.md >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
       
       - name: Find existing drift issue
         id: find_issue
-        if: always() && steps.parse.outputs.has_drift != 'no'
+        if: always()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -159,25 +157,46 @@ jobs:
             echo "exists=false" >> $GITHUB_OUTPUT
           fi
       
+      - name: Ensure api-drift label exists
+        if: always() && steps.parse.outputs.has_drift != 'no'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh label create "api-drift" \
+            --description "API contract drift detected" \
+            --color "d73a4a" || true
+      
       - name: Create or update drift issue
-        if: always() && steps.parse.outputs.has_drift == 'breaking'
+        if: always() && steps.parse.outputs.has_drift != 'no'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [ "${{ steps.find_issue.outputs.exists }}" = "true" ]; then
             # Update existing issue
+            title="🚨 API Drift: ${{ steps.parse.outputs.breaking }} breaking changes, ${{ steps.parse.outputs.warnings }} warnings"
+            if [ "${{ steps.parse.outputs.has_drift }}" = "breaking" ]; then
+              title="🚨 API Drift: ${{ steps.parse.outputs.breaking }} breaking changes"
+            else
+              title="⚠️  API Drift: ${{ steps.parse.outputs.warnings }} warnings"
+            fi
+            
             gh issue edit ${{ steps.find_issue.outputs.issue_number }} \
-              --title "🚨 API Drift: ${{ steps.parse.outputs.breaking }} breaking changes" \
-              --body "${{ steps.issue_body.outputs.body }}"
+              --title "$title" \
+              --body-file issue-body.md
             
             # Add a comment
             gh issue comment ${{ steps.find_issue.outputs.issue_number }} \
               --body "Updated: ${{ steps.parse.outputs.summary }} (run #${{ github.run_number }})"
           else
             # Create new issue
+            title="🚨 API Drift: ${{ steps.parse.outputs.breaking }} breaking changes"
+            if [ "${{ steps.parse.outputs.has_drift }}" = "warnings" ]; then
+              title="⚠️  API Drift: ${{ steps.parse.outputs.warnings }} warnings"
+            fi
+            
             gh issue create \
-              --title "🚨 API Drift: ${{ steps.parse.outputs.breaking }} breaking changes" \
-              --body "${{ steps.issue_body.outputs.body }}" \
+              --title "$title" \
+              --body-file issue-body.md \
               --label "api-drift"
           fi
       

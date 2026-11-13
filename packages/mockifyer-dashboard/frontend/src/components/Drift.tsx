@@ -323,6 +323,12 @@ export default function Drift({ scenario }: DriftProps) {
         await loadDriftData()
         setShowSnoozeDialog(false)
         setSelectedEndpoint(null)
+      } else {
+        toast({
+          title: 'Failed to snooze',
+          description: result.message || 'An error occurred',
+          variant: 'destructive',
+        })
       }
     } catch (error) {
       toast({

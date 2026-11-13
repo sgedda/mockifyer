@@ -251,11 +251,13 @@ describe('Drift Dashboard Routes', () => {
         .send({
           endpoint: 'GET /users/123',
           jsonPath: 'email',
+          configPath,
         })
         .expect(200);
 
       expect(response.body.success).toBe(true);
       expect(response.body.message).toContain('Added ignore path');
+      expect(fs.existsSync(configPath)).toBe(true);
     });
   });
 
