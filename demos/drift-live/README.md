@@ -4,29 +4,34 @@ A reproducible demonstration of Mockifyer's drift detection, showing how to dete
 
 ## What This Demo Shows
 
-This demo simulates a complete drift detection workflow:
+This demo simulates a complete drift detection workflow using **a single endpoint** to make the story clear:
 
-1. **Initial state**: Drift check against v1 API → all green ✓
-2. **API changes**: Backend switches to v2 with breaking changes
-3. **Drift detected**: Check shows breaking drift
-4. **Resolution**: Accept live response for affected endpoints
-5. **Verification**: Re-run check → all green ✓
+1. **Initial state**: Drift check against v1 API → `GET /api/trips` passes ✓
+2. **API changes**: The **same endpoint** (`GET /api/trips`) switches to v2 schema
+3. **Drift detected**: Check shows breaking drift on `/api/trips`
+4. **Resolution**: Accept live v2 response for `/api/trips`
+5. **Verification**: Re-run check → `/api/trips` in sync with v2 ✓
+
+**Key insight**: The video shows drift detection for the **same URL** with **changed response data**, not two different API calls.
 
 ## Breaking Changes (v1 → v2)
 
-The demo backend simulates real API evolution:
+### Dashboard Video Demo: `GET /api/trips`
 
-| Endpoint | Change | Type | Severity |
-|----------|--------|------|----------|
-| `/api/trips` | `departureDate` → `departsAt` | Field renamed | Breaking |
-| `/api/trips` | `passengers`: number → string | Type changed | Breaking |
-| `/api/trips` | `class` added | New field | Warning |
-| `/api/booking/:id` | `confirmationDate` → `confirmedAt` | Field renamed | Breaking |
-| `/api/booking/:id` | `price`: number → string | Type changed | Breaking |
-| `/api/booking/:id` | `currency` added | New field | Warning |
+The video focuses on one endpoint with minimal, readable changes:
+
+| Change | v1 | v2 | Severity |
+|--------|----|----|----------|
+| Field removed | `"departureDate": "2026-12-01"` | _(removed)_ | Breaking |
+| Field added | _(none)_ | `"departsAt": "2026-12-01"` | Breaking |
+| Type changed | `"passengers": 2` | `"passengers": "2"` | Breaking |
 
 **Volatile fields** (ignored via `mockifyer.drift.json`):
-- `trips[].id`, `booking.bookingId`, `timestamp`
+- `trips[].id`, `timestamp`
+
+### CLI Demo: `GET /api/booking/:id` (Additional Example)
+
+The CLI demo also includes a booking endpoint with warning-only drift for demonstration purposes. See `cli-demo.sh` for the full workflow.
 
 ## Quick Start - CLI Demo
 
@@ -87,23 +92,23 @@ npx mockifyer-drift-check --mock-data-path ./mock-data
 demos/drift-live/
 ├── backend.js                           # Express server (v1/v2 modes)
 ├── cli-demo.sh                          # Automated CLI workflow
-├── demo.spec.ts                         # Playwright dashboard demo
+├── demo.spec.ts                         # Playwright dashboard demo (trips only)
 ├── playwright.config.ts                 # Playwright configuration
 ├── mockifyer.drift.json                 # Drift check configuration
 ├── package.json                         # Dependencies and scripts
-├── drift-workflow-demo.mp4              # Recorded dashboard video
-├── drift-workflow-demo.gif              # Recorded dashboard GIF
+├── drift-workflow-demo.mp4              # Recorded dashboard video (806KB)
+├── drift-workflow-demo.gif              # Recorded dashboard GIF (1.8MB)
 ├── mock-data/
 │   └── drift-watch/                     # Recorded mocks (v1 baseline)
 │       ├── domain-path-rules.json
 │       └── localhost:4100/
 │           └── api/
-│               ├── trips/
-│               │   └── GET_2026-11-10_12-00-00.json
-│               └── booking/
-│                   └── GET_abc123_2026-11-10_12-00-00.json
+│               └── trips/
+│                   └── GET_2026-11-10_12-00-00.json  # v1: departureDate, passengers as number
 └── README.md                            # This file
 ```
+
+**Note**: The booking endpoint mock is used by `cli-demo.sh` but not in the Playwright video to keep the story focused on one endpoint.
 
 ## Configuration
 

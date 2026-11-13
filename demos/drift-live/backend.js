@@ -2,11 +2,13 @@
  * Tiny backend for drift detection demo
  * Modes: v1 (stable), v2 (breaking changes)
  *
- * Changes in v2:
- * - trips[].departureDate renamed to departsAt (breaking)
- * - trips[].passengers changes from number to string (breaking)
- * - trips[].class added (new field, warning)
- * - id and timestamp stay volatile (must be ignored)
+ * Video demo (trips endpoint):
+ * - Remove: departureDate field
+ * - Add: departsAt field (same date, renamed)
+ * - Change: passengers from number to string (breaking type change)
+ *
+ * CLI demo (booking endpoint):
+ * - Additional warning-only drift example
  */
 
 const express = require('express');
@@ -38,18 +40,18 @@ app.get('/api/trips', (req, res) => {
 
   let trips;
   if (VERSION === 'v2') {
-    // v2: breaking changes
+    // v2: breaking changes (field renamed + type changed)
     trips = baseTrips.map((trip) => ({
       ...trip,
       departsAt: '2026-12-01', // renamed from departureDate
       passengers: trip.passengers.toString(), // type change: number → string
-      class: 'economy', // new field
     }));
   } else {
     // v1: original schema
     trips = baseTrips.map((trip) => ({
       ...trip,
       departureDate: '2026-12-01',
+      passengers: trip.passengers, // keep as number
     }));
   }
 

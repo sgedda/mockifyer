@@ -120,34 +120,38 @@ async function showApiDiffOverlay(page: Page, durationMs = 5000) {
     });
 
     panel.innerHTML = `
-      <h2 style="margin: 0 0 24px 0; font-size: 24px; font-weight: 700; color: #111827;">
-        Live API changed: v1 → v2
-      </h2>
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; font-family: monospace; font-size: 15px;">
-        <div>
-          <h3 style="margin: 0 0 12px 0; font-size: 15px; font-weight: 600; color: #059669;">v1 Response</h3>
-          <pre style="margin: 0; padding: 16px; background: #f9fafb; border: 2px solid #059669; border-radius: 6px; overflow-x: auto; line-height: 1.8; color: #374151;">{
-  "id": "TRP-001",
-  "destination": "Paris",
-  "duration": 5,
-  <span style="background: #fecaca; color: #991b1b; padding: 2px 4px; border-radius: 3px; font-weight: 600;">"passengers": 2</span>,
-  <span style="background: #fecaca; color: #991b1b; padding: 2px 4px; border-radius: 3px; font-weight: 600;">"departureDate": "2026-12-01"</span>
-}</pre>
+      <div style="text-align: center; margin-bottom: 32px;">
+        <div style="display: inline-block; padding: 12px 24px; background: #f3f4f6; border-radius: 8px; font-family: monospace; font-size: 18px; font-weight: 600; color: #111827;">
+          GET /api/trips
         </div>
-        <div>
-          <h3 style="margin: 0 0 12px 0; font-size: 15px; font-weight: 600; color: #dc2626;">v2 Response</h3>
-          <pre style="margin: 0; padding: 16px; background: #f9fafb; border: 2px solid #dc2626; border-radius: 6px; overflow-x: auto; line-height: 1.8; color: #374151;">{
-  "id": "TRP-001",
-  "destination": "Paris",
-  "duration": 5,
-  <span style="background: #bbf7d0; color: #166534; padding: 2px 4px; border-radius: 3px; font-weight: 600;">"passengers": "2"</span>,
-  <span style="background: #bbf7d0; color: #166534; padding: 2px 4px; border-radius: 3px; font-weight: 600;">"departsAt": "2026-12-01"</span>,
-  <span style="background: #bbf7d0; color: #166534; padding: 2px 4px; border-radius: 3px; font-weight: 600;">"class": "economy"</span>
-}</pre>
-        </div>
+        <h2 style="margin: 16px 0 0 0; font-size: 20px; font-weight: 600; color: #6b7280;">
+          Live API response changed
+        </h2>
       </div>
-      <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e5e7eb; color: #6b7280; font-size: 14px;">
-        <strong style="color: #111827;">Breaking changes:</strong> Field renamed, type changed, new required field
+      
+      <div style="background: #fafafa; border-radius: 8px; padding: 24px; font-family: monospace; font-size: 16px; line-height: 2.2;">
+        <div style="color: #6b7280; margin-bottom: 12px; font-size: 14px; font-weight: 600;">
+          trips[0]:
+        </div>
+        
+        <div style="margin-bottom: 8px;">
+          <span style="background: #dc2626; color: white; padding: 4px 10px; border-radius: 4px; font-weight: 600;">− removed</span>
+          <span style="color: #374151; margin-left: 12px;">"departureDate": "2026-12-01"</span>
+        </div>
+        
+        <div style="margin-bottom: 8px;">
+          <span style="background: #059669; color: white; padding: 4px 10px; border-radius: 4px; font-weight: 600;">+ added</span>
+          <span style="color: #374151; margin-left: 12px;">"departsAt": "2026-12-01"</span>
+        </div>
+        
+        <div style="margin-bottom: 8px;">
+          <span style="background: #f59e0b; color: white; padding: 4px 10px; border-radius: 4px; font-weight: 600;">~ changed</span>
+          <span style="color: #374151; margin-left: 12px;">"passengers": <span style="background: #fecaca; color: #991b1b; padding: 2px 6px; border-radius: 3px; font-weight: 600;">2</span> → <span style="background: #bbf7d0; color: #166534; padding: 2px 6px; border-radius: 3px; font-weight: 600;">"2"</span></span>
+        </div>
+        
+        <div style="margin-top: 20px; padding-top: 20px; border-top: 2px solid #e5e7eb; color: #dc2626; font-size: 15px; font-weight: 600;">
+          ⚠ Breaking: Field renamed + type changed
+        </div>
       </div>
     `;
 
@@ -299,6 +303,14 @@ test.describe('Drift Detection Demo', () => {
     fs.mkdirSync(BACKUP_DIR, { recursive: true });
     copyDir(FIXTURE_DIR, BACKUP_DIR);
     console.log('Backed up baseline fixtures');
+    
+    // Remove booking mock for dashboard video (single-endpoint story)
+    // It stays in git for cli-demo.sh and is restored by afterAll
+    const bookingDir = path.join(FIXTURE_DIR, 'api/booking');
+    if (fs.existsSync(bookingDir)) {
+      fs.rmSync(bookingDir, { recursive: true });
+      console.log('Removed booking mock (video shows trips only)');
+    }
     
     console.log('Starting backend v1...');
     await startBackend('v1');
@@ -484,7 +496,7 @@ test.describe('Drift Detection Demo', () => {
     console.log('Page contains "Accept Live":', pageText?.includes('Accept Live'));
     console.log('Page contains "Run Check Now":', pageText?.includes('Run Check Now'));
     
-    await showCaption(page, '⚠️ Drift detected: 1 breaking + 1 warning', 2500);
+    await showCaption(page, '⚠️ Breaking drift detected in /api/trips', 2500);
     console.log('✗ Drift detected');
     await page.waitForTimeout(3000);
 
@@ -492,8 +504,8 @@ test.describe('Drift Detection Demo', () => {
     await showCaption(page, 'Accepting breaking endpoint (trips)...', 2000);
     console.log('Accepting drift...');
     
-    // Use exact data-testid to target trips endpoint Accept button
-    const tripsAcceptButton = page.locator('[data-testid="accept-live-GET-http---localhost-4100-api-trips"]');
+    // Use exact data-testid to target trips endpoint Accept button (use .first() in case of multiple)
+    const tripsAcceptButton = page.locator('[data-testid="accept-live-GET-http---localhost-4100-api-trips"]').first();
     await expect(tripsAcceptButton).toBeVisible({ timeout: 5000 });
     console.log('Found trips Accept Live button with data-testid');
     await tripsAcceptButton.click();
@@ -507,16 +519,6 @@ test.describe('Drift Detection Demo', () => {
     // Wait for success
     await page.waitForTimeout(2000);
     console.log('✓ Drift accepted');
-
-    // Step 5b: Accept all remaining warnings (booking endpoint)
-    await showCaption(page, 'Accepting warnings (booking endpoint)...', 2000);
-    console.log('Accepting all warnings...');
-    const acceptAllWarningsButton = page.locator('button:has-text("Accept All Warnings")');
-    if (await acceptAllWarningsButton.isVisible().catch(() => false)) {
-      await acceptAllWarningsButton.click();
-      await page.waitForTimeout(2000);
-      console.log('✓ All warnings accepted');
-    }
 
     // Step 6: Run final check
     await showCaption(page, 'Final check: verify all drift resolved', 2000);
@@ -539,7 +541,7 @@ test.describe('Drift Detection Demo', () => {
     await page.waitForTimeout(1500);
 
     // Final frame
-    await showCaption(page, '✅ All endpoints in sync with v2 API!', 2500);
+    await showCaption(page, '✅ Endpoint in sync with v2 API!', 2500);
     await page.waitForTimeout(1500);
 
     console.log('Demo completed successfully!');
