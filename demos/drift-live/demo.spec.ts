@@ -11,9 +11,9 @@ let backendProcess: ChildProcess | null = null;
 let dashboardProcess: ChildProcess | null = null;
 
 /**
- * Add on-screen caption overlay (banner at top of viewport)
+ * Add on-screen caption overlay for demo clarity
  */
-async function showCaption(page: Page, text: string, durationMs = 2000) {
+async function showCaption(page: Page, text: string, durationMs = 3000) {
   try {
     await page.evaluate(({ text, duration }) => {
       const existing = document.getElementById('demo-caption');
@@ -24,28 +24,30 @@ async function showCaption(page: Page, text: string, durationMs = 2000) {
       banner.textContent = text;
       Object.assign(banner.style, {
         position: 'fixed',
-        top: '0',
-        left: '0',
-        right: '0',
-        backgroundColor: '#1e40af',
+        top: '20px',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        backgroundColor: 'rgba(30, 64, 175, 0.95)',
         color: 'white',
-        padding: '10px 16px',
-        fontSize: '14px',
+        padding: '12px 24px',
+        fontSize: '16px',
         fontWeight: '600',
         textAlign: 'center',
-        zIndex: '9999',
-        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
+        zIndex: '999999',
+        borderRadius: '8px',
+        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+        maxWidth: '80%',
       });
       document.body.appendChild(banner);
 
       setTimeout(() => {
-        banner.style.transition = 'opacity 0.3s';
+        banner.style.transition = 'opacity 0.5s';
         banner.style.opacity = '0';
-        setTimeout(() => banner.remove(), 300);
+        setTimeout(() => banner.remove(), 500);
       }, duration);
     }, { text, duration: durationMs });
 
-    await page.waitForTimeout(durationMs + 300);
+    await page.waitForTimeout(durationMs + 500);
   } catch (e) {
     console.log('[caption error]', e);
   }
@@ -70,7 +72,7 @@ function startBackend(version: 'v1' | 'v2'): Promise<void> {
       console.log(`[backend ${version}]`, output.trim());
       if (output.includes('running on') && !started) {
         started = true;
-        setTimeout(() => resolve(), 500);
+        setTimeout(() => resolve(), 1000);
       }
     });
 
@@ -82,7 +84,7 @@ function startBackend(version: 'v1' | 'v2'): Promise<void> {
 
     setTimeout(() => {
       if (!started) reject(new Error(`Backend ${version} failed to start`));
-    }, 5000);
+    }, 10000);
   });
 }
 
@@ -92,7 +94,7 @@ function startDashboard(): Promise<void> {
     const mockDataPath = path.join(__dirname, 'mock-data');
 
     if (!fs.existsSync(dashboardCli)) {
-      return reject(new Error(`Dashboard CLI not found at ${dashboardCli}. Run: cd packages/mockifyer-dashboard && npx tsc`));
+      return reject(new Error(`Dashboard CLI not found at ${dashboardCli}`));
     }
 
     dashboardProcess = spawn('node', [
@@ -111,9 +113,9 @@ function startDashboard(): Promise<void> {
     dashboardProcess.stdout?.on('data', (data) => {
       const output = data.toString();
       console.log('[dashboard]', output.trim());
-      if ((output.includes('running') || output.includes('listening')) && !started) {
+      if (output.includes('running') && !started) {
         started = true;
-        setTimeout(() => resolve(), 1000);
+        setTimeout(() => resolve(), 2000);
       }
     });
 
@@ -125,7 +127,7 @@ function startDashboard(): Promise<void> {
 
     setTimeout(() => {
       if (!started) reject(new Error('Dashboard failed to start'));
-    }, 15000);
+    }, 20000);
   });
 }
 
@@ -142,78 +144,147 @@ function stopProcesses() {
 
 test.describe('Drift Detection Demo', () => {
   test.beforeAll(async () => {
+    console.log('Starting backend v1...');
     await startBackend('v1');
+    console.log('Starting dashboard...');
     await startDashboard();
   });
 
   test.afterAll(() => {
+    console.log('Stopping processes...');
     stopProcesses();
   });
 
   test('Full drift detection workflow', async ({ page }) => {
-    test.setTimeout(120_000);
-
-    // Step 1: Open dashboard and navigate to Drift tab
-    console.log('Loading dashboard...');
-    await page.goto(DASHBOARD_URL, { waitUntil: 'networkidle', timeout: 15000 });
-    await page.waitForTimeout(1000);
+    test.setTimeout(180_000);
     
-    await showCaption(page, 'Mockifyer Dashboard - Drift Detection Demo', 2000);
+    // Configure slow motion for better recording visibility
+    await page.context().addInitScript(() => {
+      window._mockifyerDemoMode = true;
+    });
 
-    // Click on Drift link (could be in sidebar or tab)
-    const driftLink = page.locator('a, button').filter({ hasText: /drift/i }).first();
+    // Step 1: Navigate to dashboard and Drift tab
+    await showCaption(page, '📊 Step 1: Opening Drift Tab', 2500);
+    console.log('Navigating to dashboard...');
+    await page.goto(DASHBOARD_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForTimeout(3000); // Give React time to hydrate
+
+    // Click Drift link in navigation
+    const driftLink = page.locator('a').filter({ hasText: /^Drift$/i }).first();
     await driftLink.waitFor({ state: 'visible', timeout: 10000 });
     await driftLink.click();
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(1500);
 
-    // Step 2: Run drift check against v1 (should be all green)
-    await showCaption(page, 'Step 1: Check v1 API - Expect all green', 2000);
+    // Step 2: Run check against v1
+    await showCaption(page, '✓ Step 2: Checking v1 API - Expect All Green', 2500);
+    console.log('Running drift check against v1...');
+    
     const runCheckButton = page.getByRole('button', { name: /run check/i });
     await runCheckButton.waitFor({ state: 'visible', timeout: 5000 });
     await runCheckButton.click();
-
+    
     // Wait for check to complete
-    await page.waitForTimeout(5000);
-
-    // Verify no drift
-    await showCaption(page, '✓ All endpoints match v1', 2000);
+    await page.waitForTimeout(6000);
+    
+    // Verify no drift message
+    await showCaption(page, '✓ All endpoints match v1', 2500);
+    await page.waitForTimeout(1500);
 
     // Step 3: Switch backend to v2
-    console.log('Switching to v2...');
-    await showCaption(page, 'Step 2: Switching API to v2 (breaking changes)', 2000);
+    await showCaption(page, '🔄 Step 3: Switching API to v2 (Breaking Changes)', 2500);
+    console.log('Switching backend to v2...');
     await startBackend('v2');
 
-    // Step 4: Run drift check again
-    await showCaption(page, 'Step 3: Check v2 API - Expect drift detected', 2000);
+    // Step 4: Run check against v2
+    await showCaption(page, '⚠️ Step 4: Checking v2 API - Expect Drift', 2500);
+    console.log('Running drift check against v2...');
     await runCheckButton.click();
-    await page.waitForTimeout(5000);
+    await page.waitForTimeout(6000);
 
-    // Verify drift detected
-    await showCaption(page, '✗ Drift detected! Breaking changes found', 2500);
+    // Show drift detected
+    await showCaption(page, '✗ Drift Detected! Breaking Changes Found', 3000);
     await page.waitForTimeout(2000);
 
-    // Step 5: Accept drift (if buttons are available)
-    const acceptButtons = page.getByRole('button', { name: /accept/i });
-    const buttonCount = await acceptButtons.count();
+    // Step 5: Scroll to see drifted endpoints
+    await showCaption(page, '📋 Step 5: Viewing Drifted Endpoints', 2000);
+    const tripsEndpoint = page.locator('text=/api/trips').first();
+    await tripsEndpoint.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(2000);
+
+    // Step 6: Try to click Ignore Field if available
+    await showCaption(page, '🔧 Step 6: Ignoring Expected New Fields', 2500);
     
-    if (buttonCount > 0) {
-      await showCaption(page, 'Step 4: Accepting drift for critical endpoint', 2000);
-      await acceptButtons.first().click();
+    const ignoreButtons = page.getByRole('button', { name: /ignore field/i });
+    const ignoreCount = await ignoreButtons.count();
+    
+    if (ignoreCount > 0) {
+      console.log('Clicking Ignore Field button...');
+      await ignoreButtons.first().click();
       await page.waitForTimeout(1000);
       
-      // Confirm in dialog if present
-      const confirmButton = page.getByRole('button', { name: /^accept$/i });
-      const confirmVisible = await confirmButton.isVisible().catch(() => false);
-      if (confirmVisible) {
-        await confirmButton.click();
-        await page.waitForTimeout(2000);
+      // Try to select a field and click Add Ignore Rule
+      const fieldSelect = page.locator('select').first();
+      const isSelectVisible = await fieldSelect.isVisible().catch(() => false);
+      
+      if (isSelectVisible) {
+        const options = await fieldSelect.locator('option:not([value=""])').count();
+        if (options > 0) {
+          await fieldSelect.selectOption({ index: 1 });
+          await page.waitForTimeout(500);
+          
+          const addButton = page.getByRole('button', { name: /add ignore/i });
+          await addButton.click();
+          await page.waitForTimeout(1500);
+        }
       }
     }
 
-    // Final caption
-    await showCaption(page, '✓ Demo complete - Drift workflow demonstrated', 2500);
+    // Step 7: Accept drift for critical endpoint
+    await showCaption(page, '✅ Step 7: Accepting Drift (Re-record Live)', 2500);
+    console.log('Accepting drift...');
+    
+    const acceptButtons = page.getByRole('button', { name: /accept live/i });
+    const acceptCount = await acceptButtons.count();
+    
+    if (acceptCount > 0) {
+      await acceptButtons.first().click();
+      await page.waitForTimeout(1000);
+      
+      // Confirm in dialog
+      const confirmButton = page.getByRole('button', { name: /^accept$/i });
+      const isConfirmVisible = await confirmButton.isVisible().catch(() => false);
+      
+      if (isConfirmVisible) {
+        await confirmButton.click();
+        await page.waitForTimeout(2500);
+      }
+    }
+
+    // Step 8: Run check again
+    await showCaption(page, '🔄 Step 8: Verifying Resolution', 2000);
+    console.log('Running final drift check...');
+    await runCheckButton.scrollIntoViewIfNeeded();
+    await runCheckButton.click();
+    await page.waitForTimeout(6000);
+
+    // Final confirmation
+    await showCaption(page, '✓ Demo Complete! Drift Resolved', 3000);
+    await page.waitForTimeout(2000);
+
+    // Step 9: Scroll to history if visible
+    const historySection = page.getByText(/recent drift/i);
+    const hasHistory = await historySection.isVisible().catch(() => false);
+    
+    if (hasHistory) {
+      await showCaption(page, '📜 Step 9: Viewing Drift History', 2000);
+      await historySection.scrollIntoViewIfNeeded();
+      await page.waitForTimeout(2000);
+    }
+
+    // Hold final frame
+    await showCaption(page, '✨ Drift Detection Workflow Complete', 2000);
     await page.waitForTimeout(1500);
 
-    console.log('Demo completed successfully');
+    console.log('Demo completed successfully!');
   });
 });

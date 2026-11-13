@@ -14,21 +14,23 @@
     "data": {
       "trips": [
         {
-          "id": "abc123",
+          "id": "eipo7r",
           "destination": "Paris",
           "duration": 5,
-          "passengers": 2,
-          "departureDate": "2026-12-01"
+          "passengers": "2",
+          "departsAt": "2026-12-01",
+          "class": "economy"
         },
         {
-          "id": "def456",
+          "id": "2pb8cr",
           "destination": "Tokyo",
           "duration": 10,
-          "passengers": 1,
-          "departureDate": "2026-12-01"
+          "passengers": "1",
+          "departsAt": "2026-12-01",
+          "class": "economy"
         }
       ],
-      "timestamp": "2026-11-13T10:00:00.000Z"
+      "timestamp": "2026-11-13T13:21:41.257Z"
     }
   },
   "metadata": {
