@@ -393,6 +393,8 @@ async function checkSingleMock(
     ...options,
     ignorePaths: mergedIgnorePaths,
   };
+  
+  const endpointSeverity = endpointConfig?.severity;
 
   try {
     // Build request URL
@@ -476,14 +478,22 @@ async function checkSingleMock(
         };
       }
 
+      // Downgrade breaking issues to warnings if endpoint severity is 'normal'
+      let finalIssues = issues;
+      if (endpointSeverity === 'normal') {
+        finalIssues = issues.map(issue => 
+          issue.severity === 'breaking' ? { ...issue, severity: 'warning' as const } : issue
+        );
+      }
+
       // Otherwise, report normal drift (empty lists don't hide other issues)
       return {
         method,
         url,
         mockFilePath: filePath,
-        hasDrift: issues.length > 0,
-        hasBreakingDrift: hasBreakingIssues(issues),
-        issues,
+        hasDrift: finalIssues.length > 0,
+        hasBreakingDrift: hasBreakingIssues(finalIssues),
+        issues: finalIssues,
       };
     } finally {
       clearTimeout(timeout);
@@ -645,10 +655,10 @@ function getEndpointConfig(
  * Check if an endpoint key matches a pattern (supports wildcards).
  */
 function matchesPattern(endpointKey: string, pattern: string): boolean {
-  // Convert pattern to regex
-  const regexPattern = pattern
-    .replace(/\*/g, '.*')
-    .replace(/\//g, '\\/');
-  const regex = new RegExp(`^${regexPattern}$`);
+  // Escape regex special characters except *
+  const escapedPattern = pattern
+    .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+    .replace(/\*/g, '[^/]*');
+  const regex = new RegExp(`^${escapedPattern}$`);
   return regex.test(endpointKey);
 }

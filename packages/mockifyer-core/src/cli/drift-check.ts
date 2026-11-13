@@ -221,8 +221,8 @@ async function main() {
       const result = await acceptDrift({
         method,
         path,
-        mockDataPath: args.mockDataPath || './mock-data',
-        scenario: args.scenario || 'default',
+        mockDataPath: args.mockDataPath,
+        scenario: args.scenario,
         driftOptions,
       });
       if (result.success) {
@@ -241,8 +241,8 @@ async function main() {
   if (args.acceptAllWarnings) {
     try {
       const result = await acceptAllWarnings({
-        mockDataPath: args.mockDataPath || './mock-data',
-        scenario: args.scenario || 'default',
+        mockDataPath: args.mockDataPath,
+        scenario: args.scenario,
         driftOptions,
       });
       console.log('');
@@ -287,8 +287,8 @@ async function main() {
         method,
         path,
         days,
-        mockDataPath: args.mockDataPath || './mock-data',
-        scenario: args.scenario || 'default',
+        mockDataPath: args.mockDataPath,
+        scenario: args.scenario,
       });
       if (result.success) {
         console.log(green('✓') + ` ${result.message}`);

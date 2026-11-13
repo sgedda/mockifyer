@@ -14,6 +14,7 @@ import {
   EndpointDriftConfig,
 } from './drift-report';
 import { checkDrift } from './check-drift';
+import { omitProxyUpstreamRequestHeaders } from '../proxy-upstream-headers';
 
 /**
  * Accept drift for one endpoint: re-fetch live and update mock file.
@@ -21,11 +22,28 @@ import { checkDrift } from './check-drift';
 export async function acceptDrift(options: {
   method: string;
   path: string;
-  mockDataPath: string;
-  scenario: string;
+  mockDataPath?: string;
+  scenario?: string;
   driftOptions: DriftCheckOptions;
 }): Promise<{ success: boolean; message: string; filePath?: string }> {
-  const { method, path: urlPath, mockDataPath, scenario, driftOptions } = options;
+  const { method, path: urlPath } = options;
+  
+  const fileConfig = loadDriftConfigForManagement();
+  const scenario = options.scenario ?? fileConfig.scenario ?? 'default';
+  const mockDataPath = options.mockDataPath ?? detectMockDataPath();
+  const driftOptions: DriftCheckOptions = {
+    baseUrl: options.driftOptions?.baseUrl ?? fileConfig.baseUrl,
+    headers: {
+      ...(fileConfig.headers || {}),
+      ...(options.driftOptions?.headers || {}),
+    },
+    ignorePaths: [
+      ...(fileConfig.ignorePaths || []),
+      ...(options.driftOptions?.ignorePaths || []),
+    ],
+    allowUnsafeMethods: options.driftOptions?.allowUnsafeMethods ?? fileConfig.allowUnsafeMethods ?? false,
+    timeoutMs: options.driftOptions?.timeoutMs ?? fileConfig.timeoutMs ?? 10000,
+  };
 
   // Find the mock file
   const mockFile = findMockFile(mockDataPath, scenario, method, urlPath);
@@ -44,13 +62,31 @@ export async function acceptDrift(options: {
     ? rewriteUrl(mockData.request.url, driftOptions.baseUrl)
     : mockData.request.url;
 
+  // Skip non-GET requests unless explicitly allowed
+  if (!driftOptions.allowUnsafeMethods && method.toUpperCase() !== 'GET') {
+    return {
+      success: false,
+      message: `Cannot accept ${method} request without --allow-unsafe-methods flag`,
+    };
+  }
+
   // Make live request
   try {
     const timeoutMs = driftOptions.timeoutMs || 10000;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
+    const sanitizedMockHeaders = omitProxyUpstreamRequestHeaders(mockData.request.headers || {});
+    const filteredHeaders: Record<string, string> = {};
+    for (const [key, value] of Object.entries(sanitizedMockHeaders)) {
+      const lowerKey = key.toLowerCase();
+      if (lowerKey !== 'authorization' && !lowerKey.startsWith('x-mockifyer-')) {
+        filteredHeaders[key] = value;
+      }
+    }
+
     const headers: Record<string, string> = {
+      ...filteredHeaders,
       ...(driftOptions.headers || {}),
     };
 
@@ -73,6 +109,14 @@ export async function acceptDrift(options: {
     });
 
     clearTimeout(timeout);
+
+    // Check for error responses
+    if (!response.ok) {
+      return {
+        success: false,
+        message: `Live API returned error status ${response.status}`,
+      };
+    }
 
     // Parse response body
     const contentType = response.headers.get('content-type') || '';
@@ -112,11 +156,33 @@ export async function acceptDrift(options: {
  * Accept all warnings (non-breaking drift).
  */
 export async function acceptAllWarnings(options: {
-  mockDataPath: string;
-  scenario: string;
+  mockDataPath?: string;
+  scenario?: string;
   driftOptions: DriftCheckOptions;
 }): Promise<{ accepted: number; failed: number; messages: string[] }> {
-  const { mockDataPath, scenario, driftOptions } = options;
+  const fileConfig = loadDriftConfigForManagement();
+  const scenario = options.scenario ?? fileConfig.scenario ?? 'default';
+  const mockDataPath = options.mockDataPath ?? detectMockDataPath();
+  const driftOptions: DriftCheckOptions = {
+    baseUrl: options.driftOptions?.baseUrl ?? fileConfig.baseUrl,
+    headers: {
+      ...(fileConfig.headers || {}),
+      ...(options.driftOptions?.headers || {}),
+    },
+    ignorePaths: [
+      ...(fileConfig.ignorePaths || []),
+      ...(options.driftOptions?.ignorePaths || []),
+    ],
+    allowUnsafeMethods: options.driftOptions?.allowUnsafeMethods ?? fileConfig.allowUnsafeMethods ?? false,
+    failOnWarnings: options.driftOptions?.failOnWarnings ?? fileConfig.failOnWarnings ?? false,
+    concurrency: options.driftOptions?.concurrency ?? fileConfig.concurrency ?? 5,
+    timeoutMs: options.driftOptions?.timeoutMs ?? fileConfig.timeoutMs ?? 10000,
+    delayMs: options.driftOptions?.delayMs ?? fileConfig.delayMs ?? 100,
+    endpointConfig: {
+      ...(fileConfig.endpointConfig || {}),
+      ...(options.driftOptions?.endpointConfig || {}),
+    },
+  };
 
   // Run drift check first
   const report = await checkDrift({
@@ -163,10 +229,14 @@ export async function snoozeEndpoint(options: {
   method: string;
   path: string;
   days: number;
-  mockDataPath: string;
-  scenario: string;
+  mockDataPath?: string;
+  scenario?: string;
 }): Promise<{ success: boolean; message: string; expiresAt: string }> {
-  const { method, path: urlPath, days, mockDataPath, scenario } = options;
+  const { method, path: urlPath, days } = options;
+  
+  const fileConfig = loadDriftConfigForManagement();
+  const scenario = options.scenario ?? fileConfig.scenario ?? 'default';
+  const mockDataPath = options.mockDataPath ?? detectMockDataPath();
 
   const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
 
@@ -193,8 +263,9 @@ export async function snoozeEndpoint(options: {
   // Find the endpoint in the history
   const mockReport = history.mockReports.find((r) => {
     const url = new URL(r.url);
-    const reportPath = url.pathname + url.search;
-    return r.method === method && reportPath === urlPath;
+    const reportPathWithQuery = url.pathname + url.search;
+    const reportPathOnly = url.pathname;
+    return r.method === method && (reportPathWithQuery === urlPath || reportPathOnly === urlPath);
   });
 
   if (!mockReport) {
@@ -230,12 +301,17 @@ export async function addIgnoreField(options: {
 
   let config: any = {};
 
-  // Try to load existing config
+  // Load existing config from both sources and merge
+  const existingConfig = loadDriftConfigForManagement();
+  config = { ...existingConfig };
+
+  // Try to load existing config file
   if (fs.existsSync(configPath)) {
     try {
-      config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      const fileContent = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      config = { ...config, ...fileContent };
     } catch {
-      // Invalid JSON, start fresh
+      // Invalid JSON, keep merged config
     }
   }
 
@@ -432,9 +508,10 @@ function findMockFile(
 
           if (mock.request && mock.response) {
             const mockUrl = new URL(mock.request.url);
-            const mockPath = mockUrl.pathname + mockUrl.search;
+            const mockPathWithQuery = mockUrl.pathname + mockUrl.search;
+            const mockPathOnly = mockUrl.pathname;
 
-            if (mock.request.method === method && mockPath === urlPath) {
+            if (mock.request.method === method && (mockPathWithQuery === urlPath || mockPathOnly === urlPath)) {
               return fullPath;
             }
           }
@@ -466,4 +543,71 @@ function rewriteUrl(originalUrl: string, baseUrl: string): string {
   } catch {
     return originalUrl;
   }
+}
+
+interface DriftConfig {
+  scenario?: string;
+  baseUrl?: string;
+  headers?: Record<string, string>;
+  ignorePaths?: string[];
+  failOnWarnings?: boolean;
+  allowUnsafeMethods?: boolean;
+  concurrency?: number;
+  timeoutMs?: number;
+  delayMs?: number;
+  endpointConfig?: Record<string, EndpointDriftConfig>;
+  historyRetention?: number;
+  noHistory?: boolean;
+}
+
+/**
+ * Load drift config from file if it exists.
+ */
+function loadDriftConfigForManagement(): DriftConfig {
+  let config: DriftConfig = {};
+  
+  // Try mockifyer.drift.json
+  if (fs.existsSync('mockifyer.drift.json')) {
+    try {
+      const content = fs.readFileSync('mockifyer.drift.json', 'utf-8');
+      config = { ...config, ...JSON.parse(content) };
+    } catch {
+      // Invalid JSON, ignore
+    }
+  }
+
+  // Try package.json with mockifyer.drift section
+  if (fs.existsSync('package.json')) {
+    try {
+      const content = fs.readFileSync('package.json', 'utf-8');
+      const pkg = JSON.parse(content);
+      if (pkg.mockifyer?.drift) {
+        config = { ...config, ...pkg.mockifyer.drift };
+      }
+    } catch {
+      // Invalid JSON, ignore
+    }
+  }
+
+  return config;
+}
+
+/**
+ * Auto-detect mock data path.
+ */
+function detectMockDataPath(): string {
+  const candidates = [
+    './mock-data',
+    './mocks',
+    './test/mock-data',
+    './tests/mock-data',
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return './mock-data';
 }
