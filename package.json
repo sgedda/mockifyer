@@ -6,7 +6,7 @@
   "scripts": {
     "build": "sh packages/build-all.sh",
     "start": "npm run start --prefix mockifyer-web",
-    "pretest": "npm --prefix packages/mockifyer-core install && npm --prefix packages/mockifyer-dashboard install",
+    "pretest": "test -d packages/mockifyer-core/node_modules || npm --prefix packages/mockifyer-core ci; test -d packages/mockifyer-dashboard/node_modules || npm --prefix packages/mockifyer-dashboard ci",
     "test": "jest",
     "test:axios": "MOCKIFYER_MODE=on MOCKIFYER_RECORD=true npx ts-node tests/axios/axios-auto-mock.ts",
     "test:axios:local": "MOCKIFYER_MODE=on MOCKIFYER_RECORD=true npx ts-node tests/axios/axios-local-mock.ts",
