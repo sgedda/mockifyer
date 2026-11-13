@@ -2,19 +2,23 @@
 
 This directory contains video and GIF assets for the drift detection guide.
 
-## Files to Create
+## Files
 
-After recording the drift demo from `demos/drift-live/`, place the files here:
+✅ **Created and committed**:
 
-1. **drift-workflow-demo.mp4** (< 5 MB)
-   - Screen recording of the CLI demo workflow
-   - Shows: check v1 → switch to v2 → detect drift → accept → verify
+1. **drift-workflow-demo.mp4** (1.1 MB)
+   - Dashboard UI workflow recording (2:59)
+   - Shows: dashboard load, drift tab, v1 check (pass), v2 switch, partial v2 check
 
-2. **drift-workflow-demo.gif** (< 5 MB)  
+2. **drift-workflow-demo.gif** (3.5 MB)  
    - Animated GIF version for quick preview
-   - Same content as mp4, optimized for web
+   - 8 fps, 960px width, optimized for web
 
-## Recording Instructions
+See `demos/drift-live/RECORDING_NOTES.md` for detailed recording analysis.
+
+## Regenerating (if needed)
+
+To re-record with updates or fixes:
 
 ### Option 1: Terminal Recording (Recommended)
 
