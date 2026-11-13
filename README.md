@@ -135,6 +135,7 @@ See [e2e/README.md](./e2e/README.md) for full documentation, test descriptions, 
 - Date manipulation (fixed date, offset, timezone) for tests
 - **Status override** — simulate error responses (500, 429, 404) without modifying stored response data
 - **Response delay** — add artificial latency to test slow network conditions
+- **Drift check** — detect when live APIs diverge from committed mocks (CI-friendly contract drift detection) — [docs/DRIFT_CHECK.md](./docs/DRIFT_CHECK.md)
 - **Easy discovery** — JSON files in the repo (searchable in your IDE)
 - **React Native** — device storage + optional Metro sync to keep repo and simulator in sync ([REACT_NATIVE.md](./REACT_NATIVE.md))
 

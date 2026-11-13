@@ -81,6 +81,10 @@
       "types": "./dist/utils/fixture-pool/runtime-cache.d.ts",
       "default": "./dist/utils/fixture-pool/runtime-cache.js"
     },
+    "./utils/drift": {
+      "types": "./dist/utils/drift/index.d.ts",
+      "default": "./dist/utils/drift/index.js"
+    },
     "./react": {
       "react-native": "./dist/react/index.native.js",
       "types": "./dist/react/index.d.ts",
@@ -93,7 +97,8 @@
     "mockifyer-sync-from-device": "./src/cli/sync-from-device.ts",
     "mockifyer-atlas-har": "./src/cli/atlas-har.ts",
     "mockifyer-atlas": "./src/cli/atlas.ts",
-    "mockifyer-init-ai": "./bin/mockifyer-init-ai"
+    "mockifyer-init-ai": "./bin/mockifyer-init-ai",
+    "mockifyer-drift-check": "./dist/cli/drift-check.js"
   },
   "scripts": {
     "build": "tsc",
