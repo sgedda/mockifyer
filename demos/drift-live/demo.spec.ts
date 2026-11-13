@@ -235,8 +235,8 @@ test.describe('Drift Detection Demo', () => {
     console.log('Accepting drift...');
     
     // Click "Accept Live" button for the trips endpoint (critical severity, breaking drift)
-    const tripsRow = page.locator('div:has-text("GET"):has-text("/api/trips")').first();
-    const acceptLiveButton = tripsRow.locator('button:has-text("Accept Live")');
+    const tripsRow = page.locator('div:has-text("GET"):has-text("/api/trips")').last();
+    const acceptLiveButton = tripsRow.locator('button:has-text("Accept Live")').first();
     await expect(acceptLiveButton).toBeVisible({ timeout: 5000 });
     await acceptLiveButton.click();
     
