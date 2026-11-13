@@ -270,12 +270,6 @@ test.describe('Drift Detection Demo', () => {
       console.log('Cleared drift history');
     }
     
-    // Backup baseline fixtures so --accept steps don't mutate committed files
-    if (fs.existsSync(BACKUP_DIR)) {
-      fs.rmSync(BACKUP_DIR, { recursive: true });
-    }
-    fs.mkdirSync(BACKUP_DIR, { recursive: true });
-    
     function copyDir(src: string, dest: string) {
       fs.mkdirSync(dest, { recursive: true });
       const entries = fs.readdirSync(src, { withFileTypes: true });
@@ -290,6 +284,19 @@ test.describe('Drift Detection Demo', () => {
       }
     }
     
+    // Restore from backup if previous run was interrupted
+    if (fs.existsSync(BACKUP_DIR)) {
+      console.log('Found backup from interrupted run, restoring...');
+      if (fs.existsSync(FIXTURE_DIR)) {
+        fs.rmSync(FIXTURE_DIR, { recursive: true });
+      }
+      copyDir(BACKUP_DIR, FIXTURE_DIR);
+      fs.rmSync(BACKUP_DIR, { recursive: true });
+      console.log('Restored baseline fixtures from interrupted run');
+    }
+    
+    // Backup baseline fixtures so --accept steps don't mutate committed files
+    fs.mkdirSync(BACKUP_DIR, { recursive: true });
     copyDir(FIXTURE_DIR, BACKUP_DIR);
     console.log('Backed up baseline fixtures');
     
