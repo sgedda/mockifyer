@@ -78,7 +78,7 @@ jobs:
       
       - name: Generate issue body
         id: issue_body
-        if: always() && steps.parse.outputs.has_drift != 'no'
+        if: always() && (steps.parse.outputs.has_drift == 'breaking' || steps.parse.outputs.has_drift == 'warnings')
         run: |
           cat > issue-body.md << EOF
           ## API Drift Detected
@@ -158,7 +158,7 @@ jobs:
           fi
       
       - name: Ensure api-drift label exists
-        if: always() && steps.parse.outputs.has_drift != 'no'
+        if: always() && (steps.parse.outputs.has_drift == 'breaking' || steps.parse.outputs.has_drift == 'warnings')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -167,7 +167,7 @@ jobs:
             --color "d73a4a" || true
       
       - name: Create or update drift issue
-        if: always() && steps.parse.outputs.has_drift != 'no'
+        if: always() && (steps.parse.outputs.has_drift == 'breaking' || steps.parse.outputs.has_drift == 'warnings')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

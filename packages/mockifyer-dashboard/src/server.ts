@@ -58,7 +58,7 @@ export function createServer(
   const dashboardConfig = {
     ...config,
     mockDataPath,
-    driftConfigPath: config.driftConfigPath || path.join(mockDataPath, '..', 'mockifyer.drift.json'),
+    driftConfigPath: config.driftConfigPath || path.join(process.cwd(), 'mockifyer.drift.json'),
   };
   app.locals.mockDataPath = mockDataPath;
   app.locals.dashboardConfig = dashboardConfig;
