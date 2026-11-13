@@ -55,7 +55,11 @@ export function createServer(
   config: DashboardContextConfig = { provider: 'filesystem' }
 ): express.Application {
   const app = express();
-  const dashboardConfig = { ...config, mockDataPath };
+  const dashboardConfig = {
+    ...config,
+    mockDataPath,
+    driftConfigPath: config.driftConfigPath || path.join(mockDataPath, '..', 'mockifyer.drift.json'),
+  };
   app.locals.mockDataPath = mockDataPath;
   app.locals.dashboardConfig = dashboardConfig;
   // Live JSON must not 304: fetch() treats 304 as !ok with an empty body.

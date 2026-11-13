@@ -28,6 +28,8 @@ export interface DashboardContextConfig {
    * Also configurable via `MOCKIFYER_REDIS_MIRROR_DISK` and `MOCKIFYER_REDIS_DISK_READ_FALLBACK`.
    */
   redisDiskMirror?: RedisDiskMirrorConfigInput;
+  /** Path to drift config file. Defaults to `mockifyer.drift.json` one level above mockDataPath. */
+  driftConfigPath?: string;
 }
 
 function envTruthy(key: string): boolean {

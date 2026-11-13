@@ -222,8 +222,8 @@ router.post('/snooze', async (req: Request, res: Response) => {
  */
 router.post('/ignore-field', async (req: Request, res: Response) => {
   try {
-    const { mockDataPath } = getDashboardContext(req);
-    const { endpoint, jsonPath, configPath } = req.body;
+    const { config } = getDashboardContext(req);
+    const { endpoint, jsonPath } = req.body;
 
     if (!endpoint || !jsonPath) {
       return res.status(400).json({
@@ -231,12 +231,12 @@ router.post('/ignore-field', async (req: Request, res: Response) => {
       });
     }
 
-    const resolvedConfigPath = configPath || path.join(mockDataPath, '..', 'mockifyer.drift.json');
+    const configPath = config.driftConfigPath || path.join(process.cwd(), 'mockifyer.drift.json');
 
     const result = await addIgnoreField({
       endpoint,
       jsonPath,
-      configPath: resolvedConfigPath,
+      configPath,
     });
 
     return res.json(result);

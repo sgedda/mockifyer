@@ -12,11 +12,16 @@ import type { DriftHistoryReport } from '../packages/mockifyer-core/src/utils/dr
 describe('Drift Dashboard Routes', () => {
   let app: any;
   let tmpDir: string;
+  let driftConfigPath: string;
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(__dirname, 'tmp-drift-dashboard-'));
+    driftConfigPath = path.join(tmpDir, 'mockifyer.drift.json');
     const publicDir = path.join(__dirname, '../packages/mockifyer-dashboard/public');
-    app = createServer(publicDir, tmpDir);
+    app = createServer(publicDir, tmpDir, {
+      provider: 'filesystem',
+      driftConfigPath,
+    });
   });
 
   afterEach(() => {
@@ -244,20 +249,17 @@ describe('Drift Dashboard Routes', () => {
     });
 
     it('should create config file and add ignore path', async () => {
-      const configPath = path.join(tmpDir, 'mockifyer.drift.json');
-
       const response = await request(app)
         .post('/api/drift/ignore-field')
         .send({
           endpoint: 'GET /users/123',
           jsonPath: 'email',
-          configPath,
         })
         .expect(200);
 
       expect(response.body.success).toBe(true);
       expect(response.body.message).toContain('Added ignore path');
-      expect(fs.existsSync(configPath)).toBe(true);
+      expect(fs.existsSync(driftConfigPath)).toBe(true);
     });
   });
 
