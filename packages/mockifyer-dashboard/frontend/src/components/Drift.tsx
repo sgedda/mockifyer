@@ -505,6 +505,7 @@ export default function Drift({ scenario }: DriftProps) {
                   <div
                     key={idx}
                     className="border rounded-md p-4 space-y-3"
+                    data-testid={`drift-endpoint-${endpoint.method}-${endpoint.url.replace(/[^a-zA-Z0-9]/g, '-')}`}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
@@ -533,6 +534,7 @@ export default function Drift({ scenario }: DriftProps) {
                               setShowAcceptDialog(true)
                             }}
                             disabled={actionPending}
+                            data-testid={`accept-live-${endpoint.method}-${endpoint.url.replace(/[^a-zA-Z0-9]/g, '-')}`}
                           >
                             Accept Live
                           </Button>
