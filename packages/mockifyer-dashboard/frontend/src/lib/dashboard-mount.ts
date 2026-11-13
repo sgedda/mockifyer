@@ -12,8 +12,10 @@ export const DASHBOARD_PAGE_SUFFIXES = [
   '/timeline',
   '/atlas',
   '/network',
+  '/drift',
   '/fixture-pool',
   '/date-config',
+  '/memory',
   '/api-reference',
   '/settings',
 ] as const;
