@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
-import { Github, ArrowRight, PlayCircle, Database, Code2, Sparkles, Construction, Target, Zap, GitBranch, Terminal, Play, Radio, LayoutDashboard, TrendingUp, CheckCircle2 } from 'lucide-react'
+import { Github, ArrowRight, PlayCircle, Database, Code2, Sparkles, Construction, Target, Zap, GitBranch, Terminal, Play, Radio, LayoutDashboard, TrendingUp, CheckCircle2, Route } from 'lucide-react'
 import CodeBlock from '@/components/CodeBlock'
 import RunItButton from '@/components/RunItButton'
 
@@ -68,6 +68,8 @@ export default function Introduction() {
               <span className="text-muted-foreground">·</span>
               <span className="px-3 py-1 text-xs sm:text-sm border border-border rounded-full text-muted-foreground">Dashboard & scenarios</span>
               <span className="text-muted-foreground">·</span>
+              <span className="px-3 py-1 text-xs sm:text-sm border border-border rounded-full text-muted-foreground">Request tracing</span>
+              <span className="text-muted-foreground">·</span>
               <span className="px-3 py-1 text-xs sm:text-sm border border-border rounded-full text-muted-foreground">Drift check</span>
               <span className="text-muted-foreground">·</span>
               <span className="px-3 py-1 text-xs sm:text-sm border border-border rounded-full text-muted-foreground">Offline E2E & CI</span>
@@ -123,7 +125,7 @@ export default function Introduction() {
 
             {/* Feature Tiles */}
             <div className="mt-10 max-w-[1200px] mx-auto">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
                 <Link to="/getting-started" className="group">
                   <div className="h-full p-4 rounded-lg border border-border bg-card hover:border-primary/50 transition-colors">
                     <Radio className="h-5 w-5 text-primary mb-2" />
@@ -140,6 +142,17 @@ export default function Introduction() {
                     <LayoutDashboard className="h-5 w-5 text-primary mb-2" />
                     <h3 className="font-semibold text-sm mb-1">Dashboard and scenarios</h3>
                     <p className="text-xs text-muted-foreground mb-2">Browse, edit and activate mocks, and switch error, empty and slow scenarios.</p>
+                    <span className="text-xs text-primary group-hover:underline inline-flex items-center gap-1">
+                      Learn more <ArrowRight className="h-3 w-3" />
+                    </span>
+                  </div>
+                </Link>
+
+                <Link to="/e2e-tutorial#tracing-walkthrough" className="group">
+                  <div className="h-full p-4 rounded-lg border border-border bg-card hover:border-primary/50 transition-colors">
+                    <Route className="h-5 w-5 text-primary mb-2" />
+                    <h3 className="font-semibold text-sm mb-1">Trace every hop</h3>
+                    <p className="text-xs text-muted-foreground mb-2">Follow one user action across services and see each hop, whether it was mocked or live, and how long it took.</p>
                     <span className="text-xs text-primary group-hover:underline inline-flex items-center gap-1">
                       Learn more <ArrowRight className="h-3 w-3" />
                     </span>

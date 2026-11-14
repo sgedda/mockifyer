@@ -663,10 +663,10 @@ npm run report        # Playwright HTML report`} language="bash" />
               </div>
             </div>
 
-            <div className="p-4 border rounded-lg">
+            <div id="tracing-walkthrough" className="p-4 border rounded-lg">
               <h4 className="font-semibold mb-2">6.8 Tracing walkthrough</h4>
               <p className="text-sm text-muted-foreground mb-3">
-                4 min 23 s in presentation mode.
+                4 min 23 s in presentation mode. Multi-hop request tracing links requests through <code className="bg-muted px-1 rounded text-xs">x-mockifyer-request-id</code> headers. Persistent tracing requires the SQLite or Redis provider; the filesystem provider supports in-memory (ephemeral) tracing.
               </p>
               <div className="text-sm text-muted-foreground space-y-2 mb-3">
                 <p>

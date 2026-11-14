@@ -263,6 +263,9 @@ npx @sgedda/mockifyer-dashboard --path ./mock-data`}
             <p className="text-sm text-muted-foreground">
               When service B calls service C during a request from A → B, the same request ID propagates, letting you see the full tree.
             </p>
+            <p className="text-sm text-muted-foreground">
+              Persistent tracing requires the SQLite or Redis provider. The filesystem provider supports in-memory (ephemeral) tracing.
+            </p>
           </CardContent>
         </Card>
       </section>
