@@ -33,6 +33,18 @@ export const ATLAS_CODE_HIGHLIGHT_CSS = `
   }
 }
 
+html[data-theme="light"] {
+  --code-key: #0284c7;
+  --code-str: #16a34a;
+  --code-num: #dc2626;
+  --code-bool: #7c3aed;
+  --code-null: #64748b;
+  --code-cmd: #0ea5e9;
+  --code-flag: #f59e0b;
+  --code-url: #0284c7;
+  --code-punct: #64748b;
+}
+
 html[data-theme="dark"] {
   --code-key: #38bdf8;
   --code-str: #4ade80;

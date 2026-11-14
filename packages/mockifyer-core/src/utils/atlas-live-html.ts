@@ -1992,10 +1992,11 @@ kbd {
   }
 
   function applyTheme(theme) {
-    var next = theme === "dark" ? "dark" : "light";
-    document.documentElement.setAttribute("data-theme", next);
+    var next = theme === "dark" ? "dark" : "";
+    if (next) document.documentElement.setAttribute("data-theme", next);
+    else document.documentElement.removeAttribute("data-theme");
     try {
-      localStorage.setItem(THEME_KEY, next);
+      localStorage.setItem(THEME_KEY, next || "default");
     } catch (err) {}
     if (btnDark) {
       if (next === "dark") btnDark.classList.add("on");
@@ -2005,15 +2006,15 @@ kbd {
   }
 
   function toggleDarkTheme() {
-    applyTheme(isDarkTheme() ? "light" : "dark");
+    applyTheme(isDarkTheme() ? "default" : "dark");
   }
 
   try {
     var storedTheme = localStorage.getItem(THEME_KEY);
     // Prefer "dark"; accept legacy "hacker" from earlier builds.
-    applyTheme(storedTheme === "dark" || storedTheme === "hacker" ? "dark" : "light");
+    applyTheme(storedTheme === "dark" || storedTheme === "hacker" ? "dark" : "default");
   } catch (err) {
-    applyTheme("light");
+    applyTheme("default");
   }
   if (btnDark) {
     btnDark.addEventListener("click", toggleDarkTheme);
