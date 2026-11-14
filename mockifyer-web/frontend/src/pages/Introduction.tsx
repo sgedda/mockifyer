@@ -71,7 +71,7 @@ export default function Introduction() {
                 <CodeBlock
                   language="bash"
                   code="npx -p @sgedda/mockifyer-core mockifyer try"
-                  className="text-center border-2 border-primary/20"
+                  className="border-2 border-primary/20"
                 />
               </div>
               <p className="text-center text-sm text-muted-foreground mt-3">
@@ -79,30 +79,27 @@ export default function Introduction() {
               </p>
             </div>
 
-            {/* Optional: Sample terminal output */}
-            <div className="mt-6 max-w-3xl mx-auto">
-              <div className="rounded-lg border border-border bg-muted/30 p-4 font-mono text-xs overflow-x-auto">
-                <div className="text-muted-foreground mb-1">$ npx -p @sgedda/mockifyer-core mockifyer try</div>
-                <div className="mt-2">
-                  <div className="font-bold mb-2">Mockifyer Try - Self-contained demo</div>
-                  <div className="text-muted-foreground">Step 1: Starting test server...</div>
-                  <div className="text-green-600 dark:text-green-400">✓ Test server running on port 3999</div>
-                  <div className="mt-2 text-muted-foreground">Step 2: Recording request...</div>
-                  <div className="text-green-600 dark:text-green-400">✓ Recorded: GET http://localhost:3999/hello</div>
-                  <div className="ml-2 text-muted-foreground">Response: &#123;"message":"Hello from Mockifyer!","timestamp":"2024-12-20T10:00:00Z"&#125;</div>
-                  <div className="mt-2 text-muted-foreground">Mock saved: .mockifyer-try-demo/mock-data/_scratch/...</div>
-                  <div className="mt-2 text-muted-foreground">Step 3: Stopping server...</div>
-                  <div className="text-green-600 dark:text-green-400">✓ Server stopped (network unavailable)</div>
-                  <div className="mt-2 text-muted-foreground">Step 4: Replaying from mock...</div>
-                  <div className="text-green-600 dark:text-green-400">✓ Replayed from mock (0 network calls)</div>
-                  <div className="ml-2 text-muted-foreground">Response: &#123;"message":"Hello from Mockifyer!","timestamp":"2024-12-20T10:00:00Z"&#125;</div>
-                  <div className="mt-3 font-bold">Summary:</div>
-                  <div className="ml-2 text-muted-foreground">Recorded: GET http://localhost:3999/hello</div>
-                  <div className="ml-2 text-muted-foreground">Replay: <span className="text-green-600 dark:text-green-400">SUCCESS</span> (server was stopped, mock served response)</div>
-                  <div className="mt-2 text-muted-foreground">Next steps:</div>
-                  <div className="ml-2">1. Add setupMockifyer to your app (see: <span className="font-bold">npx mockifyer init</span>)</div>
-                  <div className="ml-2">2. Run your app (requests land in _scratch/)</div>
-                  <div className="ml-2">3. Activate mocks: <span className="font-bold">npx mockifyer-dashboard</span></div>
+            {/* Compact Terminal Output */}
+            <div className="mt-6 max-w-[640px] mx-auto">
+              <div className="rounded-lg overflow-hidden border border-border/50 shadow-lg">
+                {/* Terminal Header */}
+                <div className="bg-zinc-800 dark:bg-zinc-900 px-4 py-2 flex items-center gap-2">
+                  <div className="flex gap-1.5">
+                    <div className="w-3 h-3 rounded-full bg-red-500/80"></div>
+                    <div className="w-3 h-3 rounded-full bg-yellow-500/80"></div>
+                    <div className="w-3 h-3 rounded-full bg-green-500/80"></div>
+                  </div>
+                  <span className="text-xs text-zinc-400 ml-2">terminal</span>
+                </div>
+                {/* Terminal Content */}
+                <div className="bg-zinc-950 dark:bg-black px-4 py-3 font-mono text-sm text-left overflow-x-auto">
+                  <div className="text-zinc-500 dark:text-zinc-600 mb-3">$ npx mockifyer try</div>
+                  <div className="space-y-1.5">
+                    <div className="text-green-400">✓ Recorded GET /hello</div>
+                    <div className="text-green-400">✓ Server stopped</div>
+                    <div className="text-green-400">✓ Replayed from mock — 0 network calls</div>
+                    <div className="text-zinc-500 dark:text-zinc-600 mt-3">Next: npx mockifyer init</div>
+                  </div>
                 </div>
               </div>
             </div>
