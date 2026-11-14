@@ -27,6 +27,12 @@ export default function MockDrift() {
 
       <QuickStartBox variant="node-fetch" />
 
+      <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-md mb-6">
+        <p className="text-sm text-muted-foreground">
+          <strong>Already ran <code className="bg-muted px-1 rounded">npx mockifyer init</code>?</strong> Skip to <a href="#install-drift-check" className="text-primary hover:underline">Install the Drift Check CLI</a> if you've set up Mockifyer recording.
+        </p>
+      </div>
+
       <div className="p-4 border border-amber-500/50 bg-amber-500/10 rounded-md">
         <div className="flex gap-2">
           <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />

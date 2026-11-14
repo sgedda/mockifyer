@@ -62,17 +62,62 @@ export default function Introduction() {
               HTTP mock record/replay for JavaScript and React Native. No account, no cloud—mocks are JSON in your repo or your own Redis/SQLite.
             </p>
             
+            {/* Try Command CTA */}
+            <div className="mt-10 max-w-2xl mx-auto">
+              <div className="text-center mb-3">
+                <span className="text-sm font-medium text-muted-foreground">Get started in 2 minutes</span>
+              </div>
+              <div className="relative">
+                <CodeBlock
+                  language="bash"
+                  code="npx -p @sgedda/mockifyer-core mockifyer try"
+                  className="text-center border-2 border-primary/20"
+                />
+              </div>
+              <p className="text-center text-sm text-muted-foreground mt-3">
+                Self-contained demo: records one call, replays it with the network blocked (~10 seconds)
+              </p>
+            </div>
+
+            {/* Optional: Sample terminal output */}
+            <div className="mt-6 max-w-3xl mx-auto">
+              <div className="rounded-lg border border-border bg-muted/30 p-4 font-mono text-xs overflow-x-auto">
+                <div className="text-muted-foreground mb-1">$ npx -p @sgedda/mockifyer-core mockifyer try</div>
+                <div className="mt-2">
+                  <div className="font-bold mb-2">Mockifyer Try - Self-contained demo</div>
+                  <div className="text-muted-foreground">Step 1: Starting test server...</div>
+                  <div className="text-green-600 dark:text-green-400">✓ Test server running on port 3999</div>
+                  <div className="mt-2 text-muted-foreground">Step 2: Recording request...</div>
+                  <div className="text-green-600 dark:text-green-400">✓ Recorded: GET http://localhost:3999/hello</div>
+                  <div className="ml-2 text-muted-foreground">Response: &#123;"message":"Hello from Mockifyer!","timestamp":"2024-12-20T10:00:00Z"&#125;</div>
+                  <div className="mt-2 text-muted-foreground">Mock saved: .mockifyer-try-demo/mock-data/_scratch/...</div>
+                  <div className="mt-2 text-muted-foreground">Step 3: Stopping server...</div>
+                  <div className="text-green-600 dark:text-green-400">✓ Server stopped (network unavailable)</div>
+                  <div className="mt-2 text-muted-foreground">Step 4: Replaying from mock...</div>
+                  <div className="text-green-600 dark:text-green-400">✓ Replayed from mock (0 network calls)</div>
+                  <div className="ml-2 text-muted-foreground">Response: &#123;"message":"Hello from Mockifyer!","timestamp":"2024-12-20T10:00:00Z"&#125;</div>
+                  <div className="mt-3 font-bold">Summary:</div>
+                  <div className="ml-2 text-muted-foreground">Recorded: GET http://localhost:3999/hello</div>
+                  <div className="ml-2 text-muted-foreground">Replay: <span className="text-green-600 dark:text-green-400">SUCCESS</span> (server was stopped, mock served response)</div>
+                  <div className="mt-2 text-muted-foreground">Next steps:</div>
+                  <div className="ml-2">1. Add setupMockifyer to your app (see: <span className="font-bold">npx mockifyer init</span>)</div>
+                  <div className="ml-2">2. Run your app (requests land in _scratch/)</div>
+                  <div className="ml-2">3. Activate mocks: <span className="font-bold">npx mockifyer-dashboard</span></div>
+                </div>
+              </div>
+            </div>
+            
             <div className="mt-8 flex flex-wrap justify-center gap-4">
               <Link to="/getting-started">
                 <Button size="lg" className="h-12 px-8 text-base font-medium group">
-                  Get Started
+                  Quick Start Guide
                   <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
                 </Button>
               </Link>
               <Link to="/e2e-tutorial">
                 <Button size="lg" variant="outline" className="h-12 px-8 text-base font-medium">
                   <PlayCircle className="mr-2 h-5 w-5" />
-                  E2E Tutorial
+                  Full Tutorial
                 </Button>
               </Link>
             </div>
@@ -215,11 +260,11 @@ export default function Introduction() {
           <div className="grid md:grid-cols-3 gap-8">
             <div className="text-center">
               <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 text-primary mb-4">
-                <Code2 className="h-8 w-8" />
+                <Terminal className="h-8 w-8" />
               </div>
-              <h3 className="font-semibold text-lg mb-2">1. Record</h3>
+              <h3 className="font-semibold text-lg mb-2">1. Initialize</h3>
               <p className="text-sm text-muted-foreground">
-                Run with <code className="text-xs bg-muted px-1 py-0.5 rounded border border-border">MOCKIFYER_RECORD=true</code>. Requests land in <code className="text-xs bg-muted px-1 py-0.5 rounded border border-border">_scratch/</code> and keep hitting the live API. Activate mocks in the dashboard or via domain-path rules to save responses.
+                Run <code className="text-xs bg-muted px-1 py-0.5 rounded border border-border">npx mockifyer init</code>. Detects axios/fetch/React Native, writes config with selective recording defaults. Requests land as request-only stubs in <code className="text-xs bg-muted px-1 py-0.5 rounded border border-border">_scratch/</code> and keep hitting the live API.
               </p>
             </div>
             
@@ -227,9 +272,9 @@ export default function Introduction() {
               <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 text-primary mb-4">
                 <Database className="h-8 w-8" />
               </div>
-              <h3 className="font-semibold text-lg mb-2">2. Organize Scenarios</h3>
+              <h3 className="font-semibold text-lg mb-2">2. Activate Mocks</h3>
               <p className="text-sm text-muted-foreground">
-                Edit mocks in the dashboard. Create scenario folders (trips-empty, trips-many).
+                Launch <code className="text-xs bg-muted px-1 py-0.5 rounded border border-border">npx mockifyer-dashboard</code>. Browse recorded requests, activate the ones you want to mock (untick "Always use live API"), edit responses, and create scenarios.
               </p>
             </div>
             

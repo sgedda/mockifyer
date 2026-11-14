@@ -103,6 +103,12 @@ export default function ReactNativeWithoutMSW() {
       <section id="setup">
         <h2 className="text-3xl font-semibold tracking-tight mb-4">Setup</h2>
 
+        <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-md mb-6">
+          <p className="text-sm text-muted-foreground">
+            <strong>Already ran <code className="bg-muted px-1 rounded">npx mockifyer init</code>?</strong> Skip to <a href="#recording" className="text-primary hover:underline">Recording</a> if you've installed Mockifyer and added the setup code to your app.
+          </p>
+        </div>
+
         <div className="space-y-6">
           <div>
             <h3 className="text-xl font-semibold mb-3">1. Install</h3>

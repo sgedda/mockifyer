@@ -21,6 +21,79 @@ export default function GettingStarted() {
         </p>
       </header>
 
+      {/* Quick Start - 2 Minutes */}
+      <Card className="border-primary/20 bg-primary/5">
+        <CardHeader>
+          <CardTitle className="text-2xl flex items-center gap-2">
+            <Zap className="h-6 w-6 text-primary" />
+            Quick Start: 2 Minutes
+          </CardTitle>
+          <CardDescription className="text-base">
+            Get an 'aha' moment with the 3-command workflow
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="space-y-6">
+            <div className="flex items-start gap-4">
+              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold text-lg">
+                1
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-lg mb-2 flex items-center gap-2">
+                  <Terminal className="h-5 w-5" />
+                  Try the demo
+                </h3>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Self-contained record/replay in ~10 seconds. Records one GET request to a local server, stops it, then replays from the mock (0 network calls).
+                </p>
+                <CodeBlock code="npx -p @sgedda/mockifyer-core mockifyer try" language="bash" />
+              </div>
+            </div>
+
+            <div className="flex items-start gap-4">
+              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold text-lg">
+                2
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-lg mb-2 flex items-center gap-2">
+                  <Code className="h-5 w-5" />
+                  Initialize your project
+                </h3>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Detects axios/fetch/React Native from package.json, writes <code className="bg-muted px-1 rounded">mockifyer.config.json</code> with <strong>selective recording</strong> defaults, and prints setup code.
+                </p>
+                <CodeBlock code="npx mockifyer init" language="bash" />
+                <p className="text-xs text-muted-foreground mt-2">
+                  <strong>Selective by default:</strong> Requests land as request-only stubs in <code className="bg-muted px-1 rounded">_scratch/</code> and keep hitting the live API. Activate mocks in the dashboard.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-4">
+              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold text-lg">
+                3
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-lg mb-2 flex items-center gap-2">
+                  <Monitor className="h-5 w-5" />
+                  Browse and activate mocks
+                </h3>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Launch the dashboard to see recorded requests, untick "Always use live API" to activate mocks, and organize into scenarios.
+                </p>
+                <CodeBlock code="npx -p @sgedda/mockifyer-dashboard mockifyer-dashboard" language="bash" />
+              </div>
+            </div>
+          </div>
+
+          <div className="p-4 bg-muted rounded-md border border-border">
+            <p className="text-sm text-muted-foreground">
+              <strong>Next:</strong> Add the setup code from step 2 to your app's entry file, then follow the platform-specific guides below for axios, fetch, or React Native integration.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
       <section>
         <PackagesOverview />
       </section>
@@ -28,12 +101,18 @@ export default function GettingStarted() {
       <section>
         <Card className="border-border">
           <CardHeader>
-            <CardTitle className="text-2xl">Quick Start</CardTitle>
+            <CardTitle className="text-2xl">Setup Your App</CardTitle>
             <CardDescription className="text-base">
-              Get Mockifyer up and running in minutes
+              Add Mockifyer to your existing application
             </CardDescription>
           </CardHeader>
         <CardContent className="space-y-6">
+          <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-md">
+            <p className="text-sm text-muted-foreground">
+              <strong>Already ran <code className="bg-muted px-1 rounded">npx mockifyer init</code>?</strong> The setup code it printed is shown below. Copy it to your app's entry file and skip to <a href="#production-safety" className="text-primary hover:underline">Production Safety</a>.
+            </p>
+          </div>
+
           <Tabs defaultValue="axios" className="w-full">
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="axios">Axios</TabsTrigger>
@@ -53,23 +132,27 @@ export default function GettingStarted() {
                 <div>
                   <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">
                     <Code className="h-5 w-5" />
-                    2. Setup
+                    2. Setup (from <code className="bg-muted px-1 rounded text-sm">npx mockifyer init</code>)
                   </h3>
                   <p className="text-muted-foreground mb-2 text-sm">
-                    Initialize Mockifyer at the very beginning of your application, before importing axios:
+                    Initialize Mockifyer at the very beginning of your application, before importing axios. This is what <code className="bg-muted px-1 rounded">init</code> prints:
                   </p>
                   <CodeBlock code={`// Initialize Mockifyer FIRST
 import { setupMockifyer } from '@sgedda/mockifyer-axios';
 
 setupMockifyer({
   mockDataPath: './mock-data',
-  recordMode: process.env.MOCKIFYER_RECORD === 'true',
-  failOnMissingMock: false,
+  recordMode: true,
+  recordNewMocksAsPassthrough: true,  // Selective: activate in dashboard
+  recordResponses: false,             // Request-only stubs initially
   useGlobalAxios: true
 });
 
 // Then import axios
 import axios from 'axios';`} language="typescript" />
+                  <p className="text-xs text-muted-foreground mt-2">
+                    <strong>Selective recording:</strong> Requests land in <code className="bg-muted px-1 rounded">_scratch/</code> as request-only stubs and keep hitting the live API. Activate mocks in the dashboard.
+                  </p>
                 </div>
 
                 <div>
@@ -103,22 +186,26 @@ console.log(response.data);`} language="typescript" />
                 <div>
                   <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">
                     <Code className="h-5 w-5" />
-                    2. Setup
+                    2. Setup (from <code className="bg-muted px-1 rounded text-sm">npx mockifyer init</code>)
                   </h3>
                   <p className="text-muted-foreground mb-2 text-sm">
-                    Initialize Mockifyer at the very beginning of your application:
+                    Initialize Mockifyer at the very beginning of your application. This is what <code className="bg-muted px-1 rounded">init</code> prints:
                   </p>
                   <CodeBlock code={`// Initialize Mockifyer
 import { setupMockifyer } from '@sgedda/mockifyer-fetch';
 
 setupMockifyer({
   mockDataPath: './mock-data',
-  recordMode: process.env.MOCKIFYER_RECORD === 'true',
-  failOnMissingMock: false,
+  recordMode: true,
+  recordNewMocksAsPassthrough: true,  // Selective: activate in dashboard
+  recordResponses: false,             // Request-only stubs initially
   useGlobalFetch: true
 });
 
 // Now fetch() calls are automatically intercepted`} language="typescript" />
+                  <p className="text-xs text-muted-foreground mt-2">
+                    <strong>Selective recording:</strong> Requests land in <code className="bg-muted px-1 rounded">_scratch/</code> as request-only stubs and keep hitting the live API. Activate mocks in the dashboard.
+                  </p>
                 </div>
 
                 <div>
@@ -141,7 +228,7 @@ console.log(data);`} language="typescript" />
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="production-safety">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Shield className="h-5 w-5" />
