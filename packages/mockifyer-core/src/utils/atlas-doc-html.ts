@@ -994,7 +994,7 @@ ${extraHead}
 </head>
 <body>
 <header>
-  <h1><span class="brand-mark">Mockifyer Atlas</span>${title && title !== 'Atlas' ? ' — ' + escapeHtml(title) : ''}</h1>
+  <h1><span class="brand-mark">Mockifyer Atlas</span>${title && title !== 'Atlas' ? ' — ' + escapeHtml(title.replace(/^Atlas\s+(?:page\s+)?—\s+/, '')) : ''}</h1>
   <p>Living architecture doc — generated on capture</p>
 </header>
 <main>
