@@ -13,6 +13,7 @@ describe('mockifyer init CLI', () => {
   let consoleOutput: string[];
   let consoleLogSpy: jest.SpyInstance;
   let processExitSpy: jest.SpyInstance;
+  let originalIsTTY: boolean | undefined;
 
   beforeEach(() => {
     originalCwd = process.cwd();
@@ -20,6 +21,12 @@ describe('mockifyer init CLI', () => {
     testDir = path.join(__dirname, '../.test-cli-init-' + Date.now());
     fs.mkdirSync(testDir, { recursive: true });
     process.chdir(testDir);
+
+    originalIsTTY = process.stdout.isTTY;
+    Object.defineProperty(process.stdout, 'isTTY', {
+      value: false,
+      configurable: true,
+    });
 
     consoleOutput = [];
     consoleLogSpy = jest.spyOn(console, 'log').mockImplementation((...args) => {
@@ -33,6 +40,10 @@ describe('mockifyer init CLI', () => {
   afterEach(() => {
     process.chdir(originalCwd);
     process.argv = originalArgv;
+    Object.defineProperty(process.stdout, 'isTTY', {
+      value: originalIsTTY,
+      configurable: true,
+    });
     consoleLogSpy.mockRestore();
     processExitSpy.mockRestore();
     if (fs.existsSync(testDir)) {
