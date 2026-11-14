@@ -2114,6 +2114,9 @@ kbd {
   if (!document.hidden) {
     connect();
   }
+
+  // Expose ingest globally for testing/screenshots
+  window.ingest = ingest;
 })();
 </script>
 </body>
