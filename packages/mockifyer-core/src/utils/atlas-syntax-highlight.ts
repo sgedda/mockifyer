@@ -5,40 +5,91 @@
 
 export type AtlasCodeHighlightKind = 'json' | 'curl' | 'auto' | 'plain';
 
-/** CSS custom properties + token classes (light + dark via data-theme). */
+/** CSS custom properties + token classes (light + dark via prefers-color-scheme). */
 export const ATLAS_CODE_HIGHLIGHT_CSS = `
 :root {
-  --code-key: #0b6e99;
-  --code-str: #a15c2f;
-  --code-num: #2f6b3a;
-  --code-bool: #3b5bdb;
-  --code-null: #5c6bc0;
-  --code-cmd: #0f6b5c;
-  --code-flag: #8a5a00;
-  --code-url: #0b6e99;
-  --code-punct: #6b6458;
+  --code-key: #0284c7;
+  --code-str: #16a34a;
+  --code-num: #dc2626;
+  --code-bool: #7c3aed;
+  --code-null: #64748b;
+  --code-cmd: #0ea5e9;
+  --code-flag: #f59e0b;
+  --code-url: #0284c7;
+  --code-punct: #64748b;
 }
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --code-key: #38bdf8;
+    --code-str: #4ade80;
+    --code-num: #fb7185;
+    --code-bool: #a78bfa;
+    --code-null: #94a3b8;
+    --code-cmd: #22d3ee;
+    --code-flag: #fbbf24;
+    --code-url: #38bdf8;
+    --code-punct: #94a3b8;
+  }
+}
+
 html[data-theme="dark"] {
-  --code-key: #9cdcfe;
-  --code-str: #ce9178;
-  --code-num: #b5cea8;
-  --code-bool: #569cd6;
-  --code-null: #569cd6;
-  --code-cmd: #5dff9a;
-  --code-flag: #ffd60a;
-  --code-url: #9cdcfe;
-  --code-punct: #5e8f6a;
+  --code-key: #38bdf8;
+  --code-str: #4ade80;
+  --code-num: #fb7185;
+  --code-bool: #a78bfa;
+  --code-null: #94a3b8;
+  --code-cmd: #22d3ee;
+  --code-flag: #fbbf24;
+  --code-url: #38bdf8;
+  --code-punct: #94a3b8;
 }
-pre.code .json-k, .json-k { color: var(--code-key); }
-pre.code .json-s, .json-s { color: var(--code-str); }
-pre.code .json-n, .json-n { color: var(--code-num); }
-pre.code .json-b, .json-b { color: var(--code-bool); }
-pre.code .json-null, .json-null { color: var(--code-null); }
-pre.code .curl-cmd, .curl-cmd { color: var(--code-cmd); font-weight: 650; }
-pre.code .curl-flag, .curl-flag { color: var(--code-flag); }
-pre.code .curl-str, .curl-str { color: var(--code-str); }
-pre.code .curl-url, .curl-url { color: var(--code-url); }
-pre.code .curl-punct, .curl-punct { color: var(--code-punct); }
+
+pre.code .json-k,
+.json-k {
+  color: var(--code-key);
+  font-weight: 500;
+}
+pre.code .json-s,
+.json-s {
+  color: var(--code-str);
+}
+pre.code .json-n,
+.json-n {
+  color: var(--code-num);
+}
+pre.code .json-b,
+.json-b {
+  color: var(--code-bool);
+}
+pre.code .json-null,
+.json-null {
+  color: var(--code-null);
+}
+pre.code .curl-cmd,
+.curl-cmd {
+  color: var(--code-cmd);
+  font-weight: 600;
+}
+pre.code .curl-flag,
+.curl-flag {
+  color: var(--code-flag);
+}
+pre.code .curl-str,
+.curl-str {
+  color: var(--code-str);
+}
+pre.code .curl-url,
+.curl-url {
+  color: var(--code-url);
+  text-decoration: underline;
+  text-decoration-color: currentColor;
+  text-decoration-thickness: 1px;
+}
+pre.code .curl-punct,
+.curl-punct {
+  color: var(--code-punct);
+}
 `.trim();
 
 function escapeHtml(s: string): string {
