@@ -15,6 +15,7 @@ import {
 } from './drift-report';
 import { checkDrift } from './check-drift';
 import { omitProxyUpstreamRequestHeaders } from '../proxy-upstream-headers';
+import { readDriftResponseBody } from './response-body';
 
 /**
  * Accept drift for one endpoint: re-fetch live and update mock file.
@@ -45,17 +46,24 @@ export async function acceptDrift(options: {
     timeoutMs: options.driftOptions?.timeoutMs ?? fileConfig.timeoutMs ?? 10000,
   };
 
-  // Find the mock file
   const mockFile = findMockFile(mockDataPath, scenario, method, urlPath);
-  if (!mockFile) {
+  if (mockFile.status === 'missing') {
     return {
       success: false,
       message: `Mock file not found for ${method} ${urlPath}`,
     };
   }
+  if (mockFile.status === 'ambiguous') {
+    return {
+      success: false,
+      message:
+        `Multiple mocks match ${method} ${urlPath}. ` +
+        'Include the query string so the correct mock is updated.',
+    };
+  }
 
   // Read the mock
-  const mockData: MockData = JSON.parse(fs.readFileSync(mockFile, 'utf-8'));
+  const mockData: MockData = JSON.parse(fs.readFileSync(mockFile.filePath, 'utf-8'));
 
   // Build request URL
   const requestUrl = driftOptions.baseUrl
@@ -121,31 +129,19 @@ export async function acceptDrift(options: {
       };
     }
 
-    // Parse response body
-    const contentType = response.headers.get('content-type') || '';
-    let actualBody: unknown;
-    if (contentType.includes('application/json')) {
-      const text = await response.text();
-      try {
-        actualBody = JSON.parse(text);
-      } catch {
-        actualBody = text;
-      }
-    } else {
-      actualBody = await response.text();
-    }
+    const actualBody = await readDriftResponseBody(response);
 
     // Update only the response fields
     mockData.response.status = response.status;
     mockData.response.data = actualBody;
 
     // Write back to file
-    fs.writeFileSync(mockFile, JSON.stringify(mockData, null, 2) + '\n');
+    fs.writeFileSync(mockFile.filePath, JSON.stringify(mockData, null, 2) + '\n');
 
     return {
       success: true,
       message: `Updated ${method} ${urlPath} (status ${response.status})`,
-      filePath: mockFile,
+      filePath: mockFile.filePath,
     };
   } catch (error: any) {
     return {
@@ -206,10 +202,15 @@ export async function acceptAllWarnings(options: {
   let failed = 0;
 
   for (const mockReport of warningsOnly) {
-    const url = new URL(mockReport.url);
+    const requestPath = requestPathFromUrl(mockReport.url);
+    if (!requestPath) {
+      failed++;
+      messages.push(`✗ Cannot accept ${mockReport.method} ${mockReport.url}: invalid URL`);
+      continue;
+    }
     const result = await acceptDrift({
       method: mockReport.method,
-      path: url.pathname + url.search,
+      path: requestPath,
       mockDataPath,
       scenario,
       driftOptions,
@@ -265,21 +266,24 @@ export async function snoozeEndpoint(options: {
     };
   }
 
-  // Find the endpoint in the history
-  const mockReport = history.mockReports.find((r) => {
-    const url = new URL(r.url);
-    const reportPathWithQuery = url.pathname + url.search;
-    const reportPathOnly = url.pathname;
-    return r.method === method && (reportPathWithQuery === urlPath || reportPathOnly === urlPath);
-  });
-
-  if (!mockReport) {
+  const selected = selectHistoryReport(history, method, urlPath);
+  if (selected.status === 'missing') {
     return {
       success: false,
       message: `Endpoint ${method} ${urlPath} not found in drift history`,
       expiresAt,
     };
   }
+  if (selected.status === 'ambiguous') {
+    return {
+      success: false,
+      message:
+        `Multiple endpoints match ${method} ${urlPath}. ` +
+        'Include the query string so the correct endpoint is snoozed.',
+      expiresAt,
+    };
+  }
+  const mockReport = selected.value;
 
   // Update snooze
   mockReport.snoozedUntil = expiresAt;
@@ -478,20 +482,100 @@ export function enhanceReportWithHistory(
   };
 }
 
+type PathMatchQuality = 'exact' | 'pathname';
+
+interface FoundPathMatch<T> {
+  status: 'found';
+  value: T;
+}
+
+interface AmbiguousPathMatch {
+  status: 'ambiguous';
+}
+
+interface MissingPathMatch {
+  status: 'missing';
+}
+
+type RejectedPathMatch = AmbiguousPathMatch | MissingPathMatch;
+
+type PathMatchSelection<T> = FoundPathMatch<T> | RejectedPathMatch;
+
 /**
- * Find a mock file matching method and path.
+ * Classify a recorded URL against the path the caller asked to update.
+ * An exact pathname+query match wins over a pathname-only fallback.
+ * The fallback applies only when the caller omitted the query string,
+ * so `GET /trips` cannot select `GET /trips?date=1` ahead of `GET /trips`.
+ */
+function classifyMockRequestPath(mockUrl: string, requestedPath: string): PathMatchQuality | null {
+  try {
+    const parsed = new URL(mockUrl);
+    const pathWithQuery = parsed.pathname + parsed.search;
+    if (pathWithQuery === requestedPath) {
+      return 'exact';
+    }
+    if (!requestedPath.includes('?') && parsed.pathname === requestedPath) {
+      return 'pathname';
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function requestPathFromUrl(rawUrl: string): string | null {
+  try {
+    const parsed = new URL(rawUrl);
+    return parsed.pathname + parsed.search;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Prefer an exact path match. A pathname-only match is used only when it is unique.
+ * Several query variants for the same pathname is ambiguous: writing the first
+ * file readdir returns would replace a different contract than the one requested.
+ */
+function selectBestPathMatch<T>(
+  candidates: Array<{ quality: PathMatchQuality; value: T }>
+): PathMatchSelection<T> {
+  const exact = candidates.filter((candidate) => candidate.quality === 'exact');
+  if (exact.length > 0) {
+    return { status: 'found', value: exact[0].value };
+  }
+  const pathnameMatches = candidates.filter((candidate) => candidate.quality === 'pathname');
+  if (pathnameMatches.length === 1) {
+    return { status: 'found', value: pathnameMatches[0].value };
+  }
+  if (pathnameMatches.length > 1) {
+    return { status: 'ambiguous' };
+  }
+  return { status: 'missing' };
+}
+
+interface MockFileMatch {
+  status: 'found';
+  filePath: string;
+}
+
+/**
+ * Find the mock file for method + path.
+ * Returns ambiguous when more than one query variant shares the pathname
+ * and the caller did not include a query string.
  */
 function findMockFile(
   mockDataPath: string,
   scenario: string,
   method: string,
   urlPath: string
-): string | null {
+): MockFileMatch | RejectedPathMatch {
   const scenarioPath = path.join(mockDataPath, scenario);
+  const candidates: Array<{ quality: PathMatchQuality; value: string }> = [];
 
-  function walkDir(dirPath: string): string | null {
+  function walkDir(dirPath: string): void {
     if (!fs.existsSync(dirPath)) {
-      return null;
+      return;
     }
 
     const entries = fs.readdirSync(dirPath, { withFileTypes: true });
@@ -500,32 +584,50 @@ function findMockFile(
       const fullPath = path.join(dirPath, entry.name);
 
       if (entry.isDirectory() && entry.name !== '.drift') {
-        const result = walkDir(fullPath);
-        if (result) return result;
+        walkDir(fullPath);
       } else if (entry.isFile() && entry.name.endsWith('.json')) {
         try {
           const content = fs.readFileSync(fullPath, 'utf-8');
           const mock = JSON.parse(content) as MockData;
 
-          if (mock.request && mock.response) {
-            const mockUrl = new URL(mock.request.url);
-            const mockPathWithQuery = mockUrl.pathname + mockUrl.search;
-            const mockPathOnly = mockUrl.pathname;
-
-            if (mock.request.method === method && (mockPathWithQuery === urlPath || mockPathOnly === urlPath)) {
-              return fullPath;
-            }
+          if (!mock.request || !mock.response || mock.request.method !== method) {
+            continue;
+          }
+          const quality = classifyMockRequestPath(mock.request.url, urlPath);
+          if (quality) {
+            candidates.push({ quality, value: fullPath });
           }
         } catch {
           // Skip invalid files
         }
       }
     }
-
-    return null;
   }
 
-  return walkDir(scenarioPath);
+  walkDir(scenarioPath);
+  const selected = selectBestPathMatch(candidates);
+  if (selected.status !== 'found') {
+    return selected;
+  }
+  return { status: 'found', filePath: selected.value };
+}
+
+function selectHistoryReport(
+  history: DriftHistoryReport,
+  method: string,
+  urlPath: string
+): PathMatchSelection<MockDriftReportWithHistory> {
+  const candidates: Array<{ quality: PathMatchQuality; value: MockDriftReportWithHistory }> = [];
+  for (const report of history.mockReports) {
+    if (report.method !== method) {
+      continue;
+    }
+    const quality = classifyMockRequestPath(report.url, urlPath);
+    if (quality) {
+      candidates.push({ quality, value: report });
+    }
+  }
+  return selectBestPathMatch(candidates);
 }
 
 /**
