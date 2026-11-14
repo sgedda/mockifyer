@@ -169,6 +169,33 @@ export default function Introduction() {
                 </Link>
               </div>
             </div>
+
+            {/* Comparison Section */}
+            <div className="mt-12 max-w-[1200px] mx-auto">
+              <h2 className="text-2xl font-semibold tracking-tight text-center mb-6">How is this different from HAR or MSW?</h2>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="p-4 rounded-lg border border-border bg-card">
+                  <h3 className="font-semibold text-sm mb-2">Playwright HAR</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Great for record/replay inside browser tests, but test-only and browser-only. Doesn't cover your app at runtime, Node or React Native, and HARs are edited by hand.
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-lg border border-border bg-card">
+                  <h3 className="font-semibold text-sm mb-2">MSW</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Excellent interception, but you write handlers by hand. Nothing records them from real traffic or warns when they drift from the real API.
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-lg border border-primary/50 bg-primary/5">
+                  <h3 className="font-semibold text-sm mb-2 text-primary">Mockifyer</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Records from the running app (fetch, axios, React Native) into JSON in your repo, then you manage them in a dashboard, switch scenarios and run a drift check.
+                  </p>
+                </div>
+              </div>
+            </div>
             
             <div className="mt-8 flex flex-wrap justify-center gap-4">
               <Link to="/getting-started">
