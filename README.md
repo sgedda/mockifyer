@@ -132,6 +132,7 @@ See [e2e/README.md](./e2e/README.md) for full documentation, test descriptions, 
 - Automatic interception driven by env + config
 - **Scenarios** — `mock-data/<scenario>/...` plus `scenario-config.json`
 - **Selective response recording** — record full responses only for specific hosts/paths; others save as request-only stubs
+- **Browser & Expo web** — replay with the in-memory provider and preloaded fixtures (`databaseProvider: { type: 'memory', options: { fixtures } }`). See [docs/BROWSER_USAGE.md](./docs/BROWSER_USAGE.md).
 - Date manipulation (fixed date, offset, timezone) for tests
 - **Status override** — simulate error responses (500, 429, 404) without modifying stored response data
 - **Response delay** — add artificial latency to test slow network conditions
@@ -171,7 +172,9 @@ Priority: env vars → `setupMockifyer` config → system time.
 | `MOCKIFYER_DOMAIN_PATH_RULES_MODE` | Hybrid/filesystem: `allowlist` (default) \| `record_all` \| `off` — auto-discovers host/path keys into `domain-path-rules.json`; gates record + replay (see **Domain-path rules** below for `allowUpstream`). Migration: set `record_all` or `off` if you relied on ungated `recordMode` |
 | `MOCKIFYER_RECORD` | Record real responses (fetch/axios packages); with **`initMockifyerForDashboardProxy`**, implies **`recordOnMiss: true`** when not otherwise set |
 | `MOCKIFYER_PROXY_RECORD_ON_MISS` | Fetch + **`proxy.baseUrl`**: when **`proxy.recordOnMiss`** is omitted, `true` / `false` sets the `record` flag on `/api/proxy`; omit env to defer to **dashboard per-scenario** "Record on miss" |
-| `MOCKIFYER_RECORD_DEFAULT_ALWAYS_USE_REAL_API` | When not `false`, **new recordings** (proxy Redis, fetch/axios disk) set **`alwaysUseRealApi: true`** so the response is stored but **live API** is used until you uncheck in the dashboard. Set to `false` for legacy "replay mock immediately after capture" behavior |
+| `MOCKIFYER_RECORD_RESPONSES` | `true` records full response bodies for every URL and overrides config `recordResponses` (highest precedence) |
+| `MOCKIFYER_RECORD_RESPONSES_FOR` | Comma-separated allowlist (for example `api.example.com,*.staging.com`). Matching URLs save full bodies and replay right away; everything else stays request-only |
+| `MOCKIFYER_RECORD_DEFAULT_ALWAYS_USE_REAL_API` | Dashboard proxy (Redis) recordings: when not `false`, new recordings set `alwaysUseRealApi: true`. For fetch/axios disk recordings, URLs matching `recordResponses` replay immediately, and request-only stubs always use the live API. |
 | `MOCKIFYER_RECORD_NEW_AS_PASSTHROUGH` | New recordings get `alwaysUseRealApi` (visible in dashboard, live API until activated) |
 | `MOCKIFYER_REFRESH_PASSTHROUGH_RECORDINGS` | Update passthrough mock files in place on each live API response |
 | `MOCKIFYER_PATH` | Mock data root (legacy name; often `mockDataPath` in config) |
