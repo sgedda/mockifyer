@@ -492,6 +492,16 @@ button:disabled {
   white-space: nowrap;
   transition: colors 0.2s;
 }
+.badge.mock {
+  color: hsl(var(--success-foreground));
+  background: hsl(var(--success));
+  border-color: hsl(var(--success));
+}
+.badge.live {
+  color: hsl(var(--primary-foreground));
+  background: hsl(var(--primary));
+  border-color: hsl(var(--primary));
+}
 .badge.err {
   color: hsl(var(--destructive-foreground));
   background: hsl(var(--destructive));
@@ -1327,6 +1337,12 @@ kbd {
         ? '<span class="tree">' + esc(treeIndent(depth, isLast)) + "</span>"
         : "";
     var badges = "";
+    // Mock/Live source badges
+    if (ev.source === "mock") {
+      badges += '<span class="badge mock">Mock</span>';
+    } else if (ev.source === "live") {
+      badges += '<span class="badge live">Live</span>';
+    }
     if (err) badges += '<span class="badge err">ERR</span>';
     if (slow) badges += '<span class="badge warn">SLOW</span>';
     var screen = firstScreen(ev.usage);
@@ -2114,9 +2130,6 @@ kbd {
   if (!document.hidden) {
     connect();
   }
-
-  // Expose ingest globally for testing/screenshots
-  window.ingest = ingest;
 })();
 </script>
 </body>
