@@ -177,7 +177,7 @@ export default function Introduction() {
                 <div className="p-4 rounded-lg border border-border bg-card">
                   <h3 className="font-semibold text-sm mb-2">Playwright HAR</h3>
                   <p className="text-xs text-muted-foreground">
-                    Great for record/replay inside browser tests, but test-only and browser-only. Doesn't cover your app at runtime, Node or React Native, and HARs are edited by hand.
+                    Great for replaying traffic inside Playwright browser tests. It doesn't run in your app itself (Node, React Native), and updating it means re-recording or editing a big HAR file.
                   </p>
                 </div>
 
