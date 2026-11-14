@@ -177,21 +177,21 @@ export default function Introduction() {
                 <div className="p-4 rounded-lg border border-border bg-card">
                   <h3 className="font-semibold text-sm mb-2">Playwright HAR</h3>
                   <p className="text-xs text-muted-foreground">
-                    Great for replaying traffic inside Playwright browser tests. It doesn't run in your app itself (Node, React Native), and updating it means re-recording or editing a big HAR file.
+                    Replays recorded traffic, but only inside Playwright browser tests.
                   </p>
                 </div>
 
                 <div className="p-4 rounded-lg border border-border bg-card">
                   <h3 className="font-semibold text-sm mb-2">MSW</h3>
                   <p className="text-xs text-muted-foreground">
-                    Excellent interception, but you write handlers by hand. Nothing records them from real traffic or warns when they drift from the real API.
+                    Great interception, but you write every handler by hand.
                   </p>
                 </div>
 
                 <div className="p-4 rounded-lg border border-primary/50 bg-primary/5">
                   <h3 className="font-semibold text-sm mb-2 text-primary">Mockifyer</h3>
                   <p className="text-xs text-muted-foreground">
-                    Records from the running app (fetch, axios, React Native) into JSON in your repo, then you manage them in a dashboard, switch scenarios and run a drift check.
+                    Records from your real app and replays everywhere it runs: dev mode, React Native on a device, demos and E2E. Manage it all in a dashboard, with drift checks.
                   </p>
                 </div>
               </div>
