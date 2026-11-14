@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
-import { Github, ArrowRight, PlayCircle, Database, Code2, Sparkles, Construction, Target, Zap, GitBranch, Terminal, Play } from 'lucide-react'
+import { Github, ArrowRight, PlayCircle, Database, Code2, Sparkles, Construction, Target, Zap, GitBranch, Terminal, Play, Radio, LayoutDashboard, TrendingUp, CheckCircle2 } from 'lucide-react'
 import CodeBlock from '@/components/CodeBlock'
 import RunItButton from '@/components/RunItButton'
 
@@ -106,6 +106,55 @@ export default function Introduction() {
                 </div>
               </div>
               <p className="text-center text-xs text-muted-foreground mt-3 italic">Same response, no network. That's the whole idea.</p>
+            </div>
+
+            {/* Feature Tiles */}
+            <div className="mt-10 max-w-[1200px] mx-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <Link to="/getting-started" className="group">
+                  <div className="h-full p-4 rounded-lg border border-border bg-card hover:border-primary/50 transition-colors">
+                    <Radio className="h-5 w-5 text-primary mb-2" />
+                    <h3 className="font-semibold text-sm mb-1">Records real app traffic</h3>
+                    <p className="text-xs text-muted-foreground mb-2">fetch, axios and React Native, selectively, only what you choose.</p>
+                    <span className="text-xs text-primary group-hover:underline inline-flex items-center gap-1">
+                      Learn more <ArrowRight className="h-3 w-3" />
+                    </span>
+                  </div>
+                </Link>
+
+                <Link to="/dashboard" className="group">
+                  <div className="h-full p-4 rounded-lg border border-border bg-card hover:border-primary/50 transition-colors">
+                    <LayoutDashboard className="h-5 w-5 text-primary mb-2" />
+                    <h3 className="font-semibold text-sm mb-1">Dashboard and scenarios</h3>
+                    <p className="text-xs text-muted-foreground mb-2">Browse, edit and activate mocks, and switch error, empty and slow scenarios.</p>
+                    <span className="text-xs text-primary group-hover:underline inline-flex items-center gap-1">
+                      Learn more <ArrowRight className="h-3 w-3" />
+                    </span>
+                  </div>
+                </Link>
+
+                <Link to="/guides/mock-drift" className="group">
+                  <div className="h-full p-4 rounded-lg border border-border bg-card hover:border-primary/50 transition-colors">
+                    <TrendingUp className="h-5 w-5 text-primary mb-2" />
+                    <h3 className="font-semibold text-sm mb-1">Drift check</h3>
+                    <p className="text-xs text-muted-foreground mb-2">Know when the real API changed and your mocks went stale.</p>
+                    <span className="text-xs text-primary group-hover:underline inline-flex items-center gap-1">
+                      Learn more <ArrowRight className="h-3 w-3" />
+                    </span>
+                  </div>
+                </Link>
+
+                <Link to="/guides/stable-react-native-e2e" className="group">
+                  <div className="h-full p-4 rounded-lg border border-border bg-card hover:border-primary/50 transition-colors">
+                    <CheckCircle2 className="h-5 w-5 text-primary mb-2" />
+                    <h3 className="font-semibold text-sm mb-1">Stable E2E and CI</h3>
+                    <p className="text-xs text-muted-foreground mb-2">Offline, deterministic Maestro and Playwright runs, with mocks as JSON in your repo.</p>
+                    <span className="text-xs text-primary group-hover:underline inline-flex items-center gap-1">
+                      Learn more <ArrowRight className="h-3 w-3" />
+                    </span>
+                  </div>
+                </Link>
+              </div>
             </div>
             
             <div className="mt-8 flex flex-wrap justify-center gap-4">
