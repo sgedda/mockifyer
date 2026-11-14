@@ -5464,7 +5464,8 @@ function renderErrorPanelHtml(analysis, escFn) {
 
 function buildInteractiveIndex(map: AtlasDocMap, events: NetworkEvent[]): string {
   const body = buildInteractiveAtlasBody(map, events);
-  return shell(`Atlas — ${map.scenario}`, body);
+  // Pass scenario only, not "Atlas —" prefix (header template handles branding)
+  return shell(map.scenario || 'Interactive Session', body);
 }
 
 export interface CrashIncidentHtmlInput {
