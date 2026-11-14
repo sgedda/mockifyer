@@ -1,0 +1,5 @@
+{
+  "request": {"method": "GET", "url": "http://localhost:3003/reviews/12345", "headers": {}, "queryParams": {}},
+  "response": {"status": 200, "data": [], "headers": {"content-type": "application/json"}},
+  "timestamp": "2026-11-10T12:00:00.000Z", "duration": 10
+}

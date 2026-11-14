@@ -1,0 +1,47 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "http://localhost:3003/reviews/12345",
+    "headers": {
+      "x-mockifyer-request-id": "1da0cd99-4769-4b56-8a50-5e4cd0dbff3c",
+      "x-mockifyer-parent-request-id": "demo-record-001"
+    }
+  },
+  "response": {
+    "status": 200,
+    "data": [
+      {
+        "id": 1,
+        "name": "Amazing place!",
+        "body": "London is absolutely wonderful."
+      },
+      {
+        "id": 2,
+        "name": "Great experience",
+        "body": "Had a fantastic time exploring."
+      },
+      {
+        "id": 3,
+        "name": "Loved it",
+        "body": "The blend of old and new is remarkable."
+      }
+    ],
+    "headers": {
+      "connection": "keep-alive",
+      "content-length": "227",
+      "content-type": "application/json; charset=utf-8",
+      "date": "Tue, 10 Nov 2026 19:18:16 GMT",
+      "etag": "W/\"e3-OCakLAnUtJfUXesjDzyvUxK0l0o\"",
+      "keep-alive": "timeout=5",
+      "x-powered-by": "Express"
+    }
+  },
+  "timestamp": "2026-11-10T19:18:16.138Z",
+  "duration": 3,
+  "sessionId": "session-1794338295625-ycc4zrshc",
+  "requestId": "1da0cd99-4769-4b56-8a50-5e4cd0dbff3c",
+  "parentRequestId": "demo-record-001",
+  "parentRequestIds": [
+    "demo-record-001"
+  ]
+}

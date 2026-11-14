@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mockifyer: Nested Services Demo</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+      color: #333;
+    }
+    
+    .container { max-width: 1200px; margin: 0 auto; }
+    
+    header {
+      text-align: center;
+      color: white;
+      margin-bottom: 30px;
+    }
+    
+    h1 {
+      font-size: 2.5rem;
+      margin-bottom: 10px;
+      font-weight: 700;
+    }
+    
+    .subtitle {
+      font-size: 1.1rem;
+      opacity: 0.9;
+    }
+    
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    
+    .card h2 {
+      margin-bottom: 16px;
+      color: #667eea;
+      font-size: 1.5rem;
+    }
+    
+    .input-group {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    
+    input, select, button {
+      padding: 12px 16px;
+      border: 2px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-family: inherit;
+    }
+    
+    input { flex: 1; min-width: 200px; }
+    select { flex: 1; min-width: 200px; }
+    
+    button {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    
+    button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+    
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    .result-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    
+    .result-card {
+      background: #f8fafc;
+      border: 2px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 16px;
+    }
+    
+    .result-card h3 {
+      color: #667eea;
+      margin-bottom: 12px;
+      font-size: 1.1rem;
+    }
+    
+    .result-card p {
+      margin: 6px 0;
+      line-height: 1.6;
+    }
+    
+    .label {
+      font-weight: 600;
+      color: #64748b;
+    }
+    
+    .topology {
+      background: #f1f5f9;
+      border-left: 4px solid #667eea;
+      padding: 16px;
+      border-radius: 4px;
+      font-family: 'Monaco', 'Menlo', monospace;
+      font-size: 0.9rem;
+      line-height: 1.8;
+    }
+    
+    .topology .arrow { color: #667eea; font-weight: bold; }
+    
+    .error {
+      background: #fee;
+      border: 2px solid #fcc;
+      color: #c00;
+      padding: 16px;
+      border-radius: 8px;
+    }
+    
+    .loading {
+      text-align: center;
+      padding: 20px;
+      color: #64748b;
+    }
+    
+    .badge {
+      display: inline-block;
+      background: #667eea;
+      color: white;
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-left: 8px;
+    }
+    
+    .links {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 12px;
+    }
+    
+    .link-button {
+      text-align: center;
+      text-decoration: none;
+      background: #f8fafc;
+      color: #667eea;
+      border: 2px solid #667eea;
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+    
+    .link-button:hover {
+      background: #667eea;
+      color: white;
+    }
+    
+    code {
+      background: #f1f5f9;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: 'Monaco', 'Menlo', monospace;
+      font-size: 0.9em;
+    }
+    
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🔗 Mockifyer: Nested Services Demo</h1>
+      <p class="subtitle">Fan-out topology with request tracing</p>
+    </header>
+    
+    <div class="card">
+      <h2>Try It: Get Trip Information</h2>
+      <div class="input-group">
+        <input 
+          type="text" 
+          id="cityInput" 
+          placeholder="Enter city name (e.g., London, Paris, Tokyo)"
+          value="London"
+        />
+        <button id="fetchButton">Get Trip Info</button>
+      </div>
+      
+      <div class="input-group">
+        <select id="scenarioSelect">
+          <option value="default">Default Scenario</option>
+          <option value="empty-reviews">Empty Reviews</option>
+          <option value="currency-error">Currency Service Error</option>
+        </select>
+        <button id="switchScenarioButton">Switch Scenario</button>
+      </div>
+      
+      <div id="loading" class="loading hidden">Loading...</div>
+      <div id="error" class="error hidden"></div>
+      
+      <div id="result" class="hidden">
+        <div class="result-grid">
+          <div class="result-card">
+            <h3>🌤️ Weather</h3>
+            <p><span class="label">Temperature:</span> <span id="temperature"></span></p>
+            <p><span class="label">Condition:</span> <span id="condition"></span></p>
+            <p><span class="label">Humidity:</span> <span id="humidity"></span></p>
+          </div>
+          
+          <div class="result-card">
+            <h3>⭐ Reviews</h3>
+            <p><span class="label">Count:</span> <span id="reviewCount"></span></p>
+            <p><span class="label">Latest:</span></p>
+            <div id="reviews" style="font-size: 0.9em; color: #64748b;"></div>
+          </div>
+          
+          <div class="result-card">
+            <h3>💰 Currency</h3>
+            <p><span class="label">Rate:</span> <span id="currencyRate"></span></p>
+            <p><span class="label">Date:</span> <span id="timestamp"></span></p>
+          </div>
+        </div>
+        
+        <div class="card" style="margin-top: 20px;">
+          <h3>🔍 Request Topology <span class="badge" id="apiCount"></span></h3>
+          <div class="topology">
+            <div><span class="arrow">→</span> Frontend calls Gateway</div>
+            <div><span class="arrow">  ├→</span> Weather API (1st level)</div>
+            <div><span class="arrow">  ├→</span> Places API → Reviews API (2nd level)</div>
+            <div><span class="arrow">  └→</span> Currency API (1st level)</div>
+            <div style="margin-top: 12px;"><span class="label">Trace ID:</span> <code id="traceId"></code></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="card">
+      <h2>📊 Explore the Results</h2>
+      <div class="links">
+        <a href="#" id="dashboardLink" target="_blank" class="link-button">
+          Open Dashboard
+        </a>
+        <a href="#" id="traceLink" target="_blank" class="link-button">
+          View Request Trace
+        </a>
+        <a href="#" id="mocksLink" target="_blank" class="link-button">
+          Browse Mocks
+        </a>
+      </div>
+    </div>
+  </div>
+  
+  <script type="module" src="/main.js"></script>
+</body>
+</html>
