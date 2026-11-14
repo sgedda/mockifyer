@@ -152,6 +152,30 @@ export function buildAtlasLiveStreamHtml(
   }
 }
 
+html[data-theme="light"] {
+  --background: 0 0% 100%;
+  --foreground: 240 10% 3.9%;
+  --card: 0 0% 100%;
+  --card-foreground: 240 10% 3.9%;
+  --border: 240 5.9% 90%;
+  --primary: 221.2 83.2% 53.3%;
+  --primary-foreground: 210 40% 98%;
+  --secondary: 240 4.8% 95.9%;
+  --secondary-foreground: 240 5.9% 10%;
+  --muted: 240 4.8% 95.9%;
+  --muted-foreground: 240 3.8% 46.1%;
+  --accent: 240 4.8% 95.9%;
+  --accent-foreground: 240 5.9% 10%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 210 40% 98%;
+  --success: 142.1 76.2% 36.3%;
+  --success-foreground: 210 40% 98%;
+  --warning: 38 92% 50%;
+  --warning-foreground: 20 14.3% 4.1%;
+  --row-hover: hsla(221.2, 83.2%, 53.3%, 0.05);
+  --row-selected: hsla(221.2, 83.2%, 53.3%, 0.1);
+}
+
 html[data-theme="dark"] {
   --background: 240 10% 3.9%;
   --foreground: 0 0% 98%;
@@ -261,7 +285,7 @@ header {
   font-size: 0.8rem;
 }
 .menu-nav a {
-  color: var(--accent);
+  color: hsl(var(--primary));
   text-decoration: none;
   font-weight: 600;
 }
@@ -275,7 +299,7 @@ header {
   gap: 0.35rem;
   font-family: var(--mono);
   font-size: 0.75rem;
-  color: var(--muted);
+  color: hsl(var(--muted-foreground));
 }
 .search-label input[type="search"] {
   min-width: 12rem;
@@ -448,14 +472,14 @@ button:disabled {
   opacity: 0.6;
 }
 .main { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.ts { color: var(--muted); }
+.ts { color: hsl(var(--muted-foreground)); }
 .method { font-weight: 600; }
-.status-code.ok { color: var(--ok); }
-.status-code.bad { color: var(--err); }
-.source { color: var(--muted); }
-.host { color: var(--accent); }
-.path { color: var(--ink); }
-.gql-op { color: var(--warn); font-weight: 600; }
+.status-code.ok { color: hsl(var(--success)); }
+.status-code.bad { color: hsl(var(--destructive)); }
+.source { color: hsl(var(--muted-foreground)); }
+.host { color: hsl(var(--primary)); }
+.path { color: hsl(var(--foreground)); }
+.gql-op { color: hsl(var(--warning)); font-weight: 600; }
 .badge {
   display: inline-flex;
   align-items: center;
@@ -483,27 +507,27 @@ button:disabled {
   background: hsl(var(--primary));
   border-color: hsl(var(--primary));
 }
-.tree { color: var(--muted); }
+.tree { color: hsl(var(--muted-foreground)); }
 .links a {
-  color: var(--accent);
+  color: hsl(var(--primary));
   text-decoration: none;
   margin-left: 0.45rem;
 }
 .links a:hover { text-decoration: underline; }
 .summary, .footer {
   cursor: pointer;
-  color: var(--muted);
+  color: hsl(var(--muted-foreground));
   user-select: none;
   padding: 0.12rem 0.2rem;
   border-radius: 4px;
 }
 .summary:hover, .footer:hover {
   background: var(--row-hover);
-  color: var(--accent);
+  color: hsl(var(--primary));
 }
 .glyph { font-weight: 700; }
 .empty {
-  color: var(--muted);
+  color: hsl(var(--muted-foreground));
   padding: 1.5rem 0.5rem;
 }
 #analyze {
@@ -1968,32 +1992,28 @@ kbd {
   }
 
   function applyTheme(theme) {
-    var next = theme === "dark" ? "dark" : "";
-    if (next) {
-      document.documentElement.setAttribute("data-theme", next);
-    } else {
-      document.documentElement.removeAttribute("data-theme");
-    }
+    var next = theme === "dark" ? "dark" : "light";
+    document.documentElement.setAttribute("data-theme", next);
     try {
-      localStorage.setItem(THEME_KEY, next || "default");
+      localStorage.setItem(THEME_KEY, next);
     } catch (err) {}
     if (btnDark) {
-      if (next) btnDark.classList.add("on");
+      if (next === "dark") btnDark.classList.add("on");
       else btnDark.classList.remove("on");
-      btnDark.setAttribute("aria-pressed", next ? "true" : "false");
+      btnDark.setAttribute("aria-pressed", next === "dark" ? "true" : "false");
     }
   }
 
   function toggleDarkTheme() {
-    applyTheme(isDarkTheme() ? "default" : "dark");
+    applyTheme(isDarkTheme() ? "light" : "dark");
   }
 
   try {
     var storedTheme = localStorage.getItem(THEME_KEY);
     // Prefer "dark"; accept legacy "hacker" from earlier builds.
-    applyTheme(storedTheme === "dark" || storedTheme === "hacker" ? "dark" : "default");
+    applyTheme(storedTheme === "dark" || storedTheme === "hacker" ? "dark" : "light");
   } catch (err) {
-    applyTheme("default");
+    applyTheme("light");
   }
   if (btnDark) {
     btnDark.addEventListener("click", toggleDarkTheme);
