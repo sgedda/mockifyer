@@ -52,6 +52,12 @@ export default function BrowserRecordReplay() {
         </CardContent>
       </Card>
 
+      <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-md">
+        <p className="text-sm text-muted-foreground">
+          <strong>Already ran <code className="bg-muted px-1 rounded">npx mockifyer init</code>?</strong> For browser apps, you'll still need the memory provider setup below since the browser has no filesystem access.
+        </p>
+      </div>
+
       <Card>
         <CardHeader>
           <CardTitle>Installation</CardTitle>
