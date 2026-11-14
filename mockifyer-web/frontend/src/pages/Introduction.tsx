@@ -59,8 +59,21 @@ export default function Introduction() {
             </h1>
             
             <p className="mt-6 text-lg text-muted-foreground leading-relaxed max-w-2xl mx-auto">
-              HTTP mock record/replay for JavaScript and React Native. No account, no cloud—mocks are JSON in your repo or your own Redis/SQLite.
+              Record real traffic from fetch, axios and React Native, then manage it: switch scenarios in a dashboard, catch API drift, and run stable offline E2E. No account, no cloud—mocks are JSON in your repo.
             </p>
+
+            {/* Feature Pills */}
+            <div className="mt-4 flex flex-wrap justify-center gap-2 max-w-2xl mx-auto">
+              <span className="px-3 py-1 text-xs sm:text-sm border border-border rounded-full text-muted-foreground">Record & replay</span>
+              <span className="text-muted-foreground">·</span>
+              <span className="px-3 py-1 text-xs sm:text-sm border border-border rounded-full text-muted-foreground">Dashboard & scenarios</span>
+              <span className="text-muted-foreground">·</span>
+              <span className="px-3 py-1 text-xs sm:text-sm border border-border rounded-full text-muted-foreground">Drift check</span>
+              <span className="text-muted-foreground">·</span>
+              <span className="px-3 py-1 text-xs sm:text-sm border border-border rounded-full text-muted-foreground">Offline E2E & CI</span>
+              <span className="text-muted-foreground">·</span>
+              <span className="px-3 py-1 text-xs sm:text-sm border border-border rounded-full text-muted-foreground">MCP for AI agents</span>
+            </div>
             
             {/* Try Command CTA */}
             <div className="mt-10 max-w-2xl mx-auto">
