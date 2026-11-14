@@ -254,10 +254,14 @@ header h1 {
   font-size: 1.5rem;
   font-weight: 600;
   letter-spacing: -0.02em;
+  color: hsl(var(--foreground));
+}
+header h1 .brand-mark {
   background: linear-gradient(to right, hsl(221.2 83.2% 53.3%), hsl(262.1 83.3% 57.8%));
   background-clip: text;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+  font-weight: 700;
 }
 header p {
   margin: 0;
@@ -348,6 +352,18 @@ li { margin: 0.35rem 0; }
   color: hsl(var(--muted-foreground));
   background: hsl(var(--muted));
   border-color: hsl(var(--border));
+}
+.badge.mock {
+  color: hsl(var(--success-foreground));
+  background: hsl(var(--success));
+  border-color: hsl(var(--success));
+  font-weight: 600;
+}
+.badge.live {
+  color: hsl(var(--primary-foreground));
+  background: hsl(var(--primary));
+  border-color: hsl(var(--primary));
+  font-weight: 600;
 }
 pre {
   background: hsl(var(--muted));
@@ -978,8 +994,8 @@ ${extraHead}
 </head>
 <body>
 <header>
-  <h1>${escapeHtml(title)}</h1>
-  <p>Mockifyer Atlas — living architecture doc (generated on capture)</p>
+  <h1><span class="brand-mark">Mockifyer Atlas</span>${title && title !== 'Atlas' ? ' — ' + escapeHtml(title) : ''}</h1>
+  <p>Living architecture doc — generated on capture</p>
 </header>
 <main>
 ${crumbHtml}
