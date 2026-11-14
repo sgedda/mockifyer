@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.10.195] - 2026-11-14
+
+### Added
+- **Core**: `mockifyer init` command for interactive project setup
+- **Core**: `mockifyer try` command for quick testing without configuration
+- **Core**: Post-record notice system for improved user feedback
+
 ## [1.10.194 / 1.5.97] - 2026-11-13
 
 ### Added
