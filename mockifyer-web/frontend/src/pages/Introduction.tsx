@@ -96,12 +96,16 @@ export default function Introduction() {
                   <div className="text-zinc-500 dark:text-zinc-600 mb-3">$ npx mockifyer try</div>
                   <div className="space-y-1.5">
                     <div className="text-green-400">✓ Recorded GET /hello</div>
-                    <div className="text-green-400">✓ Server stopped</div>
-                    <div className="text-green-400">✓ Replayed from mock — 0 network calls</div>
+                    <div className="text-zinc-400 dark:text-zinc-500 ml-4 text-xs">Response: {`{"message":"Hello from Mockifyer!"}`}</div>
+                    <div className="text-green-400 mt-2">✓ Server stopped <span className="text-zinc-600 dark:text-zinc-700">(network unavailable)</span></div>
+                    <div className="text-green-400 mt-2">✓ Replayed from mock — 0 network calls</div>
+                    <div className="text-zinc-400 dark:text-zinc-500 ml-4 text-xs">Response: {`{"message":"Hello from Mockifyer!"}`}</div>
+                    <div className="text-green-400 mt-2">✓ Same response, served from mock</div>
                     <div className="text-zinc-500 dark:text-zinc-600 mt-3">Next: npx mockifyer init</div>
                   </div>
                 </div>
               </div>
+              <p className="text-center text-xs text-muted-foreground mt-3 italic">Same response, no network. That's the whole idea.</p>
             </div>
             
             <div className="mt-8 flex flex-wrap justify-center gap-4">
