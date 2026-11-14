@@ -22,6 +22,8 @@ describe('mockifyer init CLI', () => {
     fs.mkdirSync(testDir, { recursive: true });
     process.chdir(testDir);
 
+    // Disable colors: set NO_COLOR env var and mock isTTY
+    process.env.NO_COLOR = '1';
     originalIsTTY = process.stdout.isTTY;
     Object.defineProperty(process.stdout, 'isTTY', {
       value: false,
@@ -40,6 +42,7 @@ describe('mockifyer init CLI', () => {
   afterEach(() => {
     process.chdir(originalCwd);
     process.argv = originalArgv;
+    delete process.env.NO_COLOR;
     Object.defineProperty(process.stdout, 'isTTY', {
       value: originalIsTTY,
       configurable: true,
@@ -51,7 +54,8 @@ describe('mockifyer init CLI', () => {
     }
   });
 
-  const getOutput = () => consoleOutput.join('\n');
+  const stripAnsi = (str: string) => str.replace(/\x1b\[[0-9;]*m/g, '');
+  const getOutput = () => stripAnsi(consoleOutput.join('\n'));
 
   it('detects axios from package.json', async () => {
     const pkg = {
