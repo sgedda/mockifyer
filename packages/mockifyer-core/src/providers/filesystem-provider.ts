@@ -11,6 +11,7 @@ import { getCurrentDate } from '../utils/date';
 import { getMockFilePath, formatDateStr } from '../utils/file-naming';
 import { shouldExcludeUrl } from '../utils/url-exclusion';
 import { ensureOverrideGroupRuntimeForScenarioPath } from '../utils/override-group-fs';
+import { maybeLogPostRecordNotice } from '../utils/post-record-notice';
 
 /**
  * Filesystem-based provider (current default implementation)
@@ -107,6 +108,13 @@ export class FilesystemProvider implements DatabaseProvider {
     console.log(
       `[Mockifyer] Saved new mock to file: ${scenarioForSave}/${dir ? `${dir}/` : ''}${filename}`
     );
+
+    maybeLogPostRecordNotice({
+      method: mockData.request?.method || 'GET',
+      url: mockData.request?.url || '',
+      filePath: path.relative(process.cwd(), filePath),
+      scenario: scenarioForSave,
+    });
   }
 
   private getAllJsonFiles(dir: string): string[] {
