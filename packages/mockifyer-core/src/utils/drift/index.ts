@@ -4,5 +4,6 @@
 
 export * from './drift-report';
 export * from './compare-engine';
+export * from './response-body';
 export * from './check-drift';
 export * from './drift-management';

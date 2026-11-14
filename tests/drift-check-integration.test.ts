@@ -43,6 +43,9 @@ describe('drift-check-integration', () => {
         // POST endpoint (should be skipped by default)
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: true }));
+      } else if (url.split('?')[0] === '/vendor/user') {
+        res.writeHead(200, { 'Content-Type': 'application/vnd.github+json' });
+        res.end(JSON.stringify({ id: 9, name: 'Vendor', email: 'vendor@example.com' }));
       } else if (url === '/timeout') {
         // Simulate timeout (never respond)
         return;
@@ -589,5 +592,66 @@ describe('drift-check-integration', () => {
     const statusIssue = report.mockReports[0].issues.find(i => i.path === 'status');
     expect(statusIssue).toBeDefined();
     expect(statusIssue?.type).toBe('status_change');
+  });
+
+  it('compares +json bodies as objects instead of raw text', async () => {
+    createMockFile(
+      'default',
+      {
+        request: {
+          method: 'GET',
+          url: `http://localhost:${serverPort}/vendor/user`,
+          headers: {},
+          queryParams: {},
+        },
+        response: {
+          status: 200,
+          data: { id: 9, name: 'Vendor', email: 'vendor@example.com' },
+          headers: {},
+        },
+        timestamp: new Date().toISOString(),
+      },
+      'vendor-user.json'
+    );
+
+    const report = await checkDrift({
+      mockDataPath: testDir,
+      scenario: 'default',
+    });
+
+    expect(report.driftedMocks).toBe(0);
+    expect(report.breakingDriftCount).toBe(0);
+    expect(report.mockReports[0].issues.some((issue) => issue.type === 'type_change')).toBe(false);
+  });
+
+  it('still reports missing keys inside a +json body', async () => {
+    createMockFile(
+      'default',
+      {
+        request: {
+          method: 'GET',
+          url: `http://localhost:${serverPort}/vendor/user`,
+          headers: {},
+          queryParams: {},
+        },
+        response: {
+          status: 200,
+          data: { id: 9, name: 'Vendor', email: 'vendor@example.com', role: 'admin' },
+          headers: {},
+        },
+        timestamp: new Date().toISOString(),
+      },
+      'vendor-user.json'
+    );
+
+    const report = await checkDrift({
+      mockDataPath: testDir,
+      scenario: 'default',
+    });
+
+    expect(report.breakingDriftCount).toBe(1);
+    const missing = report.mockReports[0].issues.find((issue) => issue.type === 'missing_key');
+    expect(missing?.path).toBe('role');
+    expect(report.mockReports[0].issues.some((issue) => issue.path === 'body')).toBe(false);
   });
 });
