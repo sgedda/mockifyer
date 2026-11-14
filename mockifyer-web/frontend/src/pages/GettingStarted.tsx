@@ -62,7 +62,7 @@ export default function GettingStarted() {
                 <p className="text-sm text-muted-foreground mb-3">
                   Detects axios/fetch/React Native from package.json, writes <code className="bg-muted px-1 rounded">mockifyer.config.json</code> with <strong>selective recording</strong> defaults, and prints setup code.
                 </p>
-                <CodeBlock code="npx mockifyer init" language="bash" />
+                <CodeBlock code="npx -p @sgedda/mockifyer-core mockifyer init" language="bash" />
                 <p className="text-xs text-muted-foreground mt-2">
                   <strong>Selective by default:</strong> Requests land as request-only stubs in <code className="bg-muted px-1 rounded">_scratch/</code> and keep hitting the live API. Activate mocks in the dashboard.
                 </p>
