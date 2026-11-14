@@ -58,7 +58,7 @@ export function logPostRecordNotice(params: {
   console.log(`[Mockifyer] Recorded ${method} ${url}`);
   console.log(`  → Saved to: ${filePath}`);
   console.log(`  → Scenario: ${scenarioLabel}`);
-  console.log('  → Activate: Open dashboard (npx mockifyer dashboard) or add domain-path rule');
+  console.log('  → Activate: Open dashboard (npx mockifyer-dashboard) or add domain-path rule');
   console.log('');
   
   markNoticeShown();

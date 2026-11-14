@@ -1,19 +1,18 @@
 #!/usr/bin/env node
 
 /**
- * Mockifyer Try CLI
+ * Mockifyer Try CLI - Core-only version
  * 
- * Self-contained demo: makes one real GET to a local HTTP server, records it
- * into _scratch, then replays it with the server stopped. Shows record/replay
- * cycle in under 30 seconds without touching your real API.
- * 
- * Usage:
- *   npx mockifyer try [options]
+ * Self-contained demo using only @sgedda/mockifyer-core (no fetch/axios dependencies).
+ * Uses Node's http module with core's FilesystemProvider directly.
  */
 
 import http from 'http';
 import path from 'path';
 import fs from 'fs';
+import { FilesystemProvider } from '../providers/filesystem-provider';
+import { generateRequestKey } from '../utils/mock-matcher';
+import type { MockData, StoredRequest } from '../types';
 
 interface ParsedArgs {
   keep: boolean;
@@ -64,7 +63,7 @@ NEXT STEPS
   After seeing the demo:
     1. Add setupMockifyer to your app (see 'npx mockifyer init')
     2. Run your app normally (requests land in _scratch/)
-    3. Open the dashboard to activate mocks: npx mockifyer dashboard
+    3. Open the dashboard to activate mocks: npx mockifyer-dashboard
 
 EXAMPLES
   # Run the demo
@@ -123,7 +122,7 @@ function stopServer(httpServer: HttpServer): Promise<void> {
   });
 }
 
-async function makeRequest(url: string): Promise<{ body: any; fromMock: boolean }> {
+function makeHttpRequest(url: string): Promise<{ body: any; status: number }> {
   return new Promise((resolve, reject) => {
     http.get(url, (res) => {
       let body = '';
@@ -131,8 +130,7 @@ async function makeRequest(url: string): Promise<{ body: any; fromMock: boolean 
       res.on('end', () => {
         try {
           const json = JSON.parse(body);
-          const fromMock = res.headers['x-mockifyer-mock'] === 'true';
-          resolve({ body: json, fromMock });
+          resolve({ body: json, status: res.statusCode || 200 });
         } catch (error) {
           reject(error);
         }
@@ -161,56 +159,35 @@ async function runDemo(keep: boolean) {
   console.log('');
 
   console.log(dim('Step 2: Recording request...'));
-  
-  const setupCode = `
-const { setupMockifyer } = require('@sgedda/mockifyer-fetch');
-const http = require('http');
 
-setupMockifyer({
-  mockDataPath: '${mockDataPath}',
-  recordMode: true,
-  recordNewMocksAsPassthrough: false,
-  recordResponses: true,
-  useGlobalFetch: false,
-});
-
-async function makeRequest(url) {
-  return new Promise((resolve, reject) => {
-    http.get(url, (res) => {
-      let body = '';
-      res.on('data', (chunk) => { body += chunk; });
-      res.on('end', () => {
-        try {
-          const json = JSON.parse(body);
-          const fromMock = res.headers['x-mockifyer-mock'] === 'true';
-          resolve({ body: json, fromMock, status: res.statusCode });
-        } catch (error) {
-          reject(error);
-        }
-      });
-    }).on('error', reject);
+  // Initialize provider for recording
+  const recordProvider = new FilesystemProvider({
+    path: mockDataPath,
+    options: {},
   });
-}
+  recordProvider.initialize();
 
-makeRequest('${testUrl}').then(result => {
-  console.log(JSON.stringify(result));
-}).catch(err => {
-  console.error(err);
-  process.exit(1);
-});
-`;
-
-  const testScriptPath = path.join(tmpDir, 'record-test.js');
-  fs.writeFileSync(testScriptPath, setupCode);
-
-  const { execSync } = require('child_process');
+  // Make request and record
   let recordResult: any;
   try {
-    const output = execSync(`node "${testScriptPath}"`, { 
-      encoding: 'utf-8',
-      stdio: 'pipe',
-    });
-    recordResult = JSON.parse(output.trim());
+    recordResult = await makeHttpRequest(testUrl);
+    
+    // Save as mock
+    const mockData: MockData = {
+      request: {
+        method: 'GET',
+        url: testUrl,
+        headers: {},
+      },
+      response: {
+        status: recordResult.status,
+        data: recordResult.body,
+        headers: { 'content-type': 'application/json' },
+      },
+      timestamp: new Date().toISOString(),
+    };
+    
+    recordProvider.save(mockData, { scenario: '_scratch' });
   } catch (error: any) {
     console.error('Failed to record:', error.message);
     await stopServer(httpServer);
@@ -224,10 +201,13 @@ makeRequest('${testUrl}').then(result => {
   console.log('  Response: ' + JSON.stringify(recordResult.body));
   console.log('');
 
-  const mockFiles = fs.readdirSync(path.join(mockDataPath, '_scratch'), { recursive: true })
-    .filter((f) => typeof f === 'string' && f.endsWith('.json'));
+  const scratchDir = path.join(mockDataPath, '_scratch');
+  const mockFiles = fs.existsSync(scratchDir)
+    ? fs.readdirSync(scratchDir, { recursive: true })
+        .filter((f) => typeof f === 'string' && f.endsWith('.json'))
+    : [];
   const mockFilePath = mockFiles.length > 0 
-    ? path.join(mockDataPath, '_scratch', mockFiles[0] as string)
+    ? path.join(scratchDir, mockFiles[0] as string)
     : null;
 
   if (mockFilePath) {
@@ -242,62 +222,32 @@ makeRequest('${testUrl}').then(result => {
 
   console.log(dim('Step 4: Replaying from mock...'));
 
-  const replayCode = `
-const { setupMockifyer } = require('@sgedda/mockifyer-fetch');
-const http = require('http');
-
-setupMockifyer({
-  mockDataPath: '${mockDataPath}',
-  recordMode: false,
-  useGlobalFetch: false,
-});
-
-async function makeRequest(url) {
-  return new Promise((resolve, reject) => {
-    http.get(url, (res) => {
-      let body = '';
-      res.on('data', (chunk) => { body += chunk; });
-      res.on('end', () => {
-        try {
-          const json = JSON.parse(body);
-          const fromMock = res.headers['x-mockifyer-mock'] === 'true';
-          resolve({ body: json, fromMock, status: res.statusCode });
-        } catch (error) {
-          reject(error);
-        }
-      });
-    }).on('error', reject);
+  // Initialize provider for replay
+  const replayProvider = new FilesystemProvider({
+    path: mockDataPath,
+    options: {},
   });
-}
 
-makeRequest('${testUrl}').then(result => {
-  console.log(JSON.stringify(result));
-}).catch(err => {
-  console.error(err);
-  process.exit(1);
-});
-`;
+  const request: StoredRequest = {
+    method: 'GET',
+    url: testUrl,
+    headers: {},
+  };
+  const requestKey = generateRequestKey(request);
+  const cached = replayProvider.findExactMatch(request, requestKey);
 
-  const replayScriptPath = path.join(tmpDir, 'replay-test.js');
-  fs.writeFileSync(replayScriptPath, replayCode);
-
-  let replayResult: any;
-  try {
-    const output = execSync(`node "${replayScriptPath}"`, { 
-      encoding: 'utf-8',
-      stdio: 'pipe',
-    });
-    replayResult = JSON.parse(output.trim());
-  } catch (error: any) {
-    console.error('Failed to replay:', error.message);
+  if (!cached) {
+    console.error('Failed to find mock for replay');
     if (!keep) {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
     process.exit(1);
   }
 
+  const replayResult = cached.mockData.response;
+
   console.log(green('✓') + ' Replayed from mock (0 network calls)');
-  console.log('  Response: ' + JSON.stringify(replayResult.body));
+  console.log('  Response: ' + JSON.stringify(replayResult.data));
   console.log('');
 
   console.log(bold('Summary:'));
@@ -317,7 +267,7 @@ makeRequest('${testUrl}').then(result => {
   console.log(dim('Next steps:'));
   console.log('  1. Add setupMockifyer to your app (see: ' + bold('npx mockifyer init') + ')');
   console.log('  2. Run your app (requests land in _scratch/)');
-  console.log('  3. Activate mocks: ' + bold('npx mockifyer dashboard'));
+  console.log('  3. Activate mocks: ' + bold('npx mockifyer-dashboard'));
   console.log('');
 }
 

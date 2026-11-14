@@ -62,7 +62,7 @@ describe('post-record notice', () => {
     );
     expect(consoleSpy).toHaveBeenCalledWith('  → Scenario: _scratch (temporary)');
     expect(consoleSpy).toHaveBeenCalledWith(
-      '  → Activate: Open dashboard (npx mockifyer dashboard) or add domain-path rule'
+      '  → Activate: Open dashboard (npx mockifyer-dashboard) or add domain-path rule'
     );
     expect(consoleSpy).toHaveBeenCalledWith('');
   });

@@ -58,8 +58,8 @@ OPTIONS
 
 NEXT STEPS
   After init:
-    1. npx mockifyer try       (self-contained demo)
-    2. npx mockifyer dashboard (browse/activate mocks)
+    1. npx mockifyer try              (self-contained demo)
+    2. npx mockifyer-dashboard        (browse/activate mocks)
 
 EXAMPLES
   # Zero-config setup
@@ -148,7 +148,12 @@ function getSetupInstructions(clientType: ClientType): string[] {
       return [
         "import { setupMockifyer } from '@sgedda/mockifyer-axios';",
         '',
-        "setupMockifyer({ mockDataPath: './mock-data', recordMode: true });",
+        "setupMockifyer({",
+        "  mockDataPath: './mock-data',",
+        "  recordMode: true,",
+        "  recordNewMocksAsPassthrough: true,  // Selective: activate in dashboard",
+        "  recordResponses: false,             // Request-only stubs initially",
+        "});",
       ];
     case 'fetch':
       return [
@@ -157,6 +162,8 @@ function getSetupInstructions(clientType: ClientType): string[] {
         "setupMockifyer({",
         "  mockDataPath: './mock-data',",
         "  recordMode: true,",
+        "  recordNewMocksAsPassthrough: true,  // Selective: activate in dashboard",
+        "  recordResponses: false,             // Request-only stubs initially",
         "  useGlobalFetch: true,",
         "});",
       ];
@@ -167,6 +174,8 @@ function getSetupInstructions(clientType: ClientType): string[] {
         "setupMockifyerForReactNative({",
         "  mockDataPath: './mock-data',",
         "  runtimeMode: 'on',",
+        "  recordNewMocksAsPassthrough: true,  // Selective: activate in dashboard",
+        "  recordResponses: false,             // Request-only stubs initially",
         "});",
       ];
     default:
@@ -243,8 +252,8 @@ async function main() {
   console.log('');
 
   console.log(dim('Next steps:'));
-  console.log('  ' + bold('npx mockifyer try') + '       (self-contained demo)');
-  console.log('  ' + bold('npx mockifyer dashboard') + '  (browse/activate mocks)');
+  console.log('  ' + bold('npx mockifyer try') + '              (self-contained demo)');
+  console.log('  ' + bold('npx mockifyer-dashboard') + '        (browse/activate mocks)');
   console.log('');
 }
 

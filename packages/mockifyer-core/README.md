@@ -8,19 +8,27 @@ Get an 'aha' moment within 2 minutes:
 
 ```bash
 # 1. Initialize (detects axios/fetch/React Native, writes minimal config)
-npx mockifyer init
+npx -p @sgedda/mockifyer-core mockifyer init
 
 # 2. Try the demo (self-contained record/replay in ~10 seconds)
-npx mockifyer try
+npx -p @sgedda/mockifyer-core mockifyer try
 
-# 3. Browse/activate mocks
-npx mockifyer dashboard
+# 3. Browse/activate mocks (requires separate dashboard package)
+npx -p @sgedda/mockifyer-dashboard mockifyer-dashboard
+```
+
+Or after installing core:
+
+```bash
+npm install @sgedda/mockifyer-core
+npx mockifyer init
+npx mockifyer try
 ```
 
 **What you'll see:**
-- `init` writes a minimal `mockifyer.config.json` with **selective recording** defaults (request-only stubs into `_scratch/`, activate mocks via dashboard or domain-path rules)
+- `init` detects your HTTP client and prints setup code with **selective recording** defaults
 - `try` makes one real request, records it, then replays it with the network blocked
-- `dashboard` lets you browse recorded requests and activate the ones you want to mock
+- `mockifyer-dashboard` lets you browse recorded requests and activate the ones you want to mock
 
 **Selective recording by default:**
 - Requests land as request-only stubs in `_scratch/` and keep hitting the live API
