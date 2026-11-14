@@ -97,6 +97,8 @@
   },
   "bin": {
     "mockifyer": "./src/cli/generate-bundle.ts",
+    "mockifyer-init": "./dist/cli/init.js",
+    "mockifyer-try": "./dist/cli/try.js",
     "mockifyer-sync-to-device": "./src/cli/sync-to-device.ts",
     "mockifyer-sync-from-device": "./src/cli/sync-from-device.ts",
     "mockifyer-atlas-har": "./src/cli/atlas-har.ts",

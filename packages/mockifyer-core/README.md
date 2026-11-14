@@ -2,6 +2,31 @@
 
 Core utilities and types for Mockifyer — HTTP mock record & replay for Node.js and React Native.
 
+## Quick Start
+
+Get an 'aha' moment within 2 minutes:
+
+```bash
+# 1. Initialize (detects axios/fetch/React Native, writes minimal config)
+npx mockifyer init
+
+# 2. Try the demo (self-contained record/replay in ~10 seconds)
+npx mockifyer try
+
+# 3. Browse/activate mocks
+npx mockifyer dashboard
+```
+
+**What you'll see:**
+- `init` writes a minimal `mockifyer.config.json` with **selective recording** defaults (request-only stubs into `_scratch/`, activate mocks via dashboard or domain-path rules)
+- `try` makes one real request, records it, then replays it with the network blocked
+- `dashboard` lets you browse recorded requests and activate the ones you want to mock
+
+**Selective recording by default:**
+- Requests land as request-only stubs in `_scratch/` and keep hitting the live API
+- Use the dashboard to activate mocks (untick "Always use live API") or add domain-path rules
+- No responses recorded until you activate them
+
 ## Overview
 
 `@sgedda/mockifyer-core` provides the foundation for recording and replaying HTTP requests as JSON mocks. It includes:
