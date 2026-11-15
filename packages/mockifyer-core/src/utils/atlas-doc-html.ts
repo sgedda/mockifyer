@@ -3176,13 +3176,22 @@ function renderErrorPanelHtml(analysis, escFn) {
   }
 
   function renderEndpointDetail(host, method, urlTemplate, status, calls, auth) {
+    // Map internal status to human-readable label
+    function formatStatus(s) {
+      if (s === 'observed-no-chain') return 'Live';
+      if (s === 'observed-chain') return 'Live (nested)';
+      if (s === 'mocked-only') return 'Mocked';
+      if (s === 'code-only') return 'Code only';
+      return s;
+    }
+    
     var html = '<h3>Endpoint Detail</h3>';
     html += '<table class="meta-table"><tbody>';
     html += '<tr><th>Host</th><td><code>' + esc(host) + '</code></td></tr>';
     html += '<tr><th>Method</th><td><span class="method method-' + method.toLowerCase() + '">' + esc(method) + '</span></td></tr>';
     html += '<tr><th>Path</th><td><code>' + esc(urlTemplate) + '</code></td></tr>';
     html += '<tr><th>Auth</th><td>' + (auth ? esc(auth) : '—') + '</td></tr>';
-    html += '<tr><th>Status</th><td>' + esc(status) + '</td></tr>';
+    html += '<tr><th>Status</th><td>' + esc(formatStatus(status)) + '</td></tr>';
     html += '<tr><th>Calls</th><td>' + calls + '</td></tr>';
     html += '</tbody></table>';
     

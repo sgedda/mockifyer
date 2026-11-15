@@ -99,9 +99,22 @@ export function generateSystemDiagramSVG(
   });
   
   // Layout hosts with cumulative width to prevent overlap
+  // If more than 4 hosts, wrap to multiple rows
+  const MAX_ROW_WIDTH = 1200;
+  const WRAP_THRESHOLD = 4;
   let currentX = 50;
+  let rowStartY = y;
+  let maxX = currentX;
+  
   hosts.forEach((host, i) => {
     const width = getNodeWidth(host);
+    
+    // Wrap to next row if we exceed threshold or width limit
+    if (i > 0 && (i % WRAP_THRESHOLD === 0 || currentX + width > MAX_ROW_WIDTH)) {
+      currentX = 50;
+      rowStartY += 80;
+    }
+    
     nodes.push({
       id: `host-${host}`,
       label: host,
@@ -109,12 +122,15 @@ export function generateSystemDiagramSVG(
             hostStatuses.get(host) === 'code-only' ? 'code-backend' :
             'backend',
       x: currentX,
-      y,
+      y: rowStartY,
       width
     });
+    
+    maxX = Math.max(maxX, currentX + width);
     currentX += width + NODE_GAP;
   });
-  y += LAYER_GAP;
+  
+  y = rowStartY + LAYER_GAP;
   
   // Layer 4: Downstream services (from chains)
   const downstreamHostPaths = new Map<string, string>();
@@ -132,23 +148,36 @@ export function generateSystemDiagramSVG(
     }
   });
   
-  const downstream = Array.from(downstreamHostPaths.entries()).slice(0, 4);
-  // Layout downstream nodes with cumulative width
-  currentX = 100;
+  const downstream = Array.from(downstreamHostPaths.entries()).slice(0, 8);
+  // Layout downstream nodes with cumulative width and wrapping
+  currentX = 50;
+  rowStartY = y;
+  
   downstream.forEach(([host, path], i) => {
     // Show host + path with · separator for nested nodes
     const label = `${host} · ${path}`;
     const width = getNodeWidth(label);
+    
+    // Wrap to next row if needed
+    if (i > 0 && (i % WRAP_THRESHOLD === 0 || currentX + width > MAX_ROW_WIDTH)) {
+      currentX = 50;
+      rowStartY += 80;
+    }
+    
     nodes.push({
       id: `downstream-${host}`,
       label,
       type: 'downstream',
       x: currentX,
-      y,
+      y: rowStartY,
       width
     });
+    
+    maxX = Math.max(maxX, currentX + width);
     currentX += width + NODE_GAP;
   });
+  
+  y = rowStartY;
   
   // Create edges
   // Screen -> App
@@ -191,12 +220,13 @@ export function generateSystemDiagramSVG(
   });
   
   // Generate SVG with legend below
-  const contentWidth = Math.max(800, hosts.length * NODE_GAP + 100);
+  // Calculate actual content dimensions based on node positions
+  const contentWidth = Math.max(800, maxX + 50); // Add right padding
   const diagramHeight = y + 40;
   const legendHeight = 60;
   const totalHeight = diagramHeight + legendHeight;
   
-  let svg = `<svg viewBox="0 0 ${contentWidth} ${totalHeight}" xmlns="http://www.w3.org/2000/svg" class="atlas-system-diagram" style="width: 100%; height: auto; min-height: 400px;">`;
+  let svg = `<svg viewBox="0 0 ${contentWidth} ${totalHeight}" xmlns="http://www.w3.org/2000/svg" class="atlas-system-diagram" style="width: 100%; height: auto; min-height: 400px;" preserveAspectRatio="xMidYMid meet">`;
   
   // Define arrow markers (Mock=green, Live=blue, Error=red, Code-only=grey)
   svg += `<defs>
@@ -269,7 +299,7 @@ export function generateSystemDiagramSVG(
     
     const nodeWidth = node.width || 160;
     svg += `<rect x="${node.x}" y="${node.y}" width="${nodeWidth}" height="${NODE_HEIGHT}" rx="6" 
-      fill="${fillColor}" stroke="${strokeColor}" stroke-width="2" ${node.type === 'code-backend' ? 'stroke-dasharray="5,5"' : ''} />`;
+      fill="${fillColor}" stroke="${strokeColor}" stroke-width="2" ${node.type === 'code-backend' ? 'stroke-dasharray="5,5"' : ''} data-node-id="${escapeHtml(node.id)}" />`;
     
     // Show full label (no truncation needed now)
     svg += `<text x="${node.x + nodeWidth/2}" y="${node.y + NODE_HEIGHT/2 + 5}" font-size="13" text-anchor="middle" fill="#1f2937" font-weight="500">${escapeHtml(node.label)}</text>`;
