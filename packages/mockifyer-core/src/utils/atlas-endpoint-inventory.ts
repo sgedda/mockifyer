@@ -1,0 +1,332 @@
+/**
+ * Unified endpoint inventory for Atlas: merges code scan, traffic capture, and mocks.
+ */
+
+import type { NetworkEvent } from './network-event-types';
+import type { ScannedEndpoint } from './atlas-code-scanner';
+import { normalizeUrlToTemplate } from './atlas-url-normalizer';
+import { inferSchemaFromSamples, simplifySchema, type JsonSchema } from './atlas-schema-inference';
+
+export type EndpointStatus = 
+  | 'observed-with-chain'  // Captured with downstream trace
+  | 'observed-no-chain'    // Captured but no downstream visible
+  | 'mocked-only'          // Only in mocks, never observed live
+  | 'code-only'            // Found in code but never observed
+  | 'unresolved';          // Found in code but URL couldn't be resolved
+
+export interface EndpointObservation {
+  requestId?: string;
+  timestamp?: string;
+  durationMs?: number;
+  status?: number;
+  error?: string;
+  source?: 'mock-hit' | 'live' | 'recording';
+  parentRequestId?: string | null;
+  childCount?: number;
+}
+
+export interface EndpointInventoryItem {
+  host: string;
+  method: string;
+  urlTemplate: string;
+  status: EndpointStatus;
+  observations: EndpointObservation[];
+  codeLocations: Array<{
+    filePath: string;
+    line: number;
+    component?: string;
+  }>;
+  mockExists: boolean;
+  requestSchema?: JsonSchema;
+  responseSchema?: JsonSchema;
+  avgDurationMs?: number;
+  errorRate?: number;
+  callCount: number;
+}
+
+export interface EndpointInventory {
+  byHost: Map<string, EndpointInventoryItem[]>;
+  all: EndpointInventoryItem[];
+  summary: {
+    totalEndpoints: number;
+    observedCount: number;
+    mockedOnlyCount: number;
+    codeOnlyCount: number;
+    unresolvedCount: number;
+    hostCoverage: Array<{
+      host: string;
+      total: number;
+      exercised: number;
+      coveragePercent: number;
+    }>;
+  };
+}
+
+/**
+ * Extract host from URL.
+ */
+function extractHost(url: string): string {
+  try {
+    const urlObj = new URL(url);
+    return urlObj.host;
+  } catch {
+    // Try to extract from partial URLs
+    const match = url.match(/^https?:\/\/([^\/]+)/);
+    return match ? match[1] : 'unknown';
+  }
+}
+
+/**
+ * Build unified endpoint inventory from all sources.
+ */
+export function buildEndpointInventory(
+  networkEvents: NetworkEvent[],
+  scannedEndpoints: ScannedEndpoint[],
+  mockFiles?: Array<{ method: string; url: string }>
+): EndpointInventory {
+  const itemsMap = new Map<string, EndpointInventoryItem>();
+
+  // Helper to get or create an inventory item
+  function getOrCreate(host: string, method: string, urlTemplate: string): EndpointInventoryItem {
+    const key = `${host}::${method}::${urlTemplate}`;
+    if (!itemsMap.has(key)) {
+      itemsMap.set(key, {
+        host,
+        method,
+        urlTemplate,
+        status: 'unresolved',
+        observations: [],
+        codeLocations: [],
+        mockExists: false,
+        callCount: 0
+      });
+    }
+    return itemsMap.get(key)!;
+  }
+
+  // Process mocks
+  if (mockFiles) {
+    for (const mock of mockFiles) {
+      const host = extractHost(mock.url);
+      const normalized = normalizeUrlToTemplate(mock.url);
+      const item = getOrCreate(host, mock.method.toUpperCase(), normalized.template);
+      item.mockExists = true;
+      if (item.status === 'unresolved') {
+        item.status = 'mocked-only';
+      }
+    }
+  }
+
+  // Process scanned code
+  for (const scanned of scannedEndpoints) {
+    const host = scanned.resolvedUrl ? extractHost(scanned.resolvedUrl) : 'unknown';
+    const normalized = scanned.resolvedUrl ? normalizeUrlToTemplate(scanned.resolvedUrl) : { template: scanned.urlTemplate, parameters: [] };
+    const item = getOrCreate(host, scanned.method, normalized.template);
+    
+    item.codeLocations.push({
+      filePath: scanned.filePath,
+      line: scanned.line,
+      component: scanned.componentName
+    });
+
+    if (item.status === 'unresolved' || item.status === 'mocked-only') {
+      item.status = scanned.callType === 'unresolved' ? 'unresolved' : 'code-only';
+    }
+  }
+
+  // Build parent-child map for chain detection
+  const childCounts = new Map<string, number>();
+  for (const event of networkEvents) {
+    if (event.parentRequestId) {
+      childCounts.set(event.parentRequestId, (childCounts.get(event.parentRequestId) || 0) + 1);
+    }
+  }
+
+  // Process network events
+  const requestBodies: Record<string, unknown[]> = {};
+  const responseBodies: Record<string, unknown[]> = {};
+
+  for (const event of networkEvents) {
+    if (!event.url) continue;
+    
+    const host = extractHost(event.url);
+    const normalized = normalizeUrlToTemplate(event.url);
+    const method = event.method?.toUpperCase() || 'GET';
+    const item = getOrCreate(host, method, normalized.template);
+
+    // Update status
+    const hasChain = childCounts.has(event.requestId || '') && (childCounts.get(event.requestId!) || 0) > 0;
+    if (hasChain) {
+      item.status = 'observed-with-chain';
+    } else if (item.status !== 'observed-with-chain') {
+      item.status = 'observed-no-chain';
+    }
+
+    item.observations.push({
+      requestId: event.requestId || undefined,
+      timestamp: event.timestamp,
+      durationMs: event.durationMs,
+      status: event.status,
+      error: event.error,
+      source: event.source,
+      parentRequestId: event.parentRequestId,
+      childCount: childCounts.get(event.requestId || '') || 0
+    });
+
+    item.callCount++;
+
+    // Collect bodies for schema inference
+    const key = `${host}::${method}::${normalized.template}`;
+    if (event.requestBodyPreview) {
+      if (!requestBodies[key]) requestBodies[key] = [];
+      try {
+        requestBodies[key].push(JSON.parse(event.requestBodyPreview));
+      } catch {
+        // Ignore non-JSON
+      }
+    }
+    if (event.responseBodyPreview) {
+      if (!responseBodies[key]) responseBodies[key] = [];
+      try {
+        responseBodies[key].push(JSON.parse(event.responseBodyPreview));
+      } catch {
+        // Ignore non-JSON
+      }
+    }
+  }
+
+  // Infer schemas and calculate stats
+  for (const [key, item] of itemsMap.entries()) {
+    if (item.observations.length > 0) {
+      const durations = item.observations.map(o => o.durationMs).filter((d): d is number => d !== undefined);
+      if (durations.length > 0) {
+        item.avgDurationMs = durations.reduce((a, b) => a + b, 0) / durations.length;
+      }
+
+      const errors = item.observations.filter(o => o.error || (o.status && o.status >= 400)).length;
+      item.errorRate = errors / item.observations.length;
+    }
+
+    if (requestBodies[key]?.length) {
+      item.requestSchema = simplifySchema(inferSchemaFromSamples(requestBodies[key]));
+    }
+    if (responseBodies[key]?.length) {
+      item.responseSchema = simplifySchema(inferSchemaFromSamples(responseBodies[key]));
+    }
+  }
+
+  // Group by host
+  const byHost = new Map<string, EndpointInventoryItem[]>();
+  const all: EndpointInventoryItem[] = [];
+
+  for (const item of itemsMap.values()) {
+    all.push(item);
+    if (!byHost.has(item.host)) {
+      byHost.set(item.host, []);
+    }
+    byHost.get(item.host)!.push(item);
+  }
+
+  // Sort by host, then method, then template
+  for (const items of byHost.values()) {
+    items.sort((a, b) => {
+      if (a.method !== b.method) return a.method.localeCompare(b.method);
+      return a.urlTemplate.localeCompare(b.urlTemplate);
+    });
+  }
+
+  // Calculate summary
+  const observedCount = all.filter(i => i.status.startsWith('observed')).length;
+  const mockedOnlyCount = all.filter(i => i.status === 'mocked-only').length;
+  const codeOnlyCount = all.filter(i => i.status === 'code-only').length;
+  const unresolvedCount = all.filter(i => i.status === 'unresolved').length;
+
+  const hostCoverage = Array.from(byHost.entries()).map(([host, items]) => {
+    const total = items.length;
+    const exercised = items.filter(i => i.status.startsWith('observed')).length;
+    return {
+      host,
+      total,
+      exercised,
+      coveragePercent: total > 0 ? Math.round((exercised / total) * 100) : 0
+    };
+  }).sort((a, b) => b.exercised - a.exercised);
+
+  return {
+    byHost,
+    all,
+    summary: {
+      totalEndpoints: all.length,
+      observedCount,
+      mockedOnlyCount,
+      codeOnlyCount,
+      unresolvedCount,
+      hostCoverage
+    }
+  };
+}
+
+/**
+ * Generate OpenAPI 3.0 specification from endpoint inventory.
+ */
+export function generateOpenApiSpec(
+  inventory: EndpointInventory,
+  info: { title: string; version: string; description?: string }
+): Record<string, unknown> {
+  const paths: Record<string, Record<string, unknown>> = {};
+  const servers = new Set<string>();
+
+  for (const item of inventory.all) {
+    if (item.status === 'unresolved') continue;
+
+    const hostUrl = item.host !== 'unknown' ? `https://${item.host}` : '';
+    if (hostUrl) servers.add(hostUrl);
+
+    const pathKey = item.urlTemplate;
+    if (!paths[pathKey]) {
+      paths[pathKey] = {};
+    }
+
+    const operation: Record<string, unknown> = {
+      summary: `${item.method} ${pathKey}`,
+      responses: {
+        '200': {
+          description: 'Success',
+          ...(item.responseSchema && {
+            content: {
+              'application/json': {
+                schema: item.responseSchema
+              }
+            }
+          })
+        }
+      }
+    };
+
+    if (item.requestSchema) {
+      operation.requestBody = {
+        content: {
+          'application/json': {
+            schema: item.requestSchema
+          }
+        }
+      };
+    }
+
+    if (item.observations.length > 0) {
+      const example = item.observations[0];
+      operation.description = `Observed ${item.observations.length} time(s)${
+        item.avgDurationMs ? `, avg ${Math.round(item.avgDurationMs)}ms` : ''
+      }`;
+    }
+
+    paths[pathKey][item.method.toLowerCase()] = operation;
+  }
+
+  return {
+    openapi: '3.0.0',
+    info,
+    servers: Array.from(servers).map(url => ({ url })),
+    paths
+  };
+}

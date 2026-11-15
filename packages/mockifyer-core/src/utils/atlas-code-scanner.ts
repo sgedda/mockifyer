@@ -1,0 +1,439 @@
+/**
+ * Static code scanner for Atlas endpoint discovery.
+ * Uses TypeScript Compiler API to find fetch/axios calls and resolve URLs.
+ */
+
+import * as ts from 'typescript';
+import * as fs from 'fs';
+import * as path from 'path';
+
+export interface ScannedEndpoint {
+  method: string;
+  urlTemplate: string;
+  filePath: string;
+  line: number;
+  column: number;
+  callType: 'fetch' | 'axios' | 'axios-instance' | 'wrapper' | 'unresolved';
+  resolvedUrl?: string;
+  baseUrl?: string;
+  componentName?: string;
+}
+
+export interface ScanResult {
+  endpoints: ScannedEndpoint[];
+  errors: Array<{ file: string; message: string }>;
+}
+
+interface AxiosInstance {
+  baseURL?: string;
+  variableName: string;
+}
+
+/**
+ * Resolve string literal, template string, or const reference to a URL.
+ */
+function resolveUrlExpression(
+  node: ts.Node,
+  sourceFile: ts.SourceFile,
+  checker: ts.TypeChecker,
+  constants: Map<string, string>,
+  maxDepth: number = 3
+): string | null {
+  if (maxDepth <= 0) return null;
+
+  // String literal
+  if (ts.isStringLiteral(node)) {
+    return node.text;
+  }
+
+  // Template string
+  if (ts.isTemplateExpression(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
+    if (ts.isNoSubstitutionTemplateLiteral(node)) {
+      return node.text;
+    }
+    if (ts.isTemplateExpression(node)) {
+      let result = node.head.text;
+      for (const span of node.templateSpans) {
+        // Try to resolve substitution
+        const subst = resolveUrlExpression(span.expression, sourceFile, checker, constants, maxDepth - 1);
+        if (subst) {
+          result += subst;
+        } else {
+          result += '{param}';
+        }
+        result += span.literal.text;
+      }
+      return result;
+    }
+  }
+
+  // Binary expression (string concatenation)
+  if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+    const left = resolveUrlExpression(node.left, sourceFile, checker, constants, maxDepth - 1);
+    const right = resolveUrlExpression(node.right, sourceFile, checker, constants, maxDepth - 1);
+    if (left && right) return left + right;
+    if (left) return left + '{param}';
+    if (right) return '{param}' + right;
+  }
+
+  // Identifier - check constants map
+  if (ts.isIdentifier(node)) {
+    const name = node.text;
+    if (constants.has(name)) {
+      return constants.get(name)!;
+    }
+  }
+
+  // Property access (e.g., config.baseURL)
+  if (ts.isPropertyAccessExpression(node)) {
+    const text = node.getText(sourceFile);
+    if (constants.has(text)) {
+      return constants.get(text)!;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Extract method from fetch/axios call or default to GET.
+ */
+function extractMethod(node: ts.CallExpression, sourceFile: ts.SourceFile): string {
+  // axios.get, axios.post, etc.
+  if (ts.isPropertyAccessExpression(node.expression)) {
+    const methodName = node.expression.name.text.toUpperCase();
+    if (['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'].includes(methodName)) {
+      return methodName;
+    }
+  }
+
+  // fetch(url, { method: 'POST' })
+  if (node.arguments.length >= 2) {
+    const optionsArg = node.arguments[1];
+    if (ts.isObjectLiteralExpression(optionsArg)) {
+      for (const prop of optionsArg.properties) {
+        if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name) && prop.name.text === 'method') {
+          if (ts.isStringLiteral(prop.initializer)) {
+            return prop.initializer.text.toUpperCase();
+          }
+        }
+      }
+    }
+  }
+
+  // axios({ method: 'POST', url: ... })
+  if (node.arguments.length >= 1 && ts.isObjectLiteralExpression(node.arguments[0])) {
+    for (const prop of node.arguments[0].properties) {
+      if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name) && prop.name.text === 'method') {
+        if (ts.isStringLiteral(prop.initializer)) {
+          return prop.initializer.text.toUpperCase();
+        }
+      }
+    }
+  }
+
+  return 'GET';
+}
+
+/**
+ * Find axios.create calls and track base URLs.
+ */
+function findAxiosInstances(sourceFile: ts.SourceFile, checker: ts.TypeChecker, constants: Map<string, string>): AxiosInstance[] {
+  const instances: AxiosInstance[] = [];
+
+  function visit(node: ts.Node) {
+    // Look for axios.create({ baseURL: '...' })
+    if (ts.isCallExpression(node) &&
+        ts.isPropertyAccessExpression(node.expression) &&
+        node.expression.name.text === 'create') {
+      
+      if (node.arguments.length > 0 && ts.isObjectLiteralExpression(node.arguments[0])) {
+        const config = node.arguments[0];
+        let baseURL: string | undefined;
+
+        for (const prop of config.properties) {
+          if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name) && prop.name.text === 'baseURL') {
+            const resolved = resolveUrlExpression(prop.initializer, sourceFile, checker, constants);
+            baseURL = resolved || undefined;
+            break;
+          }
+        }
+
+        // Try to find variable name
+        if (node.parent && ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)) {
+          instances.push({
+            baseURL: baseURL || undefined,
+            variableName: node.parent.name.text
+          });
+        }
+      }
+    }
+
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+  return instances;
+}
+
+/**
+ * Collect string constants and config values from the file.
+ */
+function collectConstants(sourceFile: ts.SourceFile): Map<string, string> {
+  const constants = new Map<string, string>();
+
+  function visit(node: ts.Node) {
+    // const BASE_URL = 'https://...'
+    if (ts.isVariableDeclaration(node) &&
+        ts.isIdentifier(node.name) &&
+        node.initializer &&
+        ts.isStringLiteral(node.initializer)) {
+      constants.set(node.name.text, node.initializer.text);
+    }
+
+    // Look for process.env.X or import.meta.env.X
+    if (ts.isPropertyAccessExpression(node)) {
+      const full = node.getText(sourceFile);
+      if (full.startsWith('process.env.') || full.startsWith('import.meta.env.')) {
+        // We can't resolve env vars, but we can note them
+        constants.set(full, ''); // Empty means unresolved
+      }
+    }
+
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+  return constants;
+}
+
+/**
+ * Scan a single source file for HTTP calls.
+ */
+function scanSourceFile(
+  filePath: string,
+  sourceFile: ts.SourceFile,
+  checker: ts.TypeChecker
+): ScannedEndpoint[] {
+  const endpoints: ScannedEndpoint[] = [];
+  const constants = collectConstants(sourceFile);
+  const axiosInstances = findAxiosInstances(sourceFile, checker, constants);
+
+  // Get component/function name if in a React component or function
+  function getContainingComponentName(node: ts.Node): string | undefined {
+    let current: ts.Node | undefined = node;
+    while (current) {
+      // Function declaration: function MyComponent() {}
+      if (ts.isFunctionDeclaration(current) && current.name) {
+        return current.name.text;
+      }
+      // Arrow function in variable: const MyComponent = () => {}
+      if (ts.isVariableDeclaration(current) && ts.isIdentifier(current.name) && 
+          current.initializer && (ts.isArrowFunction(current.initializer) || ts.isFunctionExpression(current.initializer))) {
+        return current.name.text;
+      }
+      // Class method
+      if (ts.isMethodDeclaration(current) && ts.isIdentifier(current.name)) {
+        return current.name.text;
+      }
+      current = current.parent;
+    }
+    return undefined;
+  }
+
+  function visit(node: ts.Node) {
+    if (ts.isCallExpression(node)) {
+      const { line, character } = sourceFile.getLineAndCharacterOfPosition(node.getStart());
+      const componentName = getContainingComponentName(node);
+
+      // fetch(url, options)
+      if (ts.isIdentifier(node.expression) && node.expression.text === 'fetch' && node.arguments.length > 0) {
+        const urlArg = node.arguments[0];
+        const url = resolveUrlExpression(urlArg, sourceFile, checker, constants);
+        const method = extractMethod(node, sourceFile);
+
+        endpoints.push({
+          method,
+          urlTemplate: url || 'unresolved',
+          filePath,
+          line: line + 1,
+          column: character + 1,
+          callType: url ? 'fetch' : 'unresolved',
+          resolvedUrl: url || undefined,
+          componentName
+        });
+      }
+
+      // axios.get/post/etc(url, config)
+      if (ts.isPropertyAccessExpression(node.expression) &&
+          ts.isIdentifier(node.expression.expression) &&
+          node.expression.expression.text === 'axios') {
+        const methodName = node.expression.name.text;
+        if (['get', 'post', 'put', 'patch', 'delete', 'head', 'options'].includes(methodName.toLowerCase())) {
+          const url = node.arguments.length > 0 ? resolveUrlExpression(node.arguments[0], sourceFile, checker, constants) : null;
+          
+          endpoints.push({
+            method: methodName.toUpperCase(),
+            urlTemplate: url || 'unresolved',
+            filePath,
+            line: line + 1,
+            column: character + 1,
+            callType: url ? 'axios' : 'unresolved',
+            resolvedUrl: url || undefined,
+            componentName
+          });
+        }
+      }
+
+      // axios({ method, url })
+      if (ts.isIdentifier(node.expression) && node.expression.text === 'axios' && 
+          node.arguments.length > 0 && ts.isObjectLiteralExpression(node.arguments[0])) {
+        const config = node.arguments[0];
+        let url: string | null = null;
+        let method = 'GET';
+
+        for (const prop of config.properties) {
+          if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name)) {
+            if (prop.name.text === 'url') {
+              url = resolveUrlExpression(prop.initializer, sourceFile, checker, constants);
+            }
+            if (prop.name.text === 'method' && ts.isStringLiteral(prop.initializer)) {
+              method = prop.initializer.text.toUpperCase();
+            }
+          }
+        }
+
+        endpoints.push({
+          method,
+          urlTemplate: url || 'unresolved',
+          filePath,
+          line: line + 1,
+          column: character + 1,
+          callType: url ? 'axios' : 'unresolved',
+          resolvedUrl: url || undefined,
+          componentName
+        });
+      }
+
+      // httpClient.get/post (axios instance)
+      if (ts.isPropertyAccessExpression(node.expression) && ts.isIdentifier(node.expression.expression)) {
+        const instanceName = node.expression.expression.text;
+        const instance = axiosInstances.find(i => i.variableName === instanceName);
+
+        if (instance) {
+          const methodName = node.expression.name.text;
+          if (['get', 'post', 'put', 'patch', 'delete', 'head', 'options'].includes(methodName.toLowerCase())) {
+            const urlPath = node.arguments.length > 0 ? resolveUrlExpression(node.arguments[0], sourceFile, checker, constants) : null;
+            const fullUrl = instance.baseURL && urlPath ? instance.baseURL + urlPath : urlPath;
+
+            endpoints.push({
+              method: methodName.toUpperCase(),
+              urlTemplate: fullUrl || 'unresolved',
+              filePath,
+              line: line + 1,
+              column: character + 1,
+              callType: fullUrl ? 'axios-instance' : 'unresolved',
+              resolvedUrl: fullUrl || undefined,
+              baseUrl: instance.baseURL,
+              componentName
+            });
+          }
+        }
+      }
+    }
+
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+  return endpoints;
+}
+
+/**
+ * Scan a directory recursively for TypeScript/JavaScript files and find HTTP calls.
+ */
+export function scanCodeForEndpoints(
+  rootDir: string,
+  options?: {
+    exclude?: string[];
+    include?: string[];
+    wrapperFunctions?: Array<{ name: string; urlArgIndex: number }>;
+  }
+): ScanResult {
+  const endpoints: ScannedEndpoint[] = [];
+  const errors: Array<{ file: string; message: string }> = [];
+  const exclude = options?.exclude || ['node_modules', 'dist', 'build', '.git'];
+  const include = options?.include || ['.ts', '.tsx', '.js', '.jsx'];
+
+  function shouldIncludeFile(filePath: string): boolean {
+    const ext = path.extname(filePath);
+    if (!include.includes(ext)) return false;
+    
+    for (const exc of exclude) {
+      if (filePath.includes(path.sep + exc + path.sep) || filePath.includes(path.sep + exc)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  function scanDirectory(dir: string) {
+    try {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+
+        if (entry.isDirectory()) {
+          if (!exclude.includes(entry.name)) {
+            scanDirectory(fullPath);
+          }
+        } else if (entry.isFile() && shouldIncludeFile(fullPath)) {
+          try {
+            const sourceText = fs.readFileSync(fullPath, 'utf8');
+            const sourceFile = ts.createSourceFile(
+              fullPath,
+              sourceText,
+              ts.ScriptTarget.Latest,
+              true
+            );
+
+            // Create a minimal program for type checking
+            const compilerOptions: ts.CompilerOptions = {
+              target: ts.ScriptTarget.Latest,
+              module: ts.ModuleKind.ESNext,
+              allowJs: true,
+              checkJs: false,
+              noEmit: true
+            };
+            
+            const host = ts.createCompilerHost(compilerOptions);
+            const program = ts.createProgram([fullPath], compilerOptions, host);
+            const checker = program.getTypeChecker();
+
+            const fileEndpoints = scanSourceFile(fullPath, sourceFile, checker);
+            endpoints.push(...fileEndpoints);
+          } catch (error) {
+            errors.push({
+              file: fullPath,
+              message: error instanceof Error ? error.message : String(error)
+            });
+          }
+        }
+      }
+    } catch (error) {
+      errors.push({
+        file: dir,
+        message: `Failed to read directory: ${error instanceof Error ? error.message : String(error)}`
+      });
+    }
+  }
+
+  if (!fs.existsSync(rootDir)) {
+    errors.push({ file: rootDir, message: 'Directory does not exist' });
+    return { endpoints, errors };
+  }
+
+  scanDirectory(rootDir);
+  return { endpoints, errors };
+}
