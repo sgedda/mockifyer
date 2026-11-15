@@ -62,7 +62,7 @@ describe('atlas-auth-detection', () => {
       }];
 
       const result = detectAuthFromTraffic(events);
-      const auth = result.get('https://api.example.com/users');
+      const auth = result.get('api.example.com::GET::/users');
       
       expect(auth).toBeDefined();
       expect(auth!.scheme).toBe('bearer');
@@ -84,7 +84,7 @@ describe('atlas-auth-detection', () => {
       }];
 
       const result = detectAuthFromTraffic(events);
-      const auth = result.get('https://api.example.com/data');
+      const auth = result.get('api.example.com::GET::/data');
       
       expect(auth!.scheme).toBe('api-key');
     });
@@ -104,7 +104,7 @@ describe('atlas-auth-detection', () => {
       }];
 
       const result = detectAuthFromTraffic(events);
-      expect(result.get('https://api.example.com/auth')!.scheme).toBe('basic');
+      expect(result.get('api.example.com::GET::/auth')!.scheme).toBe('basic');
     });
 
     it('should detect cookie-based auth', () => {
@@ -122,7 +122,7 @@ describe('atlas-auth-detection', () => {
       }];
 
       const result = detectAuthFromTraffic(events);
-      expect(result.get('https://app.example.com/dashboard')!.scheme).toBe('cookie');
+      expect(result.get('app.example.com::GET::/dashboard')!.scheme).toBe('cookie');
     });
 
     it('should track auth failures (401/403)', () => {
@@ -150,7 +150,7 @@ describe('atlas-auth-detection', () => {
       ];
 
       const result = detectAuthFromTraffic(events);
-      const auth = result.get('https://api.example.com/protected');
+      const auth = result.get('api.example.com::GET::/protected');
       
       expect(auth!.authFailures).toBe(2);
       expect(auth!.scheme).toBe('unknown'); // No auth sent but failures indicate auth needed
@@ -172,7 +172,7 @@ describe('atlas-auth-detection', () => {
       }];
 
       const result = detectAuthFromTraffic(events);
-      const auth = result.get('https://api.example.com/secure');
+      const auth = result.get('api.example.com::GET::/secure');
       
       expect(auth!.challengeSchemes).toContain('bearer');
     });
@@ -205,7 +205,7 @@ describe('atlas-auth-detection', () => {
       ];
 
       const result = detectAuthFromTraffic(events);
-      const auth = result.get('https://api.example.com/user/profile');
+      const auth = result.get('api.example.com::GET::/user/profile');
       
       expect(auth!.precededByAuthFlow).toBe(true);
     });
@@ -223,7 +223,7 @@ describe('atlas-auth-detection', () => {
       }];
 
       const result = detectAuthFromTraffic(events);
-      expect(result.get('https://api.example.com/public')!.scheme).toBe('none');
+      expect(result.get('api.example.com::GET::/public')!.scheme).toBe('none');
     });
   });
 

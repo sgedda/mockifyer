@@ -735,7 +735,7 @@ describe('atlas-doc-html', () => {
       expect(fs.existsSync(indexPath)).toBe(true);
       const index = fs.readFileSync(indexPath, 'utf8');
       expect(index).toContain('"pageId":"home"');
-      expect(index).toContain('data-view="chains"');
+      expect(index).toContain('data-view="data" data-data-mode="chains"');
       expect(fs.existsSync(path.join(dir, 'pages', 'home.html'))).toBe(true);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });

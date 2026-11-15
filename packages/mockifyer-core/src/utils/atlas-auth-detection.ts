@@ -173,12 +173,17 @@ export function detectAuthFromTraffic(events: NetworkEvent[]): Map<string, Endpo
       }
       
       // Check if preceded by auth endpoint
-      if (event.parentRequestId && events.some(e => 
-        e.requestId === event.parentRequestId && 
-        e.url && 
-        authEndpoints.has(e.url)
-      )) {
-        precededByAuthFlow = true;
+      if (event.parentRequestId) {
+        const parentEvent = events.find(e => e.requestId === event.parentRequestId);
+        if (parentEvent && parentEvent.url) {
+          const parentHost = extractHost(parentEvent.url);
+          const parentNormalized = normalizeUrlToTemplate(parentEvent.url);
+          const parentMethod = parentEvent.method?.toUpperCase() || 'GET';
+          const parentKey = `${parentHost}::${parentMethod}::${parentNormalized.template}`;
+          if (authEndpoints.has(parentKey)) {
+            precededByAuthFlow = true;
+          }
+        }
       }
     }
     
