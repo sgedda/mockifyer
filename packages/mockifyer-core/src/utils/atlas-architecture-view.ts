@@ -40,8 +40,8 @@ export function generateSystemDiagramSVG(
   
   // Node positioning (larger for readability)
   const LAYER_GAP = 120;
-  const NODE_GAP = 180;
-  const NODE_WIDTH = 160;
+  const NODE_GAP = 200;
+  const NODE_WIDTH = 190;
   const NODE_HEIGHT = 45;
   let y = 60;
   
@@ -104,21 +104,28 @@ export function generateSystemDiagramSVG(
   y += LAYER_GAP;
   
   // Layer 4: Downstream services (from chains)
-  const downstreamHosts = new Set<string>();
+  const downstreamHostPaths = new Map<string, string>();
   events.forEach(ev => {
     if (ev.parentRequestId && ev.url) {
       try {
         const url = new URL(ev.url);
-        downstreamHosts.add(url.hostname);
+        const host = url.hostname;
+        const path = url.pathname;
+        // Store first path seen for each downstream host
+        if (!downstreamHostPaths.has(host)) {
+          downstreamHostPaths.set(host, path);
+        }
       } catch {}
     }
   });
   
-  const downstream = Array.from(downstreamHosts).slice(0, 4);
-  downstream.forEach((host, i) => {
+  const downstream = Array.from(downstreamHostPaths.entries()).slice(0, 4);
+  downstream.forEach(([host, path], i) => {
+    // Show host + path for downstream to differentiate from parent
+    const label = `${host} ${path}`;
     nodes.push({
       id: `downstream-${host}`,
-      label: host,
+      label,
       type: 'downstream',
       x: 100 + i * NODE_GAP,
       y
@@ -341,7 +348,16 @@ export function generateEndpointInventoryHTML(
       const auth = authByEndpoint?.get(`${host}::${endpoint.method}::${endpoint.urlTemplate}`);
       const endpointEvents = events.filter(e => e.url && e.url.includes(host) && e.method === endpoint.method);
       
-      html += '<tr>';
+      // Get auth label for detail pane
+      const authLabel = auth ? (
+        auth.scheme === 'bearer' ? 'Bearer' :
+        auth.scheme === 'api-key' ? 'API Key' :
+        auth.scheme === 'basic' ? 'Basic' :
+        auth.scheme === 'cookie' ? 'Cookie' :
+        auth.scheme || 'Auth'
+      ) : (endpoint.status === 'code-only' || endpoint.status === 'unresolved' ? '—' : 'None');
+      
+      html += `<tr class="atlas-endpoint-row" data-host="${escapeHtml(host)}" data-method="${escapeHtml(endpoint.method)}" data-template="${escapeHtml(endpoint.urlTemplate)}" data-status="${escapeHtml(endpoint.status)}" data-calls="${endpoint.callCount}" data-auth="${escapeHtml(authLabel)}" style="cursor: pointer;">`;
       html += `<td><span class="method method-${endpoint.method.toLowerCase()}">${endpoint.method}</span></td>`;
       
       // Show file location for unresolved URLs
@@ -365,6 +381,9 @@ export function generateEndpointInventoryHTML(
                          auth.scheme === 'cookie' ? 'Cookie' :
                          auth.scheme || 'Auth';
         html += `<span class="auth-badge auth-${auth.scheme}">${escapeHtml(authLabel)}</span>`;
+      } else if (endpoint.status === 'code-only' || endpoint.status === 'unresolved') {
+        // Show unknown for code-only and unresolved (no observed auth)
+        html += '<span class="auth-badge auth-unknown">—</span>';
       } else {
         html += '<span class="auth-badge auth-none">None</span>';
       }
@@ -391,11 +410,13 @@ export function generateEndpointInventoryHTML(
       
       // Hidden snippet panel (shown on click)
       const exampleUrl = `https://${host}${endpoint.urlTemplate}`;
+      // Only include auth for observed endpoints (not code-only or unresolved)
+      const snippetAuth = (endpoint.status === 'code-only' || endpoint.status === 'unresolved') ? undefined : auth;
       const snippets = generateEndpointSnippets(
         endpoint.method,
         exampleUrl,
         endpointEvents.length > 0 ? [endpointEvents[0]] : undefined,
-        auth
+        snippetAuth
       );
       
       html += `<tr class="snippet-panel" id="snippets-${escapeHtml(key)}" style="display:none">`;
@@ -479,7 +500,38 @@ export function generateKeyFlowsHTML(
       html += `<span class="badge depth">Depth: ${flow.depth}</span>`;
       html += `<span class="badge count">${flow.count} total hops</span>`;
       html += '</div>';
-      html += `<div class="flow-root"><code>${escapeHtml(flow.root.method || 'GET')} ${escapeHtml(flow.root.url || '')}</code></div>`;
+      
+      // Build step list
+      const steps: Array<{ event: NetworkEvent; level: number }> = [{ event: flow.root, level: 0 }];
+      const buildSteps = (parentId: string, level: number) => {
+        const children = events.filter(e => e.parentRequestId === parentId);
+        children.forEach(child => {
+          steps.push({ event: child, level });
+          const childId = (child as any).requestId || child.id;
+          if (childId) buildSteps(childId, level + 1);
+        });
+      };
+      const rootId = (flow.root as any).requestId || flow.root.id;
+      if (rootId) buildSteps(rootId, 1);
+      
+      // Render steps with indentation
+      html += '<div class="flow-steps" style="font-size: 0.9em; margin-top: 0.5rem;">';
+      steps.forEach((step, idx) => {
+        const indent = step.level * 1.5;
+        html += `<div style="margin-left: ${indent}rem; margin-top: 0.25rem; display: flex; align-items: center; gap: 0.5rem;">`;
+        if (idx > 0) html += `<span style="color: var(--muted-foreground);">→</span>`;
+        html += `<code style="flex: 1;">${escapeHtml(step.event.method || 'GET')} ${escapeHtml(step.event.url || '')}</code>`;
+        if (step.event.status) {
+          const statusColor = step.event.status >= 400 ? '#ef4444' : step.event.status >= 300 ? '#f59e0b' : '#22c55e';
+          html += `<span style="color: ${statusColor}; font-weight: 500;">${step.event.status}</span>`;
+        }
+        if (step.event.durationMs) {
+          html += `<span class="meta">${Math.round(step.event.durationMs)}ms</span>`;
+        }
+        html += '</div>';
+      });
+      html += '</div>';
+      
       html += '</div>';
     });
   }

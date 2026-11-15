@@ -3073,6 +3073,26 @@ function renderErrorPanelHtml(analysis, escFn) {
   }
 
   function attachSnippetHandlers() {
+    // Endpoint row click to show detail
+    document.querySelectorAll('.atlas-endpoint-row').forEach(function (row) {
+      row.addEventListener('click', function (e) {
+        // Don't trigger if clicking the snippet button
+        if (e.target.closest('.btn-snippet')) return;
+        
+        var host = row.getAttribute('data-host');
+        var method = row.getAttribute('data-method');
+        var template = row.getAttribute('data-template');
+        var status = row.getAttribute('data-status');
+        var calls = parseInt(row.getAttribute('data-calls') || '0', 10);
+        var auth = row.getAttribute('data-auth');
+        
+        var detailEl = document.querySelector('.arch-detail');
+        if (detailEl) {
+          detailEl.innerHTML = renderEndpointDetail(host, method, template, status, calls, auth);
+        }
+      });
+    });
+    
     // Snippet panel toggle
     document.querySelectorAll('.btn-snippet').forEach(function (btn) {
       btn.addEventListener('click', function (e) {
@@ -3145,12 +3165,48 @@ function renderErrorPanelHtml(analysis, escFn) {
     var html = '<h3>Architecture detail</h3>';
     html += '<p class="arch-empty-hint empty">Click anything on the left to inspect without leaving Architecture:</p>';
     html += '<ul class="arch-empty-hint meta">';
+    html += '<li><strong>Endpoint row</strong> — method, path, auth, status, sample request/response</li>';
     html += '<li><strong>Connection row</strong> — hop bodies, parent/child neighbors, GUI links</li>';
     html += '<li><strong>Chain box</strong> — that hop plus neighborhood</li>';
     html += '<li><strong>Screenshot</strong> — screen / page context and linked hops</li>';
     html += '<li><strong>GUI binding</strong> — node props + datasource hop</li>';
     html += '</ul>';
     html += '<p class="meta">Use <em>Open in Trace / Chains</em> in the detail pane when you need the full session timeline.</p>';
+    return html;
+  }
+
+  function renderEndpointDetail(host, method, urlTemplate, status, calls, auth) {
+    var html = '<h3>Endpoint Detail</h3>';
+    html += '<table class="meta-table"><tbody>';
+    html += '<tr><th>Host</th><td><code>' + esc(host) + '</code></td></tr>';
+    html += '<tr><th>Method</th><td><span class="method method-' + method.toLowerCase() + '">' + esc(method) + '</span></td></tr>';
+    html += '<tr><th>Path</th><td><code>' + esc(urlTemplate) + '</code></td></tr>';
+    html += '<tr><th>Auth</th><td>' + (auth ? esc(auth) : '—') + '</td></tr>';
+    html += '<tr><th>Status</th><td>' + esc(status) + '</td></tr>';
+    html += '<tr><th>Calls</th><td>' + calls + '</td></tr>';
+    html += '</tbody></table>';
+    
+    // Find matching events
+    var matchingEvents = events.filter(function (e) {
+      return e.url && e.url.includes(host) && e.method === method;
+    });
+    
+    if (matchingEvents.length > 0) {
+      var lastEvent = matchingEvents[matchingEvents.length - 1];
+      html += '<h4 style="margin-top: 1rem;">Last Observed</h4>';
+      html += '<table class="meta-table"><tbody>';
+      html += '<tr><th>Status</th><td>' + (lastEvent.status || 'unknown') + '</td></tr>';
+      html += '<tr><th>Duration</th><td>' + (lastEvent.durationMs ? Math.round(lastEvent.durationMs) + 'ms' : '—') + '</td></tr>';
+      html += '</tbody></table>';
+      
+      if (lastEvent.responseBodyPreview) {
+        html += '<h4 style="margin-top: 1rem;">Response Preview</h4>';
+        html += '<pre style="max-height: 200px; overflow: auto; font-size: 0.85em; background: var(--muted); padding: 0.5rem; border-radius: 4px;"><code>' + esc(lastEvent.responseBodyPreview.substring(0, 500)) + '</code></pre>';
+      }
+    } else {
+      html += '<p class="meta" style="margin-top: 1rem;">No observed requests for this endpoint.</p>';
+    }
+    
     return html;
   }
 
