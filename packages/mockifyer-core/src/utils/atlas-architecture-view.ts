@@ -38,12 +38,12 @@ export function generateSystemDiagramSVG(
   const nodes: SystemDiagramNode[] = [];
   const edges: SystemDiagramEdge[] = [];
   
-  // Node positioning (wider spacing for full labels)
-  const LAYER_GAP = 180;
-  const NODE_GAP = 200; // Wider to fit full host names
-  const NODE_WIDTH = 180;
-  const NODE_HEIGHT = 50;
-  let y = 80;
+  // Node positioning (larger for readability)
+  const LAYER_GAP = 120;
+  const NODE_GAP = 180;
+  const NODE_WIDTH = 160;
+  const NODE_HEIGHT = 45;
+  let y = 60;
   
   // Layer 1: Screens
   if (screens && screens.length > 0) {
@@ -165,12 +165,13 @@ export function generateSystemDiagramSVG(
     });
   });
   
-  // Generate SVG with legend
-  const diagramWidth = Math.max(900, hosts.length * NODE_GAP + 100);
-  const legendHeight = 80;
-  const height = y + legendHeight + 50;
+  // Generate SVG with legend below
+  const contentWidth = Math.max(800, hosts.length * NODE_GAP + 100);
+  const diagramHeight = y + 40;
+  const legendHeight = 60;
+  const totalHeight = diagramHeight + legendHeight;
   
-  let svg = `<svg viewBox="0 0 ${diagramWidth} ${height}" xmlns="http://www.w3.org/2000/svg" class="atlas-system-diagram" style="max-width: 100%; height: auto;">`;
+  let svg = `<svg viewBox="0 0 ${contentWidth} ${totalHeight}" xmlns="http://www.w3.org/2000/svg" class="atlas-system-diagram" style="width: 100%; height: auto; min-height: 400px;">`;
   
   // Define arrow markers (Mock=green, Live=blue, Error=red, Code-only=grey)
   svg += `<defs>
@@ -216,8 +217,8 @@ export function generateSystemDiagramSVG(
       const midX = (x1 + x2) / 2;
       const midY = (y1 + y2) / 2;
       // Offset label slightly to the side based on index to avoid stacking
-      const offset = (edges.indexOf(edge) % 2 === 0 ? 10 : -10);
-      svg += `<text x="${midX + offset}" y="${midY}" font-size="10" fill="${color}" text-anchor="middle" font-weight="600">${escapeHtml(edge.label)}</text>`;
+      const offset = (edges.indexOf(edge) % 2 === 0 ? 15 : -15);
+      svg += `<text x="${midX + offset}" y="${midY}" font-size="12" fill="${color}" text-anchor="middle" font-weight="600">${escapeHtml(edge.label)}</text>`;
     }
   });
   
@@ -245,31 +246,31 @@ export function generateSystemDiagramSVG(
       fill="${fillColor}" stroke="${strokeColor}" stroke-width="2" ${node.type === 'code-backend' ? 'stroke-dasharray="5,5"' : ''} />`;
     
     // Show full label, wrapping if needed
-    const label = node.label.length > 24 ? node.label.slice(0, 24) : node.label;
-    svg += `<text x="${node.x + NODE_WIDTH/2}" y="${node.y + NODE_HEIGHT/2 + 5}" font-size="11" text-anchor="middle" fill="#1f2937" font-weight="500">${escapeHtml(label)}</text>`;
+    const label = node.label.length > 22 ? node.label.slice(0, 22) : node.label;
+    svg += `<text x="${node.x + NODE_WIDTH/2}" y="${node.y + NODE_HEIGHT/2 + 5}" font-size="13" text-anchor="middle" fill="#1f2937" font-weight="500">${escapeHtml(label)}</text>`;
   });
   
-  // Add legend at bottom
-  const legendY = y + 20;
-  const legendX = 50;
+  // Add legend below diagram
+  const legendY = diagramHeight + 20;
+  const legendX = 40;
   svg += `<g class="legend">`;
-  svg += `<text x="${legendX}" y="${legendY}" font-size="12" font-weight="600" fill="#374151">Legend:</text>`;
+  svg += `<text x="${legendX}" y="${legendY}" font-size="13" font-weight="600" fill="#374151">Legend:</text>`;
   
   // Mocked (green)
-  svg += `<rect x="${legendX}" y="${legendY + 10}" width="60" height="20" rx="4" fill="#dcfce7" stroke="#22c55e" stroke-width="2" />`;
-  svg += `<text x="${legendX + 30}" y="${legendY + 24}" font-size="9" text-anchor="middle" fill="#1f2937" font-weight="500">Mocked</text>`;
+  svg += `<rect x="${legendX}" y="${legendY + 12}" width="70" height="24" rx="4" fill="#dcfce7" stroke="#22c55e" stroke-width="2" />`;
+  svg += `<text x="${legendX + 35}" y="${legendY + 28}" font-size="11" text-anchor="middle" fill="#1f2937" font-weight="500">Mocked</text>`;
   
   // Live (blue)
-  svg += `<rect x="${legendX + 80}" y="${legendY + 10}" width="60" height="20" rx="4" fill="#dbeafe" stroke="#3b82f6" stroke-width="2" />`;
-  svg += `<text x="${legendX + 110}" y="${legendY + 24}" font-size="9" text-anchor="middle" fill="#1f2937" font-weight="500">Live</text>`;
+  svg += `<rect x="${legendX + 90}" y="${legendY + 12}" width="60" height="24" rx="4" fill="#dbeafe" stroke="#3b82f6" stroke-width="2" />`;
+  svg += `<text x="${legendX + 120}" y="${legendY + 28}" font-size="11" text-anchor="middle" fill="#1f2937" font-weight="500">Live</text>`;
   
   // Error (red)
-  svg += `<rect x="${legendX + 160}" y="${legendY + 10}" width="60" height="20" rx="4" fill="#fee2e2" stroke="#ef4444" stroke-width="2" />`;
-  svg += `<text x="${legendX + 190}" y="${legendY + 24}" font-size="9" text-anchor="middle" fill="#1f2937" font-weight="500">Error</text>`;
+  svg += `<rect x="${legendX + 170}" y="${legendY + 12}" width="60" height="24" rx="4" fill="#fee2e2" stroke="#ef4444" stroke-width="2" />`;
+  svg += `<text x="${legendX + 200}" y="${legendY + 28}" font-size="11" text-anchor="middle" fill="#1f2937" font-weight="500">Error</text>`;
   
   // Code-only (gray dashed)
-  svg += `<rect x="${legendX + 240}" y="${legendY + 10}" width="80" height="20" rx="4" fill="#f3f4f6" stroke="#9ca3af" stroke-width="2" stroke-dasharray="5,5" />`;
-  svg += `<text x="${legendX + 280}" y="${legendY + 24}" font-size="9" text-anchor="middle" fill="#1f2937" font-weight="500">Code-only</text>`;
+  svg += `<rect x="${legendX + 250}" y="${legendY + 12}" width="85" height="24" rx="4" fill="#f3f4f6" stroke="#9ca3af" stroke-width="2" stroke-dasharray="5,5" />`;
+  svg += `<text x="${legendX + 292}" y="${legendY + 28}" font-size="11" text-anchor="middle" fill="#1f2937" font-weight="500">Code-only</text>`;
   
   svg += `</g>`;
   svg += '</svg>';

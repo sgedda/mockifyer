@@ -63,16 +63,19 @@ export interface EndpointInventory {
 }
 
 /**
- * Extract host from URL.
+ * Extract host from URL, with fallback for relative URLs.
  */
-function extractHost(url: string): string {
+function extractHost(url: string, fallbackHost?: string): string {
   try {
     const urlObj = new URL(url);
     return urlObj.host;
   } catch {
     // Try to extract from partial URLs
     const match = url.match(/^https?:\/\/([^\/]+)/);
-    return match ? match[1] : 'unknown';
+    if (match) return match[1];
+    
+    // For relative URLs, use fallback or default
+    return fallbackHost || 'Same-origin API';
   }
 }
 
@@ -85,6 +88,18 @@ export function buildEndpointInventory(
   mockFiles?: Array<{ method: string; url: string }>
 ): EndpointInventory {
   const itemsMap = new Map<string, EndpointInventoryItem>();
+
+  // Determine a reasonable fallback host from network events
+  const observedHosts = new Set<string>();
+  for (const event of networkEvents) {
+    if (event.url) {
+      try {
+        const urlObj = new URL(event.url);
+        observedHosts.add(urlObj.host);
+      } catch {}
+    }
+  }
+  const fallbackHost = observedHosts.size > 0 ? Array.from(observedHosts)[0] : 'Same-origin API';
 
   // Helper to get or create an inventory item
   function getOrCreate(host: string, method: string, urlTemplate: string): EndpointInventoryItem {
@@ -119,7 +134,7 @@ export function buildEndpointInventory(
 
   // Process scanned code
   for (const scanned of scannedEndpoints) {
-    const host = scanned.resolvedUrl ? extractHost(scanned.resolvedUrl) : 'unknown';
+    const host = scanned.resolvedUrl ? extractHost(scanned.resolvedUrl, fallbackHost) : fallbackHost;
     const normalized = scanned.resolvedUrl ? normalizeUrlToTemplate(scanned.resolvedUrl) : { template: scanned.urlTemplate, parameters: [] };
     const item = getOrCreate(host, scanned.method, normalized.template);
     

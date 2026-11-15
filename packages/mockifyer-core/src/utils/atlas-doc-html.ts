@@ -473,17 +473,20 @@ pre.json {
 .arch-empty-hint { font-size: 0.85rem; line-height: 1.45; }
 .arch-empty-hint li { margin: 0.25rem 0; }
 @media (min-width: 900px) {
-  .layout.layout-architecture { grid-template-columns: minmax(0, 1.85fr) minmax(15rem, 0.9fr); }
+  .layout.layout-architecture { 
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 380px);
+    max-width: 1400px;
+    margin: 0 auto;
+  }
 }
 /* Enhanced Architecture View Styles */
 .atlas-toc {
-  position: sticky;
-  top: 1rem;
   background: hsl(var(--card));
   border: 1px solid hsl(var(--border));
   border-radius: 8px;
-  padding: 1rem;
-  align-self: start;
+  padding: 0.75rem;
+  margin-bottom: 1.5rem;
+  max-width: 800px;
 }
 .atlas-toc-title {
   font-weight: 700;
@@ -4255,84 +4258,85 @@ function renderErrorPanelHtml(analysis, escFn) {
       return;
     }
 
-    var html = '';
+    // Create three-column grid: TOC | Main Content | Detail Pane
+    var tocHtml = prerendered.toc;
     
-    // TOC
-    html += prerendered.toc;
+    var mainHtml = '';
     
     // Overview section
     html += '<div id="arch-overview" class="arch-section">';
     html += '<h2>Overview</h2>';
     if (prerendered.overview) {
-      html += '<p class="arch-summary">' + esc(prerendered.overview.summary) + '</p>';
-      html += '<div class="arch-stats">';
-      html += '<span class="arch-stat"><strong>' + prerendered.overview.totalEndpoints + '</strong> endpoints</span>';
-      html += '<span class="arch-stat"><strong>' + prerendered.overview.observedEndpoints + '</strong> observed</span>';
-      html += '<span class="arch-stat"><strong>' + prerendered.overview.codeOnlyEndpoints + '</strong> code-only</span>';
-      html += '<span class="arch-stat"><strong>' + prerendered.overview.totalRequests + '</strong> requests</span>';
-      html += '<span class="arch-stat"><strong>' + prerendered.overview.avgResponseTime + 'ms</strong> avg response</span>';
+      mainHtml += '<p class="arch-summary">' + esc(prerendered.overview.summary) + '</p>';
+      mainHtml += '<div class="arch-stats">';
+      mainHtml += '<span class="arch-stat"><strong>' + prerendered.overview.totalEndpoints + '</strong> endpoints</span>';
+      mainHtml += '<span class="arch-stat"><strong>' + prerendered.overview.observedEndpoints + '</strong> observed</span>';
+      mainHtml += '<span class="arch-stat"><strong>' + prerendered.overview.codeOnlyEndpoints + '</strong> code-only</span>';
+      mainHtml += '<span class="arch-stat"><strong>' + prerendered.overview.totalRequests + '</strong> requests</span>';
+      mainHtml += '<span class="arch-stat"><strong>' + prerendered.overview.avgResponseTime + 'ms</strong> avg response</span>';
       if (prerendered.overview.errorRate > 0) {
-        html += '<span class="arch-stat error"><strong>' + (prerendered.overview.errorRate * 100).toFixed(1) + '%</strong> error rate</span>';
+        mainHtml += '<span class="arch-stat error"><strong>' + (prerendered.overview.errorRate * 100).toFixed(1) + '%</strong> error rate</span>';
       }
-      html += '</div>';
+      mainHtml += '</div>';
     }
-    html += '</div>';
+    mainHtml += '</div>';
     
     // System diagram
-    html += '<div id="arch-system-diagram" class="arch-section">';
-    html += '<h2>System Diagram</h2>';
-    html += '<p class="meta">Offline SVG diagram showing application flow. Green = mocked, Blue = live, Red = errors, Grey dashed = code-only/unexercised.</p>';
-    html += '<div class="arch-diagram-actions" style="margin-bottom: 0.75rem;">';
-    html += '<button type="button" class="btn-export" data-export="mermaid">Copy Mermaid</button>';
-    html += '</div>';
-    html += prerendered.diagram;
-    html += '</div>';
+    mainHtml += '<div id="arch-system-diagram" class="arch-section">';
+    mainHtml += '<h2>System Diagram</h2>';
+    mainHtml += '<p class="meta">Offline SVG diagram showing application flow. Green = mocked, Blue = live, Red = errors, Grey dashed = code-only/unexercised.</p>';
+    mainHtml += '<div class="arch-diagram-actions" style="margin-bottom: 0.75rem;">';
+    mainHtml += '<button type="button" class="btn-export" data-export="mermaid">Copy Mermaid</button>';
+    mainHtml += '</div>';
+    mainHtml += prerendered.diagram;
+    mainHtml += '</div>';
     
     // Endpoint inventory
-    html += prerendered.inventory;
+    mainHtml += prerendered.inventory;
     
     // Key flows
-    html += prerendered.keyFlows;
+    mainHtml += prerendered.keyFlows;
     
     // Screenshots (from legacy architecture view)
     var shots = collectArchitectureScreenshots();
     if (shots.length) {
-      html += '<div class="arch-section" id="arch-screens">';
-      html += '<h2>Screens</h2>';
-      html += '<p class="meta">Click a capture to open screen / page context in the detail pane.</p>';
-      html += '<div class="arch-shot-strip">';
+      mainHtml += '<div class="arch-section" id="arch-screens">';
+      mainHtml += '<h2>Screens</h2>';
+      mainHtml += '<p class="meta">Click a capture to open screen / page context in the detail pane.</p>';
+      mainHtml += '<div class="arch-shot-strip">';
       shots.forEach(function (s) {
         var src = atlasAssetUrl(s.path);
         var shotSelected = (s.screen && selectedMap && selectedMap.type === 'screen' && selectedMap.id === s.screen)
           || (s.pageId && selectedMap && selectedMap.type === 'page' && selectedMap.id === s.pageId);
-        html += '<button type="button" class="arch-shot' + (shotSelected ? ' selected' : '') + '"';
-        if (s.screen) html += ' data-select-screen="' + esc(s.screen) + '"';
-        else if (s.pageId) html += ' data-select-page="' + esc(s.pageId) + '"';
-        html += '>';
-        html += '<img src="' + esc(src) + '" alt="' + esc(s.label) + '" loading="lazy" data-atlas-img />';
-        html += '<span class="meta">' + esc(s.label);
-        if (s.capturedAt) html += '<br/>' + esc(formatWhen(s.capturedAt));
-        html += '</span></button>';
+        mainHtml += '<button type="button" class="arch-shot' + (shotSelected ? ' selected' : '') + '"';
+        if (s.screen) mainHtml += ' data-select-screen="' + esc(s.screen) + '"';
+        else if (s.pageId) mainHtml += ' data-select-page="' + esc(s.pageId) + '"';
+        mainHtml += '>';
+        mainHtml += '<img src="' + esc(src) + '" alt="' + esc(s.label) + '" loading="lazy" data-atlas-img />';
+        mainHtml += '<span class="meta">' + esc(s.label);
+        if (s.capturedAt) mainHtml += '<br/>' + esc(formatWhen(s.capturedAt));
+        mainHtml += '</span></button>';
       });
-      html += '</div></div>';
+      mainHtml += '</div></div>';
     }
     
     // Issues
-    html += prerendered.issues;
+    mainHtml += prerendered.issues;
     
     // Export actions
-    html += '<div class="arch-section" style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid hsl(var(--border));">';
-    html += '<h2>Export</h2>';
-    html += '<div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">';
-    html += '<button type="button" class="btn-export" data-export="markdown">Copy as Markdown</button>';
-    html += '<button type="button" class="btn-export" data-export="openapi">Download OpenAPI</button>';
-    html += '</div>';
-    html += '</div>';
+    mainHtml += '<div class="arch-section" style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid hsl(var(--border));">';
+    mainHtml += '<h2>Export</h2>';
+    mainHtml += '<div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">';
+    mainHtml += '<button type="button" class="btn-export" data-export="markdown">Copy as Markdown</button>';
+    mainHtml += '<button type="button" class="btn-export" data-export="openapi">Download OpenAPI</button>';
+    mainHtml += '</div>';
+    mainHtml += '</div>';
     
     // Navigation hint
-    html += '<p class="arch-nav-hint">Explore: <button type="button" data-view="timeline">Timeline</button> · <button type="button" data-view="data">Data</button></p>';
+    mainHtml += '<p class="arch-nav-hint">Explore: <button type="button" data-view="timeline">Timeline</button> · <button type="button" data-view="data">Data</button></p>';
     
-    el.innerHTML = html;
+    // Assemble layout: TOC at top, then main content
+    el.innerHTML = tocHtml + mainHtml;
     
     // Attach snippet toggle handlers
     attachSnippetHandlers();
