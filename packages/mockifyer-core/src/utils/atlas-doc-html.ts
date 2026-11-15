@@ -3195,22 +3195,25 @@ function renderErrorPanelHtml(analysis, escFn) {
     html += '<tr><th>Calls</th><td>' + calls + '</td></tr>';
     html += '</tbody></table>';
     
-    // Find matching events
-    var matchingEvents = events.filter(function (e) {
-      return e.url && e.url.includes(host) && e.method === method;
-    });
-    
-    if (matchingEvents.length > 0) {
-      var lastEvent = matchingEvents[matchingEvents.length - 1];
-      html += '<h4 style="margin-top: 1rem;">Last Observed</h4>';
-      html += '<table class="meta-table"><tbody>';
-      html += '<tr><th>Status</th><td>' + (lastEvent.status || 'unknown') + '</td></tr>';
-      html += '<tr><th>Duration</th><td>' + (lastEvent.durationMs ? Math.round(lastEvent.durationMs) + 'ms' : '—') + '</td></tr>';
-      html += '</tbody></table>';
+    // Only show Last Observed if this endpoint has actual calls
+    if (calls > 0) {
+      // Find matching events
+      var matchingEvents = events.filter(function (e) {
+        return e.url && e.url.includes(host) && e.method === method;
+      });
       
-      if (lastEvent.responseBodyPreview) {
-        html += '<h4 style="margin-top: 1rem;">Response Preview</h4>';
-        html += '<pre style="max-height: 200px; overflow: auto; font-size: 0.85em; background: var(--muted); padding: 0.5rem; border-radius: 4px;"><code>' + esc(lastEvent.responseBodyPreview.substring(0, 500)) + '</code></pre>';
+      if (matchingEvents.length > 0) {
+        var lastEvent = matchingEvents[matchingEvents.length - 1];
+        html += '<h4 style="margin-top: 1rem;">Last Observed</h4>';
+        html += '<table class="meta-table"><tbody>';
+        html += '<tr><th>Status</th><td>' + (lastEvent.status || 'unknown') + '</td></tr>';
+        html += '<tr><th>Duration</th><td>' + (lastEvent.durationMs ? Math.round(lastEvent.durationMs) + 'ms' : '—') + '</td></tr>';
+        html += '</tbody></table>';
+        
+        if (lastEvent.responseBodyPreview) {
+          html += '<h4 style="margin-top: 1rem;">Response Preview</h4>';
+          html += '<pre style="max-height: 200px; overflow: auto; font-size: 0.85em; background: var(--muted); padding: 0.5rem; border-radius: 4px;"><code>' + esc(lastEvent.responseBodyPreview.substring(0, 500)) + '</code></pre>';
+        }
       }
     } else {
       html += '<p class="meta" style="margin-top: 1rem;">No observed requests for this endpoint.</p>';

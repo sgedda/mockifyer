@@ -89,11 +89,12 @@ export function generateSystemDiagramSVG(
     const hasCodeOnly = hostInventory.some(e => e.status === 'code-only');
     const hasObserved = hostInventory.some(e => e.status.startsWith('observed'));
     
+    // Prioritize observed traffic over code-only status
     hostStatuses.set(host, 
       hasErrors ? 'error' :
       allMocked ? 'mocked' :
-      hasCodeOnly ? 'code-only' :
-      hasObserved ? 'live' : 'live'
+      hasObserved ? 'live' :
+      hasCodeOnly ? 'code-only' : 'live'
     );
   });
   
@@ -436,11 +437,9 @@ export function generateEndpointInventoryHTML(
                          auth.scheme === 'cookie' ? 'Cookie' :
                          auth.scheme || 'Auth';
         html += `<span class="auth-badge auth-${auth.scheme}">${escapeHtml(authLabel)}</span>`;
-      } else if (endpoint.status === 'code-only' || endpoint.status === 'unresolved') {
-        // Show unknown for code-only and unresolved (no observed auth)
-        html += '<span class="auth-badge auth-unknown">—</span>';
       } else {
-        html += '<span class="auth-badge auth-none">None</span>';
+        // Show consistent 'none' badge for all endpoints without detected auth
+        html += '<span class="auth-badge auth-none">none</span>';
       }
       html += '</td>';
       
