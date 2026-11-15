@@ -186,8 +186,25 @@ function cleanUrlTemplate(url: string): string {
   let result = url.replace(/(\{param\})+/g, '{param}');
   
   // Convert trailing {param} without slash to ?{query} for query strings
-  // Patterns like /graphql{param} or radius{param} become /graphql?{query} or radius?{query}
-  result = result.replace(/([^\/\?])\{param\}$/g, '$1?{query}');
+  // BUT: Don't apply to URLs with protocol/host that end with port number (e.g., http://host:4200{param})
+  // Only apply to relative paths or paths after a slash
+  const hasProtocol = /^https?:\/\//i.test(result);
+  if (hasProtocol) {
+    // For full URLs, only rewrite the path portion after the host
+    // Don't touch host:port{param} patterns
+    const urlMatch = result.match(/^(https?:\/\/[^\/]+)(.*)/);
+    if (urlMatch) {
+      const [, hostPart, pathPart] = urlMatch;
+      // Only apply the rewrite to the path portion, never to the host
+      if (pathPart) {
+        const cleanedPath = pathPart.replace(/([^\/\?])\{param\}$/g, '$1?{query}');
+        result = hostPart + cleanedPath;
+      }
+    }
+  } else {
+    // For relative paths, apply the normal rewrite
+    result = result.replace(/([^\/\?])\{param\}$/g, '$1?{query}');
+  }
   
   return result;
 }

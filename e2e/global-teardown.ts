@@ -68,7 +68,32 @@ function scrubNetworkEvent(event: any): any {
     }
   }
   
+  // Scrub sensitive query parameters from URLs
+  if (scrubbed.url) {
+    scrubbed.url = scrubUrlSecrets(scrubbed.url);
+  }
+  if (scrubbed.path) {
+    scrubbed.path = scrubUrlSecrets(scrubbed.path);
+  }
+  if (scrubbed.query) {
+    scrubbed.query = scrubUrlSecrets(scrubbed.query);
+  }
+  
   return scrubbed;
+}
+
+/**
+ * Redact sensitive query parameters from URLs.
+ * Patterns: ?token=..., &apikey=..., &password=..., etc.
+ */
+function scrubUrlSecrets(url: string): string {
+  if (!url || typeof url !== 'string') return url;
+  
+  // Redact common secret parameter patterns in query strings
+  return url.replace(
+    /([?&])(token|apikey|api_key|password|secret|auth|authorization|key)=[^&]*/gi,
+    '$1$2=<redacted>'
+  );
 }
 
 /**
@@ -132,11 +157,17 @@ async function globalTeardown(config: FullConfig) {
     
     let networkEvents: any[] = [];
     try {
-      const response = await fetch(`${dashboardUrl}/api/network-events`);
+      // Fetch with high limit to capture E2E traffic across all scenarios
+      // Note: This still fetches from the current scenario only. A proper fix
+      // would iterate all scenarios or use a wildcard, but that requires API changes.
+      const response = await fetch(`${dashboardUrl}/api/network-events?limit=10000`);
       if (response.ok) {
         const data = await response.json();
         networkEvents = data.events || data;
         console.log(`  ✓ Fetched ${networkEvents.length} network events`);
+        if (networkEvents.length >= 10000) {
+          console.warn(`  ⚠ Hit limit of 10000 events; some traffic may be missing`);
+        }
       } else {
         console.warn(`  ⚠ Dashboard API returned ${response.status}`);
       }

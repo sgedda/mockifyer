@@ -134,9 +134,10 @@ export function buildEndpointInventory(
 
   // Process scanned code
   for (const scanned of scannedEndpoints) {
-    // Don't use fallbackHost for unresolved endpoints - group them separately
     // Check if resolvedUrl is an actual full URL (not just a path template like '{param}')
     const isFullUrl = scanned.resolvedUrl && /^https?:\/\//i.test(scanned.resolvedUrl);
+    // Check if it's a resolved relative path (starts with /)
+    const isRelativePath = scanned.resolvedUrl && scanned.resolvedUrl.startsWith('/') && !scanned.resolvedUrl.startsWith('//');
     let host: string;
     let pathTemplate: string;
     
@@ -152,7 +153,13 @@ export function buildEndpointInventory(
         const normalized = normalizeUrlToTemplate(scanned.resolvedUrl!);
         pathTemplate = normalized.template;
       }
+    } else if (isRelativePath) {
+      // Resolved relative path: use fallbackHost instead of "Unresolved base URL"
+      host = fallbackHost;
+      const normalized = normalizeUrlToTemplate(scanned.resolvedUrl!);
+      pathTemplate = normalized.template;
     } else {
+      // Truly unresolved (e.g., '{param}' or other templates)
       host = 'Unresolved base URL';
       const normalized = scanned.resolvedUrl ? normalizeUrlToTemplate(scanned.resolvedUrl) : { template: scanned.urlTemplate, parameters: [] };
       pathTemplate = normalized.template;
@@ -252,6 +259,10 @@ export function buildEndpointInventory(
     }
   }
 
+  // Count unresolved endpoints BEFORE consolidation to get accurate call site count
+  const unresolvedCountBeforeConsolidation = Array.from(itemsMap.values())
+    .filter(i => i.urlTemplate === 'unresolved').length;
+
   // Consolidate unresolved endpoints into a single row per host
   const unresolvedByHost = new Map<string, EndpointInventoryItem[]>();
   const keysToRemove: string[] = [];
@@ -271,7 +282,7 @@ export function buildEndpointInventory(
     itemsMap.delete(key);
   }
   
-  // Add consolidated unresolved entries
+  // Add consolidated unresolved entries (preserving original count in metadata)
   for (const [host, unresolvedItems] of unresolvedByHost.entries()) {
     if (unresolvedItems.length > 0) {
       // Aggregate all code locations and methods
@@ -323,7 +334,8 @@ export function buildEndpointInventory(
   const observedCount = all.filter(i => i.status.startsWith('observed')).length;
   const mockedOnlyCount = all.filter(i => i.status === 'mocked-only').length;
   const codeOnlyCount = all.filter(i => i.status === 'code-only').length;
-  const unresolvedCount = all.filter(i => i.status === 'unresolved').length;
+  // Use the count from before consolidation to reflect actual number of unresolvable calls
+  const unresolvedCount = unresolvedCountBeforeConsolidation;
 
   const hostCoverage = Array.from(byHost.entries()).map(([host, items]) => {
     const total = items.length;

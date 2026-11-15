@@ -349,7 +349,9 @@ jobs:
   # Only on main branch (scheduled runs or pushes, not PRs or manual dispatch)
   deploy-pages:
     needs: e2e
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule')
+    # Deploy only on main branch, for schedule runs (nightly) or workflow_dispatch
+    # Note: workflow does not trigger on push events; if push deployment is needed, add 'push' to workflow triggers
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     permissions:
       pages: write
@@ -363,7 +365,9 @@ jobs:
 
     steps:
       - name: Download Atlas artifact
+        id: download_atlas
         uses: actions/download-artifact@v4
+        continue-on-error: true
         with:
           name: atlas-architecture
           path: atlas-report
