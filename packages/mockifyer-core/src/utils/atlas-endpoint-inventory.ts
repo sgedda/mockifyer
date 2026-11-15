@@ -65,7 +65,7 @@ export interface EndpointInventory {
 /**
  * Extract host from URL, with fallback for relative URLs.
  */
-function extractHost(url: string, fallbackHost?: string): string {
+export function extractHost(url: string, fallbackHost?: string): string {
   try {
     const urlObj = new URL(url);
     return urlObj.host;

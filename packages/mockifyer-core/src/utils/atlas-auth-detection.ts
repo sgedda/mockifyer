@@ -5,6 +5,8 @@
 
 import type { NetworkEvent } from './network-event-types';
 import type { ScannedEndpoint } from './atlas-code-scanner';
+import { normalizeUrlToTemplate } from './atlas-url-normalizer';
+import { extractHost } from './atlas-endpoint-inventory';
 
 export type AuthScheme = 'none' | 'bearer' | 'api-key' | 'basic' | 'cookie' | 'oauth' | 'unknown';
 
@@ -116,31 +118,37 @@ function detectSchemeFromHeader(headerName: string, headerValue: string): AuthSc
 export function detectAuthFromTraffic(events: NetworkEvent[]): Map<string, EndpointAuthInfo> {
   const authByEndpoint = new Map<string, EndpointAuthInfo>();
   
-  // Group events by URL template
-  const eventsByUrl = new Map<string, NetworkEvent[]>();
+  // Group events by composite key (host::method::template) for consistent lookup
+  const eventsByKey = new Map<string, NetworkEvent[]>();
   for (const event of events) {
     if (!event.url) continue;
-    if (!eventsByUrl.has(event.url)) {
-      eventsByUrl.set(event.url, []);
+    const host = extractHost(event.url);
+    const normalized = normalizeUrlToTemplate(event.url);
+    const method = event.method?.toUpperCase() || 'GET';
+    const key = `${host}::${method}::${normalized.template}`;
+    if (!eventsByKey.has(key)) {
+      eventsByKey.set(key, []);
     }
-    eventsByUrl.get(event.url)!.push(event);
+    eventsByKey.get(key)!.push(event);
   }
   
   // Detect potential auth/login endpoints
   const authEndpoints = new Set<string>();
-  for (const [url, urlEvents] of eventsByUrl.entries()) {
-    if (url.match(/\/(auth|login|token|oauth|signin|session)/i)) {
-      authEndpoints.add(url);
+  for (const [key, keyEvents] of eventsByKey.entries()) {
+    // Check if any URL in this group matches auth patterns
+    const hasAuthUrl = keyEvents.some(e => e.url && e.url.match(/\/(auth|login|token|oauth|signin|session)/i));
+    if (hasAuthUrl) {
+      authEndpoints.add(key);
     }
   }
   
-  for (const [url, urlEvents] of eventsByUrl.entries()) {
+  for (const [key, keyEvents] of eventsByKey.entries()) {
     const schemes = new Set<AuthScheme>();
     let authFailures = 0;
     const challengeSchemes = new Set<string>();
     let precededByAuthFlow = false;
     
-    for (const event of urlEvents) {
+    for (const event of keyEvents) {
       // Check request headers for auth
       if (event.requestHeaders) {
         for (const [headerName, headerValue] of Object.entries(event.requestHeaders)) {
@@ -187,7 +195,7 @@ export function detectAuthFromTraffic(events: NetworkEvent[]): Map<string, Endpo
       primaryScheme = 'unknown';
     }
     
-    authByEndpoint.set(url, {
+    authByEndpoint.set(key, {
       scheme: primaryScheme,
       staticSources: [],
       observedInTraffic: schemes.size > 0,
