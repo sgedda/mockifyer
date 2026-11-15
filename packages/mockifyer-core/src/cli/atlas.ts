@@ -384,7 +384,20 @@ async function renderAtlasHtmlLocally(
   const outDir = path.resolve(process.cwd(), "mock-data", "atlas-html");
   const map = createEmptyAtlasDocMap(events[0]?.scenario?.trim() || "default");
   flushNetworkBodySpillsToDir(outDir);
-  const written = writeAtlasDocHtml(outDir, map, events);
+  
+  // Bug #39: Scan codebase for endpoints to include in HTML export
+  const srcDir = path.resolve(process.cwd(), 'src');
+  let scannedEndpoints: any[] = [];
+  if (fs.existsSync(srcDir)) {
+    try {
+      const scanResult = scanCodeForEndpoints(srcDir);
+      scannedEndpoints = scanResult.endpoints;
+    } catch (err) {
+      // Scan failed, continue without scan results
+    }
+  }
+  
+  const written = writeAtlasDocHtml(outDir, map, events, { scannedEndpoints });
   const indexPath = path.join(outDir, "index.html");
   if (written <= 0 || !fs.existsSync(indexPath)) {
     console.error(

@@ -12,7 +12,7 @@ import { generateEndpointSnippets } from './atlas-code-snippets';
 interface SystemDiagramNode {
   id: string;
   label: string;
-  type: 'screen' | 'app' | 'backend' | 'mocked-backend' | 'code-backend' | 'downstream' | 'thirdparty';
+  type: 'screen' | 'app' | 'backend' | 'mocked-backend' | 'code-backend' | 'error-backend' | 'downstream' | 'thirdparty';
   x: number;
   y: number;
   width?: number;
@@ -89,12 +89,12 @@ export function generateSystemDiagramSVG(
     const hasCodeOnly = hostInventory.some(e => e.status === 'code-only');
     const hasObserved = hostInventory.some(e => e.status.startsWith('observed'));
     
-    // Prioritize observed traffic over code-only status
+    // Bug #40: Fix priority - hasCodeOnly was checked but never used due to hasObserved returning 'live' first
     hostStatuses.set(host, 
       hasErrors ? 'error' :
       allMocked ? 'mocked' :
-      hasObserved ? 'live' :
-      hasCodeOnly ? 'code-only' : 'live'
+      hasCodeOnly && !hasObserved ? 'code-only' : 
+      hasObserved ? 'live' : 'code-only'
     );
   });
   
@@ -144,6 +144,7 @@ export function generateSystemDiagramSVG(
       label: host,
       type: hostStatuses.get(host) === 'mocked' ? 'mocked-backend' : 
             hostStatuses.get(host) === 'code-only' ? 'code-backend' :
+            hostStatuses.get(host) === 'error' ? 'error-backend' : // Bug #41: map error status to error node type
             'backend',
       x,
       y: nodeY,
@@ -159,14 +160,14 @@ export function generateSystemDiagramSVG(
     if (ev.parentRequestId && ev.url) {
       try {
         const url = new URL(ev.url);
-        const downHost = url.hostname;
+        const downHost = url.host; // Include port (bug #49)
         const path = decodeURIComponent(url.pathname);
         
-        // Find parent host from the parent request
-        const parentEvent = events.find(e => e.requestId === ev.parentRequestId);
+        // Find parent host from the parent request (bug #50: try both requestId and id)
+        const parentEvent = events.find(e => e.requestId === ev.parentRequestId || e.id === ev.parentRequestId);
         if (parentEvent && parentEvent.url) {
           const parentUrl = new URL(parentEvent.url);
-          const parentHost = parentUrl.hostname;
+          const parentHost = parentUrl.host; // Include port (bug #49)
           
           if (!downstreamHostPaths.has(downHost) && sortedHosts.includes(parentHost)) {
             downstreamHostPaths.set(downHost, { path, parentHost });
@@ -183,7 +184,7 @@ export function generateSystemDiagramSVG(
     const label = `${downHost} · ${info.path}`;
     const nodeWidth = getNodeWidth(label); // Calculate width based on label
     nodes.push({
-      id: `downstream-${downHost}`,
+      id: `downstream-${downHost}`, // Bug #51: uses full host with port now
       label,
       type: 'downstream',
       x: parentPos.x,
@@ -292,6 +293,7 @@ export function generateSystemDiagramSVG(
       node.type === 'app' ? '#dbeafe' :
       node.type === 'mocked-backend' ? '#dcfce7' : // Green for mocked
       node.type === 'code-backend' ? '#f3f4f6' : // Light gray for code-only
+      node.type === 'error-backend' ? '#fee2e2' : // Red for error (bug #41)
       node.type === 'backend' ? '#dbeafe' : // Blue for live
       node.type === 'downstream' ? '#e0e7ff' :
       '#fef3c7';
@@ -301,6 +303,7 @@ export function generateSystemDiagramSVG(
       node.type === 'app' ? '#3b82f6' :
       node.type === 'mocked-backend' ? '#22c55e' : // Green stroke
       node.type === 'code-backend' ? '#9ca3af' : // Gray stroke
+      node.type === 'error-backend' ? '#ef4444' : // Red stroke for error (bug #41)
       node.type === 'backend' ? '#3b82f6' : // Blue stroke
       node.type === 'downstream' ? '#6366f1' :
       '#f59e0b';

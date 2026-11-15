@@ -6458,7 +6458,8 @@ export function buildAtlasDocHtmlFiles(
 export function writeAtlasDocHtml(
   dir: string,
   map: AtlasDocMap,
-  networkEvents?: readonly NetworkEvent[]
+  networkEvents?: readonly NetworkEvent[],
+  options?: { scannedEndpoints?: any[] }
 ): number {
   if (!fs || !pathMod) return 0;
   const root = dir.trim();
@@ -6466,7 +6467,10 @@ export function writeAtlasDocHtml(
 
   try {
     const events = networkEvents ?? htmlNetworkEvents;
-    const files = buildAtlasDocHtmlFiles(map, events, { bodiesRoot: root });
+    const files = buildAtlasDocHtmlFiles(map, events, { 
+      bodiesRoot: root,
+      scannedEndpoints: options?.scannedEndpoints
+    });
     const pagesDir = pathMod.join(root, 'pages');
     fs.mkdirSync(pagesDir, { recursive: true });
 
