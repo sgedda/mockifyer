@@ -21,6 +21,7 @@ export interface ArchitectureDoc {
     totalEndpoints: number;
     observedEndpoints: number;
     codeOnlyEndpoints: number;
+    unresolvedEndpoints: number;
     totalRequests: number;
     avgResponseTime: number;
     errorRate: number;
@@ -128,6 +129,7 @@ export function generateArchitectureDoc(options: ArchitectureDocOptions): Archit
       totalEndpoints: inventory.summary.totalEndpoints,
       observedEndpoints: inventory.summary.observedCount,
       codeOnlyEndpoints: inventory.summary.codeOnlyCount,
+      unresolvedEndpoints: inventory.summary.unresolvedCount,
       totalRequests,
       avgResponseTime: Math.round(avgResponseTime),
       errorRate: Math.round(errorRate * 100) / 100

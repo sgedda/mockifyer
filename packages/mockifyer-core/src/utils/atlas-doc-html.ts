@@ -4272,6 +4272,9 @@ function renderErrorPanelHtml(analysis, escFn) {
       mainHtml += '<span class="arch-stat"><strong>' + prerendered.overview.totalEndpoints + '</strong> endpoints</span>';
       mainHtml += '<span class="arch-stat"><strong>' + prerendered.overview.observedEndpoints + '</strong> observed</span>';
       mainHtml += '<span class="arch-stat"><strong>' + prerendered.overview.codeOnlyEndpoints + '</strong> code-only</span>';
+      if (prerendered.overview.unresolvedEndpoints > 0) {
+        mainHtml += '<span class="arch-stat warning"><strong>' + prerendered.overview.unresolvedEndpoints + '</strong> unresolved</span>';
+      }
       mainHtml += '<span class="arch-stat"><strong>' + prerendered.overview.totalRequests + '</strong> requests</span>';
       mainHtml += '<span class="arch-stat"><strong>' + prerendered.overview.avgResponseTime + 'ms</strong> avg response</span>';
       if (prerendered.overview.errorRate > 0) {
