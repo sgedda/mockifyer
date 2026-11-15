@@ -183,7 +183,13 @@ function resolveUrlExpression(
  */
 function cleanUrlTemplate(url: string): string {
   // Collapse consecutive {param} into single {param}
-  return url.replace(/(\{param\})+/g, '{param}');
+  let result = url.replace(/(\{param\})+/g, '{param}');
+  
+  // Convert trailing {param} without slash to ?{query} for query strings
+  // Patterns like /graphql{param} or radius{param} become /graphql?{query} or radius?{query}
+  result = result.replace(/([^\/\?])\{param\}$/g, '$1?{query}');
+  
+  return result;
 }
 
 /**

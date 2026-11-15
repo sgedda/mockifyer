@@ -137,9 +137,28 @@ export function buildEndpointInventory(
     // Don't use fallbackHost for unresolved endpoints - group them separately
     // Check if resolvedUrl is an actual full URL (not just a path template like '{param}')
     const isFullUrl = scanned.resolvedUrl && /^https?:\/\//i.test(scanned.resolvedUrl);
-    const host = isFullUrl ? extractHost(scanned.resolvedUrl!, fallbackHost) : 'Unresolved base URL';
-    const normalized = scanned.resolvedUrl ? normalizeUrlToTemplate(scanned.resolvedUrl) : { template: scanned.urlTemplate, parameters: [] };
-    const item = getOrCreate(host, scanned.method, normalized.template);
+    let host: string;
+    let pathTemplate: string;
+    
+    if (isFullUrl) {
+      // Check for malformed URLs like http://host:port{param}
+      const match = scanned.resolvedUrl!.match(/^(https?:\/\/[^\/\{]+)(\{param\})(.*)/);
+      if (match) {
+        // Split: http://host:port{param} -> host:port and /{param}
+        host = extractHost(match[1], fallbackHost);
+        pathTemplate = '/' + match[2] + match[3];
+      } else {
+        host = extractHost(scanned.resolvedUrl!, fallbackHost);
+        const normalized = normalizeUrlToTemplate(scanned.resolvedUrl!);
+        pathTemplate = normalized.template;
+      }
+    } else {
+      host = 'Unresolved base URL';
+      const normalized = scanned.resolvedUrl ? normalizeUrlToTemplate(scanned.resolvedUrl) : { template: scanned.urlTemplate, parameters: [] };
+      pathTemplate = normalized.template;
+    }
+    
+    const item = getOrCreate(host, scanned.method, pathTemplate);
     
     item.codeLocations.push({
       filePath: scanned.filePath,

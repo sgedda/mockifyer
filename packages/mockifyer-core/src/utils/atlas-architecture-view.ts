@@ -609,13 +609,45 @@ export function generateKeyFlowsHTML(
       const rootId = (flow.root as any).requestId || flow.root.id;
       if (rootId) buildSteps(rootId, 1);
       
+      // Collapse repeated identical calls
+      const collapsed: Array<{ event: NetworkEvent; level: number; count: number }> = [];
+      steps.forEach((step, idx) => {
+        const prev = collapsed[collapsed.length - 1];
+        const sameCall = prev && 
+          prev.event.method === step.event.method &&
+          prev.event.url === step.event.url &&
+          prev.level === step.level;
+        
+        if (sameCall) {
+          prev.count++;
+        } else {
+          collapsed.push({ ...step, count: 1 });
+        }
+      });
+      
       // Render steps with indentation
       html += '<div class="flow-steps" style="font-size: 0.9em; margin-top: 0.5rem;">';
-      steps.forEach((step, idx) => {
+      collapsed.forEach((step, idx) => {
         const indent = step.level * 1.5;
         html += `<div style="margin-left: ${indent}rem; margin-top: 0.25rem; display: flex; align-items: center; gap: 0.5rem;">`;
         if (idx > 0) html += `<span style="color: var(--muted-foreground);">→</span>`;
-        html += `<code style="flex: 1;">${escapeHtml(step.event.method || 'GET')} ${escapeHtml(step.event.url || '')}</code>`;
+        
+        // Truncate long URLs with query strings
+        const url = step.event.url || '';
+        let displayUrl = url;
+        if (url.includes('?') && url.length > 80) {
+          const [base, query] = url.split('?');
+          displayUrl = base + '?...';
+        } else if (url.length > 80) {
+          displayUrl = url.substring(0, 77) + '...';
+        }
+        
+        html += `<code style="flex: 1; max-width: 500px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(url)}">${escapeHtml(step.event.method || 'GET')} ${escapeHtml(displayUrl)}</code>`;
+        
+        if (step.count > 1) {
+          html += `<span style="color: var(--muted-foreground); font-weight: 600;">×${step.count}</span>`;
+        }
+        
         if (step.event.status) {
           const statusColor = step.event.status >= 400 ? '#ef4444' : step.event.status >= 300 ? '#f59e0b' : '#22c55e';
           html += `<span style="color: ${statusColor}; font-weight: 500;">${step.event.status}</span>`;
