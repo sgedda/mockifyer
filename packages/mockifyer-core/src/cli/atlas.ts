@@ -859,9 +859,21 @@ async function runScan(options: CliOptions): Promise<void> {
   // Group by host
   const byHost = new Map<string, typeof result.endpoints>();
   for (const endpoint of result.endpoints) {
-    const host = endpoint.resolvedUrl 
-      ? new URL(endpoint.resolvedUrl).host 
-      : 'unresolved';
+    let host = 'unresolved';
+    if (endpoint.resolvedUrl) {
+      try {
+        // Only parse if it's a full URL (starts with http:// or https://)
+        if (/^https?:\/\//i.test(endpoint.resolvedUrl)) {
+          host = new URL(endpoint.resolvedUrl).host;
+        } else {
+          // Relative URL or path - use a generic host
+          host = 'relative-paths';
+        }
+      } catch {
+        // Invalid URL, treat as unresolved
+        host = 'unresolved';
+      }
+    }
     if (!byHost.has(host)) {
       byHost.set(host, []);
     }

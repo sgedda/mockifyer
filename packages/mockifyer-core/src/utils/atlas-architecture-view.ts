@@ -105,10 +105,10 @@ export function generateSystemDiagramSVG(
   );
   const cellWidth = maxHostWidth;
   
-  // Calculate grid dimensions
-  const cols = Math.min(sortedHosts.length, GRID_COLS);
-  const rows = Math.ceil(sortedHosts.length / cols);
-  const gridWidth = cols * cellWidth + (cols - 1) * COL_GAP;
+  // Calculate grid dimensions (handle empty inventory)
+  const cols = sortedHosts.length === 0 ? 1 : Math.min(sortedHosts.length, GRID_COLS);
+  const rows = sortedHosts.length === 0 ? 0 : Math.ceil(sortedHosts.length / cols);
+  const gridWidth = sortedHosts.length === 0 ? cellWidth : (cols * cellWidth + (cols - 1) * COL_GAP);
   
   // Row 0: Application (centered in grid)
   let y = MARGIN;

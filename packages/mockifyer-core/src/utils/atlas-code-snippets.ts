@@ -57,8 +57,17 @@ function redactHeaderValue(name: string, value: string, auth?: EndpointAuthInfo,
     return '<session-cookie>';
   }
   
-  // For other headers, check if value looks like a secret
-  if (value.length > 20 && /^[A-Za-z0-9+/=_-]{20,}$/.test(value)) {
+  // Check for any header name that suggests auth/secret
+  if (lowerName.includes('token') || 
+      lowerName.includes('secret') || 
+      lowerName.includes('password') ||
+      lowerName.includes('credential')) {
+    return '<redacted>';
+  }
+  
+  // For other headers, only redact if value looks like a secret (longer tokens)
+  // Don't redact regular values like "test-value" or "application/json"
+  if (value.length > 30 && /^[A-Za-z0-9+/=_-]{30,}$/.test(value)) {
     return '<api-key>';
   }
   
@@ -166,6 +175,26 @@ function redactObjectSecrets(obj: unknown): unknown {
   }
   
   return obj;
+}
+
+/**
+ * Redact sensitive patterns in non-JSON body strings.
+ * Handles form data, query strings, and other text formats.
+ */
+function redactNonJsonBody(body: string): string {
+  // Redact query-string-like patterns (token=..., apikey=..., password=...)
+  let redacted = body.replace(
+    /([?&]|^)(token|apikey|api_key|password|secret|auth|authorization|key)=([^&\s]*)/gi,
+    '$1$2=<redacted>'
+  );
+  
+  // Redact form-data-like patterns
+  redacted = redacted.replace(
+    /(token|apikey|api_key|password|secret|auth|authorization|key)\s*[:=]\s*([^\s&]+)/gi,
+    '$1: <redacted>'
+  );
+  
+  return redacted;
 }
 
 /**
@@ -340,7 +369,12 @@ export function generateEndpointSnippets(
         body = JSON.parse(exampleEvent.requestBodyPreview);
         body = redactObjectSecrets(body);
       } catch {
-        body = exampleEvent.requestBodyPreview;
+        // Non-JSON body: check if it contains sensitive patterns and redact if needed
+        if (typeof exampleEvent.requestBodyPreview === 'string') {
+          body = redactNonJsonBody(exampleEvent.requestBodyPreview);
+        } else {
+          body = exampleEvent.requestBodyPreview;
+        }
       }
     } else if (requestSchema) {
       body = generateSampleBody(requestSchema);
