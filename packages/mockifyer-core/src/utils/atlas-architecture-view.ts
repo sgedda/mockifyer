@@ -506,13 +506,15 @@ export function generateIssuesHTML(
     }
   });
   
-  // Find code-only endpoints (never exercised)
+  // Collect code-only endpoints (never exercised) for grouping
+  const neverExercised: Array<{ method: string; host: string; path: string }> = [];
   for (const [host, endpoints] of inventory.byHost.entries()) {
     for (const endpoint of endpoints) {
       if (endpoint.status === 'code-only') {
-        issues.push({
-          severity: 'info',
-          message: `Never exercised: ${endpoint.method} ${host}${endpoint.urlTemplate} found in code but no traffic`
+        neverExercised.push({
+          method: endpoint.method,
+          host,
+          path: endpoint.urlTemplate
         });
       }
     }
@@ -521,10 +523,12 @@ export function generateIssuesHTML(
   let html = '<div class="atlas-issues" id="arch-issues">';
   html += '<h2>Issues & Gaps</h2>';
   
-  if (issues.length === 0) {
+  if (issues.length === 0 && neverExercised.length === 0) {
     html += '<p class="empty">✓ No issues detected</p>';
   } else {
     html += '<ul class="issue-list">';
+    
+    // Show errors and warnings first
     issues.slice(0, 20).forEach(issue => {
       html += `<li class="issue issue-${issue.severity}">`;
       html += `<span class="issue-icon">${issue.severity === 'error' ? '❌' : issue.severity === 'warning' ? '⚠️' : 'ℹ️'}</span>`;
@@ -534,6 +538,26 @@ export function generateIssuesHTML(
     if (issues.length > 20) {
       html += `<li class="meta">+${issues.length - 20} more issues</li>`;
     }
+    
+    // Group never-exercised endpoints into a collapsible section
+    if (neverExercised.length > 0) {
+      html += '<li class="issue issue-info">';
+      html += '<details style="margin: 0;">';
+      html += `<summary style="cursor: pointer; font-weight: 500;">`;
+      html += '⚠️ ';
+      html += `${neverExercised.length} endpoint${neverExercised.length === 1 ? '' : 's'} found in code but never exercised (click to expand)`;
+      html += '</summary>';
+      html += '<ul style="margin: 0.5rem 0 0 1.5rem; padding: 0; list-style: none;">';
+      neverExercised.forEach(ep => {
+        html += '<li style="margin: 0.25rem 0; font-family: monospace; font-size: 0.9em;">';
+        html += `<code>${escapeHtml(ep.method)} ${escapeHtml(ep.host)}${escapeHtml(ep.path)}</code>`;
+        html += '</li>';
+      });
+      html += '</ul>';
+      html += '</details>';
+      html += '</li>';
+    }
+    
     html += '</ul>';
   }
   
