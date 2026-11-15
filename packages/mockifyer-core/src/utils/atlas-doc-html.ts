@@ -4264,8 +4264,8 @@ function renderErrorPanelHtml(analysis, escFn) {
     var mainHtml = '';
     
     // Overview section
-    html += '<div id="arch-overview" class="arch-section">';
-    html += '<h2>Overview</h2>';
+    mainHtml += '<div id="arch-overview" class="arch-section">';
+    mainHtml += '<h2>Overview</h2>';
     if (prerendered.overview) {
       mainHtml += '<p class="arch-summary">' + esc(prerendered.overview.summary) + '</p>';
       mainHtml += '<div class="arch-stats">';
