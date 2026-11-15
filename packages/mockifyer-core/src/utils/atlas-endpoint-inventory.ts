@@ -134,7 +134,10 @@ export function buildEndpointInventory(
 
   // Process scanned code
   for (const scanned of scannedEndpoints) {
-    const host = scanned.resolvedUrl ? extractHost(scanned.resolvedUrl, fallbackHost) : fallbackHost;
+    // Don't use fallbackHost for unresolved endpoints - group them separately
+    // Check if resolvedUrl is an actual full URL (not just a path template like '{param}')
+    const isFullUrl = scanned.resolvedUrl && /^https?:\/\//i.test(scanned.resolvedUrl);
+    const host = isFullUrl ? extractHost(scanned.resolvedUrl!, fallbackHost) : 'Unresolved base URL';
     const normalized = scanned.resolvedUrl ? normalizeUrlToTemplate(scanned.resolvedUrl) : { template: scanned.urlTemplate, parameters: [] };
     const item = getOrCreate(host, scanned.method, normalized.template);
     

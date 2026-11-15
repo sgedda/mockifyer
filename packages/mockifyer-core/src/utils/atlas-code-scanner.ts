@@ -42,6 +42,11 @@ function resolveUrlExpression(
 ): string | null {
   if (maxDepth <= 0) return null;
 
+  // Parenthesized expression: (expr)
+  if (ts.isParenthesizedExpression(node)) {
+    return resolveUrlExpression(node.expression, sourceFile, checker, constants, maxDepth - 1);
+  }
+
   // String literal
   if (ts.isStringLiteral(node)) {
     return node.text;
@@ -122,6 +127,30 @@ function resolveUrlExpression(
         if (ts.isReturnStatement(stmt) && stmt.expression) {
           const resolved = resolveUrlExpression(stmt.expression, sourceFile, checker, constants, maxDepth - 1);
           if (resolved) return resolved;
+        }
+      }
+    }
+  }
+
+  // Call expression: .replace(/\/$/, '') - apply trailing slash removal
+  if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
+    const prop = node.expression;
+    if (prop.name.text === 'replace' && node.arguments.length === 2) {
+      // Check if it's .replace(/\/$/, '') or .replace(/\/$/, "")
+      const arg0 = node.arguments[0];
+      const arg1 = node.arguments[1];
+      if (ts.isRegularExpressionLiteral(arg0) && 
+          (ts.isStringLiteral(arg1) || ts.isNoSubstitutionTemplateLiteral(arg1))) {
+        const regexText = arg0.text; // Includes slashes: "/\\/$/"
+        const replacementText = arg1.text;
+        // Match trailing slash strip patterns: /\/$/ or /\/+$/
+        // The text includes the regex delimiters, so check for the full pattern
+        if ((regexText === '/\\/$/' || regexText === '/\\/+$/') && replacementText === '') {
+          // Resolve the base expression and remove trailing slashes
+          const base = resolveUrlExpression(prop.expression, sourceFile, checker, constants, maxDepth - 1);
+          if (base) {
+            return base.replace(/\/+$/, '');
+          }
         }
       }
     }
@@ -249,6 +278,11 @@ function collectConstants(sourceFile: ts.SourceFile): Map<string, string> {
       return node.text;
     }
     
+    // Handle parenthesized expressions: (expr)
+    if (ts.isParenthesizedExpression(node)) {
+      return tryResolve(node.expression);
+    }
+    
     // Handle ?? and || fallback patterns: process.env.X ?? 'fallback'
     if (ts.isBinaryExpression(node)) {
       if (node.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken ||
@@ -256,6 +290,23 @@ function collectConstants(sourceFile: ts.SourceFile): Map<string, string> {
         // Try right side (the fallback literal)
         const right = tryResolve(node.right);
         if (right) return right;
+      }
+      
+      // Handle string concatenation: CONST + '/path'
+      if (node.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+        const left = tryResolve(node.left);
+        const right = tryResolve(node.right);
+        if (left && right) return left + right;
+        if (left) return left + '{param}';
+        if (right) return '{param}' + right;
+      }
+    }
+    
+    // Identifier - check constants map
+    if (ts.isIdentifier(node)) {
+      const name = node.text;
+      if (constants.has(name)) {
+        return constants.get(name)!;
       }
     }
     
@@ -282,6 +333,28 @@ function collectConstants(sourceFile: ts.SourceFile): Map<string, string> {
           if (ts.isReturnStatement(stmt) && stmt.expression) {
             const resolved = tryResolve(stmt.expression);
             if (resolved) return resolved;
+          }
+        }
+      }
+    }
+    
+    // Handle .replace(/\/$/, '') - trailing slash removal
+    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
+      const prop = node.expression;
+      if (prop.name.text === 'replace' && node.arguments.length === 2) {
+        const arg0 = node.arguments[0];
+        const arg1 = node.arguments[1];
+        if (ts.isRegularExpressionLiteral(arg0) && 
+            (ts.isStringLiteral(arg1) || ts.isNoSubstitutionTemplateLiteral(arg1))) {
+          const regexText = arg0.text; // Includes slashes: "/\\/$/"
+          const replacementText = arg1.text;
+          // Match trailing slash strip patterns
+          if ((regexText === '/\\/$/' || regexText === '/\\/+$/') && replacementText === '') {
+            const base = tryResolve(prop.expression);
+            if (base) {
+              // Actually remove trailing slashes
+              return base.replace(/\/+$/, '');
+            }
           }
         }
       }

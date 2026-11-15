@@ -507,7 +507,7 @@ export function generateKeyFlowsHTML(
   const rootEvents = events.filter(e => !e.parentRequestId);
   
   // Build flow trees
-  const flows: Array<{ root: NetworkEvent; depth: number; count: number }> = [];
+  const flows: Array<{ root: NetworkEvent; depth: number; count: number; orphaned: boolean }> = [];
   
   rootEvents.forEach(root => {
     let depth = 1;
@@ -532,9 +532,47 @@ export function generateKeyFlowsHTML(
     if (rootId) findChildren(rootId, 1);
     
     if (depth > 1) {
-      flows.push({ root, depth, count });
+      flows.push({ root, depth, count, orphaned: false });
     }
   });
+  
+  // If no captured roots, look for orphaned chains (events with children but no root)
+  if (flows.length === 0) {
+    const childSet = new Set<string>();
+    events.forEach(e => {
+      if (e.parentRequestId) childSet.add(e.parentRequestId);
+    });
+    
+    // Find earliest events that have children (potential chain heads)
+    const chainHeads = events.filter(e => {
+      const eventId = (e as any).requestId || e.id;
+      return eventId && childSet.has(eventId);
+    });
+    
+    chainHeads.forEach(head => {
+      let depth = 1;
+      let count = 1;
+      
+      const findChildren = (parentId: string, currentDepth: number) => {
+        const children = events.filter(e => e.parentRequestId === parentId);
+        if (children.length > 0) {
+          depth = Math.max(depth, currentDepth + 1);
+          count += children.length;
+          children.forEach(child => {
+            const childId = (child as any).requestId || child.id;
+            if (childId) findChildren(childId, currentDepth + 1);
+          });
+        }
+      };
+      
+      const headId = (head as any).requestId || head.id;
+      if (headId) findChildren(headId, 1);
+      
+      if (depth > 1) {
+        flows.push({ root: head, depth, count, orphaned: true });
+      }
+    });
+  }
   
   // Sort by depth descending
   flows.sort((a, b) => b.depth - a.depth);
@@ -551,6 +589,9 @@ export function generateKeyFlowsHTML(
       html += '<div class="flow-card">';
       html += `<div class="flow-header">`;
       html += `<strong>Flow ${i + 1}</strong>`;
+      if (flow.orphaned) {
+        html += `<span class="badge" style="background: #f59e0b; color: white;">root not captured</span>`;
+      }
       html += `<span class="badge depth">Depth: ${flow.depth}</span>`;
       html += `<span class="badge count">${flow.count} total hops</span>`;
       html += '</div>';
@@ -649,7 +690,11 @@ export function generateIssuesHTML(
     issues.slice(0, 20).forEach(issue => {
       html += `<li class="issue issue-${issue.severity}">`;
       html += `<span class="issue-icon">${issue.severity === 'error' ? '❌' : issue.severity === 'warning' ? '⚠️' : 'ℹ️'}</span>`;
-      html += `<span class="issue-message">${escapeHtml(issue.message)}</span>`;
+      // Truncate long URLs with title for full text
+      const message = issue.message.length > 120 
+        ? issue.message.substring(0, 117) + '...'
+        : issue.message;
+      html += `<span class="issue-message" title="${escapeHtml(issue.message)}" style="word-break: break-word; max-width: 100%;">${escapeHtml(message)}</span>`;
       html += '</li>';
     });
     if (issues.length > 20) {
