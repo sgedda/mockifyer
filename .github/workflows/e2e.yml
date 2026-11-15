@@ -305,6 +305,16 @@ jobs:
           if-no-files-found: warn
           overwrite: true
 
+      - name: Upload Atlas architecture documentation
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: atlas-architecture
+          path: e2e/atlas-report/
+          retention-days: 30
+          if-no-files-found: warn
+          overwrite: true
+
       - name: Upload test results and service logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
