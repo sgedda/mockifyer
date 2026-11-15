@@ -3000,11 +3000,11 @@ function renderErrorPanelHtml(analysis, escFn) {
     var html = '<div class="arch-drill"><div class="body-label" style="margin:0">Drill down</div>';
     html += '<div class="arch-drill-btns">';
     if (hopId) {
-      html += '<button type="button" data-view="trace" data-keep-select="' + esc(hopId) + '">Open in Trace</button>';
-      html += '<button type="button" data-view="chains" data-keep-select="' + esc(hopId) + '">Open in Chains</button>';
-      html += '<button type="button" data-view="waterfall" data-keep-select="' + esc(hopId) + '">Open in Waterfall</button>';
+      html += '<button type="button" data-view="timeline" data-timeline-mode="trace" data-keep-select="' + esc(hopId) + '">Open in Trace</button>';
+      html += '<button type="button" data-view="data" data-data-mode="chains" data-keep-select="' + esc(hopId) + '">Open in Chains</button>';
+      html += '<button type="button" data-view="timeline" data-timeline-mode="waterfall" data-keep-select="' + esc(hopId) + '">Open in Waterfall</button>';
     }
-    html += '<button type="button" data-view="map"' + (hopId ? ' data-keep-select="' + esc(hopId) + '"' : '') + '>Open in Map</button>';
+    html += '<button type="button" data-view="data" data-data-mode="map"' + (hopId ? ' data-keep-select="' + esc(hopId) + '"' : '') + '>Open in Map</button>';
     html += '<button type="button" data-view="architecture">Back to Architecture</button>';
     html += '</div></div>';
     return html;
@@ -4948,7 +4948,7 @@ function renderErrorPanelHtml(analysis, escFn) {
       html += '<span class="spacer meta">' + esc(formatWhen(ch.firstAt)) + '</span></div>';
       if (rootHop && rootHop.id) {
         html += '<div class="toolbar" style="margin:0.25rem 0 0.5rem">';
-        html += '<button type="button" data-view="trace" data-keep-select="' + esc(rootHop.id) + '">Open in Trace</button>';
+        html += '<button type="button" data-view="timeline" data-timeline-mode="trace" data-keep-select="' + esc(rootHop.id) + '">Open in Trace</button>';
         html += '</div>';
       }
       html += renderChainTree(ch.tree);
@@ -5850,6 +5850,12 @@ function renderErrorPanelHtml(analysis, escFn) {
     }
     if (t.getAttribute('data-view')) {
       view = t.getAttribute('data-view');
+      if (t.getAttribute('data-timeline-mode')) {
+        timelineMode = t.getAttribute('data-timeline-mode');
+      }
+      if (t.getAttribute('data-data-mode')) {
+        dataMode = t.getAttribute('data-data-mode');
+      }
       if (t.getAttribute('data-keep-select')) {
         selectedId = t.getAttribute('data-keep-select');
         selectedMap = null;
