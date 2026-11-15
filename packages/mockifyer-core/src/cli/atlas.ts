@@ -847,7 +847,7 @@ async function runScan(options: CliOptions): Promise<void> {
   console.log(theme.bold('[atlas scan]'), `Found ${result.endpoints.length} endpoint(s)`);
   
   if (result.errors.length > 0) {
-    console.warn(theme.warning(`\nWarnings: ${result.errors.length} file(s) had errors`));
+    console.warn(theme.warn(`\nWarnings: ${result.errors.length} file(s) had errors`));
     result.errors.slice(0, 5).forEach(err => {
       console.warn(theme.muted(`  ${err.file}: ${err.message}`));
     });
@@ -902,7 +902,7 @@ async function runScan(options: CliOptions): Promise<void> {
 
   if (options.scanOutput) {
     fs.writeFileSync(options.scanOutput, JSON.stringify(output, null, 2), 'utf8');
-    console.log(theme.success(`\nWrote results to ${options.scanOutput}`));
+    console.log(theme.ok(`\nWrote results to ${options.scanOutput}`));
   } else {
     console.log('\n' + JSON.stringify(output, null, 2));
   }
