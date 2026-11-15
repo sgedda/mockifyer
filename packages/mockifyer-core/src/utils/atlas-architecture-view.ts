@@ -51,37 +51,36 @@ export function generateSystemDiagramSVG(
     return Math.max(160, text.length * CHAR_WIDTH + NODE_PADDING * 2);
   };
   
-  let y = 60;
+  // **GRID LAYOUT ALGORITHM**
+  // Row 0: Application (centered)
+  // Rows 1..n: All hosts in grid (up to 4 columns), sorted by call count
+  // Downstream: Separate band below, under parent host column
   
-  // Layer 1: Screens
-  if (screens && screens.length > 0) {
-    screens.slice(0, 5).forEach((screen, i) => {
-      nodes.push({
-        id: `screen-${i}`,
-        label: screen,
-        type: 'screen',
-        x: 50 + i * NODE_GAP,
-        y
-      });
-    });
-    y += LAYER_GAP;
-  }
+  const GRID_COLS = 4;
+  const ROW_HEIGHT = 80;
+  const COL_GAP = 20;
+  const ROW_GAP = 100;
+  const MARGIN = 50;
   
-  // Layer 2: App
-  nodes.push({
-    id: 'app',
-    label: 'Application',
-    type: 'app',
-    x: 250,
-    y
+  // Get all hosts with call counts
+  const allHosts = Array.from(inventory.byHost.keys());
+  const hostCallCounts = new Map<string, number>();
+  allHosts.forEach(host => {
+    const hostInventory = inventory.byHost.get(host);
+    if (hostInventory) {
+      const totalCalls = hostInventory.reduce((sum, e) => sum + (e.callCount || 0), 0);
+      hostCallCounts.set(host, totalCalls);
+    }
   });
-  y += LAYER_GAP;
   
-  // Layer 3: Backend hosts (color-coded by status)
-  const hosts = Array.from(inventory.byHost.keys()).slice(0, 5);
+  // Sort hosts by call count descending
+  const sortedHosts = allHosts.sort((a, b) => 
+    (hostCallCounts.get(b) || 0) - (hostCallCounts.get(a) || 0)
+  );
+  
+  // Calculate host statuses
   const hostStatuses = new Map<string, 'mocked' | 'live' | 'error' | 'code-only'>();
-  
-  hosts.forEach(host => {
+  sortedHosts.forEach(host => {
     const hostInventory = inventory.byHost.get(host);
     if (!hostInventory) return;
     
@@ -98,22 +97,46 @@ export function generateSystemDiagramSVG(
     );
   });
   
-  // Layout hosts with cumulative width to prevent overlap
-  // If more than 4 hosts, wrap to multiple rows
-  const MAX_ROW_WIDTH = 1200;
-  const WRAP_THRESHOLD = 4;
-  let currentX = 50;
-  let rowStartY = y;
-  let maxX = currentX;
+  // Calculate cell width (widest label + padding)
+  const maxHostWidth = Math.max(
+    160,
+    ...sortedHosts.map(h => getNodeWidth(h))
+  );
+  const cellWidth = maxHostWidth;
   
-  hosts.forEach((host, i) => {
-    const width = getNodeWidth(host);
+  // Calculate grid dimensions
+  const cols = Math.min(sortedHosts.length, GRID_COLS);
+  const rows = Math.ceil(sortedHosts.length / cols);
+  const gridWidth = cols * cellWidth + (cols - 1) * COL_GAP;
+  
+  // Row 0: Application (centered in grid)
+  let y = MARGIN;
+  const appX = MARGIN + gridWidth / 2 - cellWidth / 2;
+  nodes.push({
+    id: 'app',
+    label: 'Application',
+    type: 'app',
+    x: appX,
+    y,
+    width: cellWidth
+  });
+  y += ROW_GAP;
+  
+  // Rows 1..n: Host grid
+  const hostPositions = new Map<string, { x: number; y: number; col: number }>();
+  sortedHosts.forEach((host, i) => {
+    const row = Math.floor(i / cols);
+    const col = i % cols;
     
-    // Wrap to next row if we exceed threshold or width limit
-    if (i > 0 && (i % WRAP_THRESHOLD === 0 || currentX + width > MAX_ROW_WIDTH)) {
-      currentX = 50;
-      rowStartY += 80;
-    }
+    // Center each row
+    const rowCols = Math.min(cols, sortedHosts.length - row * cols);
+    const rowWidth = rowCols * cellWidth + (rowCols - 1) * COL_GAP;
+    const rowStartX = MARGIN + (gridWidth - rowWidth) / 2;
+    
+    const x = rowStartX + col * (cellWidth + COL_GAP);
+    const nodeY = y + row * ROW_HEIGHT;
+    
+    hostPositions.set(host, { x, y: nodeY, col });
     
     nodes.push({
       id: `host-${host}`,
@@ -121,107 +144,87 @@ export function generateSystemDiagramSVG(
       type: hostStatuses.get(host) === 'mocked' ? 'mocked-backend' : 
             hostStatuses.get(host) === 'code-only' ? 'code-backend' :
             'backend',
-      x: currentX,
-      y: rowStartY,
-      width
+      x,
+      y: nodeY,
+      width: cellWidth
     });
-    
-    maxX = Math.max(maxX, currentX + width);
-    currentX += width + NODE_GAP;
   });
   
-  y = rowStartY + LAYER_GAP;
+  y += rows * ROW_HEIGHT + ROW_GAP;
   
-  // Layer 4: Downstream services (from chains)
-  const downstreamHostPaths = new Map<string, string>();
+  // Downstream: Map each to parent host, position under parent column
+  const downstreamHostPaths = new Map<string, { path: string; parentHost: string }>();
   events.forEach(ev => {
     if (ev.parentRequestId && ev.url) {
       try {
         const url = new URL(ev.url);
-        const host = url.hostname;
-        const path = decodeURIComponent(url.pathname); // Decode %7B -> {, %7D -> }, etc.
-        // Store first path seen for each downstream host
-        if (!downstreamHostPaths.has(host)) {
-          downstreamHostPaths.set(host, path);
+        const downHost = url.hostname;
+        const path = decodeURIComponent(url.pathname);
+        
+        // Find parent host from the parent request
+        const parentEvent = events.find(e => e.requestId === ev.parentRequestId);
+        if (parentEvent && parentEvent.url) {
+          const parentUrl = new URL(parentEvent.url);
+          const parentHost = parentUrl.hostname;
+          
+          if (!downstreamHostPaths.has(downHost) && sortedHosts.includes(parentHost)) {
+            downstreamHostPaths.set(downHost, { path, parentHost });
+          }
         }
       } catch {}
     }
   });
   
-  const downstream = Array.from(downstreamHostPaths.entries()).slice(0, 8);
-  // Layout downstream nodes with cumulative width and wrapping
-  currentX = 50;
-  rowStartY = y;
-  
-  downstream.forEach(([host, path], i) => {
-    // Show host + path with · separator for nested nodes
-    const label = `${host} · ${path}`;
-    const width = getNodeWidth(label);
+  downstreamHostPaths.forEach((info, downHost) => {
+    const parentPos = hostPositions.get(info.parentHost);
+    if (!parentPos) return;
     
-    // Wrap to next row if needed
-    if (i > 0 && (i % WRAP_THRESHOLD === 0 || currentX + width > MAX_ROW_WIDTH)) {
-      currentX = 50;
-      rowStartY += 80;
-    }
-    
+    const label = `${downHost} · ${info.path}`;
     nodes.push({
-      id: `downstream-${host}`,
+      id: `downstream-${downHost}`,
       label,
       type: 'downstream',
-      x: currentX,
-      y: rowStartY,
-      width
+      x: parentPos.x,
+      y,
+      width: cellWidth
     });
-    
-    maxX = Math.max(maxX, currentX + width);
-    currentX += width + NODE_GAP;
   });
   
-  y = rowStartY;
-  
-  // Create edges
-  // Screen -> App
-  if (screens && screens.length > 0) {
-    screens.slice(0, 5).forEach((_, i) => {
-      edges.push({
-        from: `screen-${i}`,
-        to: 'app',
-        label: '',
-        status: 'live'
-      });
-    });
+  if (downstreamHostPaths.size > 0) {
+    y += ROW_HEIGHT;
   }
   
-  // App -> Hosts (position labels to avoid overlap)
-  hosts.forEach((host, i) => {
+  const contentWidth = gridWidth + MARGIN * 2;
+  const maxX = contentWidth;
+  
+  // Create edges
+  // App -> Hosts
+  sortedHosts.forEach(host => {
     const hostInventory = inventory.byHost.get(host);
     if (!hostInventory) return;
     
-    const entries = hostInventory;
     const status = hostStatuses.get(host) || 'live';
     
     edges.push({
       from: 'app',
       to: `host-${host}`,
-      label: `${entries.length} ep`,
+      label: `${hostInventory.length} ep`,
       status: status as any,
-      count: entries.length
+      count: hostInventory.length
     });
   });
   
-  // Hosts -> Downstream (from chains)
-  downstream.forEach(([host, path]) => {
+  // Hosts -> Downstream (each to its parent only)
+  downstreamHostPaths.forEach((info, downHost) => {
     edges.push({
-      from: hosts.length > 0 ? `host-${hosts[0]}` : 'app',
-      to: `downstream-${host}`,
+      from: `host-${info.parentHost}`,
+      to: `downstream-${downHost}`,
       label: 'nested',
       status: 'live'
     });
   });
   
   // Generate SVG with legend below
-  // Calculate actual content dimensions based on node positions
-  const contentWidth = Math.max(800, maxX + 50); // Add right padding
   const diagramHeight = y + 40;
   const legendHeight = 60;
   const totalHeight = diagramHeight + legendHeight;
@@ -267,13 +270,16 @@ export function generateSystemDiagramSVG(
     svg += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" 
       stroke="${color}" stroke-width="2" stroke-dasharray="${strokeDasharray}" marker-end="url(#${marker})" />`;
     
-    // Position label slightly offset to avoid overlaps
+    // Label at midpoint with background rect
     if (edge.label) {
       const midX = (x1 + x2) / 2;
       const midY = (y1 + y2) / 2;
-      // Offset label slightly to the side based on index to avoid stacking
-      const offset = (edges.indexOf(edge) % 2 === 0 ? 15 : -15);
-      svg += `<text x="${midX + offset}" y="${midY}" font-size="12" fill="${color}" text-anchor="middle" font-weight="600">${escapeHtml(edge.label)}</text>`;
+      const labelWidth = edge.label.length * 7 + 8;
+      const labelHeight = 18;
+      
+      // Background rect for label
+      svg += `<rect x="${midX - labelWidth/2}" y="${midY - labelHeight/2}" width="${labelWidth}" height="${labelHeight}" rx="3" fill="white" stroke="${color}" stroke-width="1" />`;
+      svg += `<text x="${midX}" y="${midY + 4}" font-size="12" fill="${color}" text-anchor="middle" font-weight="600">${escapeHtml(edge.label)}</text>`;
     }
   });
   
