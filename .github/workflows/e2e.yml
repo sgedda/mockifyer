@@ -368,23 +368,35 @@ jobs:
           name: atlas-architecture
           path: atlas-report
 
+      - name: Check Atlas artifact exists
+        id: check_atlas
+        run: |
+          if [ ! -d "atlas-report" ] || [ -z "$(ls -A atlas-report 2>/dev/null)" ]; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "⚠️ Atlas report artifact is missing or empty, skipping deployment"
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+            echo "✓ Atlas report found: $(du -sh atlas-report | cut -f1)"
+          fi
+      
       - name: Prepare Pages directory structure
+        if: steps.check_atlas.outputs.skip != 'true'
         run: |
           mkdir -p pages-root/atlas
           cp -r atlas-report/* pages-root/atlas/
           
-          # Create root index.html that redirects to /atlas/
+          # Create root index.html that redirects to atlas/ (relative)
           cat > pages-root/index.html << 'EOF'
           <!DOCTYPE html>
           <html lang="en">
           <head>
             <meta charset="UTF-8">
-            <meta http-equiv="refresh" content="0; url=/atlas/">
+            <meta http-equiv="refresh" content="0; url=atlas/">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Redirecting to Atlas Documentation</title>
           </head>
           <body>
-            <p>Redirecting to <a href="/atlas/">Atlas Documentation</a>...</p>
+            <p>Redirecting to <a href="atlas/">Atlas Documentation</a>...</p>
           </body>
           </html>
           EOF
@@ -394,16 +406,18 @@ jobs:
           ls -la pages-root/atlas/ | head -20
 
       - name: Upload Pages artifact
+        if: steps.check_atlas.outputs.skip != 'true'
         uses: actions/upload-pages-artifact@v3
         with:
           path: pages-root
 
       - name: Deploy to GitHub Pages
+        if: steps.check_atlas.outputs.skip != 'true'
         id: deployment
         uses: actions/deploy-pages@v4
 
       - name: Add Pages link to job summary
-        if: steps.deployment.outcome == 'success'
+        if: steps.check_atlas.outputs.skip != 'true' && steps.deployment.outcome == 'success'
         run: |
           echo "## 📚 Atlas Documentation Published" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

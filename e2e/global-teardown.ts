@@ -4,6 +4,113 @@ import * as path from 'path';
 import { execSync } from 'child_process';
 
 /**
+ * Scrub sensitive data from network events before public publishing.
+ * Redacts auth headers, cookies, and token-like values.
+ */
+function scrubNetworkEvent(event: any): any {
+  const scrubbed = { ...event };
+  
+  // Scrub request headers
+  if (scrubbed.requestHeaders) {
+    const headers: Record<string, string> = {};
+    for (const [name, value] of Object.entries(scrubbed.requestHeaders as Record<string, string>)) {
+      const lowerName = name.toLowerCase();
+      if (lowerName === 'authorization') {
+        headers[name] = value.toLowerCase().startsWith('bearer ') ? 'Bearer <redacted>' : '<redacted>';
+      } else if (lowerName === 'cookie' || lowerName === 'set-cookie') {
+        headers[name] = '<redacted>';
+      } else if (lowerName.includes('token') || lowerName.includes('api-key') || lowerName.includes('apikey')) {
+        headers[name] = '<redacted>';
+      } else {
+        headers[name] = value;
+      }
+    }
+    scrubbed.requestHeaders = headers;
+  }
+  
+  // Scrub response headers
+  if (scrubbed.responseHeaders) {
+    const headers: Record<string, string> = {};
+    for (const [name, value] of Object.entries(scrubbed.responseHeaders as Record<string, string>)) {
+      const lowerName = name.toLowerCase();
+      if (lowerName === 'set-cookie' || lowerName === 'cookie') {
+        headers[name] = '<redacted>';
+      } else if (lowerName.includes('token') || lowerName.includes('api-key')) {
+        headers[name] = '<redacted>';
+      } else {
+        headers[name] = value;
+      }
+    }
+    scrubbed.responseHeaders = headers;
+  }
+  
+  // Scrub request body (redact token-like fields)
+  if (scrubbed.requestBodyPreview) {
+    try {
+      const body = typeof scrubbed.requestBodyPreview === 'string' 
+        ? JSON.parse(scrubbed.requestBodyPreview) 
+        : scrubbed.requestBodyPreview;
+      scrubbed.requestBodyPreview = JSON.stringify(scrubObjectSecrets(body));
+    } catch {
+      // Not JSON, leave as-is
+    }
+  }
+  
+  // Scrub response body (redact token-like fields)
+  if (scrubbed.responseBodyPreview) {
+    try {
+      const body = typeof scrubbed.responseBodyPreview === 'string'
+        ? JSON.parse(scrubbed.responseBodyPreview)
+        : scrubbed.responseBodyPreview;
+      scrubbed.responseBodyPreview = JSON.stringify(scrubObjectSecrets(body));
+    } catch {
+      // Not JSON, leave as-is
+    }
+  }
+  
+  return scrubbed;
+}
+
+/**
+ * Redact potential secrets from an object recursively.
+ */
+function scrubObjectSecrets(obj: unknown): unknown {
+  if (obj === null || obj === undefined) return obj;
+  
+  if (typeof obj === 'string') {
+    // Redact long strings that look like tokens/keys
+    if (obj.length > 30 && /^[A-Za-z0-9+/=_-]{30,}$/.test(obj)) {
+      return '<redacted>';
+    }
+    return obj;
+  }
+  
+  if (Array.isArray(obj)) {
+    return obj.map(item => scrubObjectSecrets(item));
+  }
+  
+  if (typeof obj === 'object') {
+    const result: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(obj)) {
+      const lowerKey = key.toLowerCase();
+      // Redact keys that look like secrets
+      if (lowerKey.includes('token') || 
+          lowerKey.includes('secret') || 
+          lowerKey.includes('password') ||
+          lowerKey.includes('apikey') ||
+          lowerKey.includes('api_key')) {
+        result[key] = '<redacted>';
+      } else {
+        result[key] = scrubObjectSecrets(value);
+      }
+    }
+    return result;
+  }
+  
+  return obj;
+}
+
+/**
  * Global teardown: Generate Atlas documentation from captured network events
  */
 async function globalTeardown(config: FullConfig) {
@@ -37,9 +144,10 @@ async function globalTeardown(config: FullConfig) {
       console.warn(`  ⚠ Could not fetch network events: ${err.message}`);
     }
     
-    // Save events to temporary file
-    const eventsFile = path.join(atlasOutputDir, 'network-events.json');
-    fs.writeFileSync(eventsFile, JSON.stringify(networkEvents, null, 2));
+    // Scrub sensitive data from events before generating public documentation
+    console.log('  Scrubbing sensitive data (auth headers, tokens, cookies)...');
+    const scrubbedEvents = networkEvents.map(scrubNetworkEvent);
+    console.log(`  ✓ Scrubbed ${scrubbedEvents.length} events`);
     
     // Generate Atlas using direct API calls
     const wwPath = path.resolve(__dirname, '../example-projects/wanderweird-travel');
@@ -68,7 +176,8 @@ async function globalTeardown(config: FullConfig) {
         prefetches: {}
       };
       
-      const files = buildAtlasDocHtmlFiles(map, networkEvents, {
+      // Use scrubbed events for public documentation
+      const files = buildAtlasDocHtmlFiles(map, scrubbedEvents, {
         scannedEndpoints: allEndpoints
       });
       
