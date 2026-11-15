@@ -15,6 +15,7 @@ interface SystemDiagramNode {
   type: 'screen' | 'app' | 'backend' | 'mocked-backend' | 'code-backend' | 'downstream' | 'thirdparty';
   x: number;
   y: number;
+  width?: number;
 }
 
 interface SystemDiagramEdge {
@@ -41,8 +42,15 @@ export function generateSystemDiagramSVG(
   // Node positioning (larger for readability)
   const LAYER_GAP = 120;
   const NODE_GAP = 200;
-  const NODE_WIDTH = 190;
   const NODE_HEIGHT = 45;
+  const CHAR_WIDTH = 7; // ~7px per character
+  const NODE_PADDING = 20; // padding on each side
+  
+  // Helper to calculate node width based on text
+  const getNodeWidth = (text: string): number => {
+    return Math.max(160, text.length * CHAR_WIDTH + NODE_PADDING * 2);
+  };
+  
   let y = 60;
   
   // Layer 1: Screens
@@ -98,7 +106,8 @@ export function generateSystemDiagramSVG(
             hostStatuses.get(host) === 'code-only' ? 'code-backend' :
             'backend',
       x: 50 + i * NODE_GAP,
-      y
+      y,
+      width: getNodeWidth(host)
     });
   });
   y += LAYER_GAP;
@@ -121,14 +130,15 @@ export function generateSystemDiagramSVG(
   
   const downstream = Array.from(downstreamHostPaths.entries()).slice(0, 4);
   downstream.forEach(([host, path], i) => {
-    // Show host + path for downstream to differentiate from parent
-    const label = `${host} ${path}`;
+    // Show host + path with · separator for nested nodes
+    const label = `${host} · ${path}`;
     nodes.push({
       id: `downstream-${host}`,
       label,
       type: 'downstream',
       x: 100 + i * NODE_GAP,
-      y
+      y,
+      width: getNodeWidth(label)
     });
   });
   
@@ -163,7 +173,7 @@ export function generateSystemDiagramSVG(
   });
   
   // Hosts -> Downstream (from chains)
-  downstream.forEach(host => {
+  downstream.forEach(([host, path]) => {
     edges.push({
       from: hosts.length > 0 ? `host-${hosts[0]}` : 'app',
       to: `downstream-${host}`,
@@ -211,9 +221,9 @@ export function generateSystemDiagramSVG(
     const strokeDasharray = (edge.status === 'code-only' || edge.status === 'unexercised') ? '5,5' : 'none';
     const marker = `arrow-${edge.status === 'error' ? 'error' : edge.status === 'mocked' ? 'mocked' : edge.status === 'code-only' ? 'code-only' : 'live'}`;
     
-    const x1 = fromNode.x + NODE_WIDTH / 2;
+    const x1 = fromNode.x + (fromNode.width || 160) / 2;
     const y1 = fromNode.y + NODE_HEIGHT;
-    const x2 = toNode.x + NODE_WIDTH / 2;
+    const x2 = toNode.x + (toNode.width || 160) / 2;
     const y2 = toNode.y;
     
     svg += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" 
@@ -249,12 +259,12 @@ export function generateSystemDiagramSVG(
       node.type === 'downstream' ? '#6366f1' :
       '#f59e0b';
     
-    svg += `<rect x="${node.x}" y="${node.y}" width="${NODE_WIDTH}" height="${NODE_HEIGHT}" rx="6" 
+    const nodeWidth = node.width || 160;
+    svg += `<rect x="${node.x}" y="${node.y}" width="${nodeWidth}" height="${NODE_HEIGHT}" rx="6" 
       fill="${fillColor}" stroke="${strokeColor}" stroke-width="2" ${node.type === 'code-backend' ? 'stroke-dasharray="5,5"' : ''} />`;
     
-    // Show full label, wrapping if needed
-    const label = node.label.length > 22 ? node.label.slice(0, 22) : node.label;
-    svg += `<text x="${node.x + NODE_WIDTH/2}" y="${node.y + NODE_HEIGHT/2 + 5}" font-size="13" text-anchor="middle" fill="#1f2937" font-weight="500">${escapeHtml(label)}</text>`;
+    // Show full label (no truncation needed now)
+    svg += `<text x="${node.x + nodeWidth/2}" y="${node.y + NODE_HEIGHT/2 + 5}" font-size="13" text-anchor="middle" fill="#1f2937" font-weight="500">${escapeHtml(node.label)}</text>`;
   });
   
   // Add legend below diagram
