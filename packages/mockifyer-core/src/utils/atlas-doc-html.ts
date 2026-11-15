@@ -6136,29 +6136,49 @@ function buildArchitecturePrerenderedSections(
   const authByUrl = detectAuthFromTraffic(events);
   const authByEndpoint = new Map<string, any>();
   
-  // Map auth by URL to auth by ${host}::${method}::${urlTemplate}
+  // Build a map by URL -> auth, then match to inventory endpoints
+  // The challenge: events have full URLs, inventory has host + urlTemplate
+  const authByMethodPath = new Map<string, any>();
+  
+  for (const [url, auth] of authByUrl.entries()) {
+    try {
+      const urlObj = new URL(url);
+      const host = urlObj.host;
+      let path = urlObj.pathname;
+      
+      // Find the event to get the method
+      const event = events.find(e => e.url === url);
+      if (!event) continue;
+      const method = event.method;
+      
+      // Store by host::method::path
+      const key = `${host}::${method}::${path}`;
+      authByMethodPath.set(key, auth);
+      
+      // Also store by prefix (path up to first '{' or last real segment)
+      const pathPrefix = path.split('{')[0].replace(/\/$/, '');
+      if (pathPrefix !== path) {
+        authByMethodPath.set(`${host}::${method}::${pathPrefix}`, auth);
+      }
+    } catch {}
+  }
+  
+  // Map to inventory keys: ${host}::${method}::${urlTemplate}
   for (const [host, endpoints] of inventory.byHost.entries()) {
     for (const endpoint of endpoints) {
-      // Find auth from events matching this endpoint
-      const matchingEvents = events.filter(e => {
-        if (!e.url || e.method !== endpoint.method) return false;
-        try {
-          const url = new URL(e.url);
-          return url.hostname === host && e.url.includes(endpoint.urlTemplate.split('{')[0]);
-        } catch {
-          return false;
-        }
-      });
+      const templatePath = endpoint.urlTemplate.split('?')[0];
       
-      if (matchingEvents.length > 0) {
-        // Use auth from any matching event's URL
-        for (const evt of matchingEvents) {
-          const auth = authByUrl.get(evt.url);
-          if (auth) {
-            authByEndpoint.set(`${host}::${endpoint.method}::${endpoint.urlTemplate}`, auth);
-            break;
-          }
-        }
+      // Try exact match first
+      let auth = authByMethodPath.get(`${host}::${endpoint.method}::${templatePath}`);
+      
+      // If no exact match, try prefix match
+      if (!auth) {
+        const prefix = templatePath.split('{')[0].replace(/\/$/, '');
+        auth = authByMethodPath.get(`${host}::${endpoint.method}::${prefix}`);
+      }
+      
+      if (auth) {
+        authByEndpoint.set(`${host}::${endpoint.method}::${endpoint.urlTemplate}`, auth);
       }
     }
   }
