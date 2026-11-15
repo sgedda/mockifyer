@@ -3086,7 +3086,7 @@ function renderErrorPanelHtml(analysis, escFn) {
         var calls = parseInt(row.getAttribute('data-calls') || '0', 10);
         var auth = row.getAttribute('data-auth');
         
-        var detailEl = document.querySelector('.arch-detail');
+        var detailEl = document.querySelector('.detail');
         if (detailEl) {
           detailEl.innerHTML = renderEndpointDetail(host, method, template, status, calls, auth);
         }

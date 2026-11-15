@@ -98,17 +98,21 @@ export function generateSystemDiagramSVG(
     );
   });
   
+  // Layout hosts with cumulative width to prevent overlap
+  let currentX = 50;
   hosts.forEach((host, i) => {
+    const width = getNodeWidth(host);
     nodes.push({
       id: `host-${host}`,
       label: host,
       type: hostStatuses.get(host) === 'mocked' ? 'mocked-backend' : 
             hostStatuses.get(host) === 'code-only' ? 'code-backend' :
             'backend',
-      x: 50 + i * NODE_GAP,
+      x: currentX,
       y,
-      width: getNodeWidth(host)
+      width
     });
+    currentX += width + NODE_GAP;
   });
   y += LAYER_GAP;
   
@@ -119,7 +123,7 @@ export function generateSystemDiagramSVG(
       try {
         const url = new URL(ev.url);
         const host = url.hostname;
-        const path = url.pathname;
+        const path = decodeURIComponent(url.pathname); // Decode %7B -> {, %7D -> }, etc.
         // Store first path seen for each downstream host
         if (!downstreamHostPaths.has(host)) {
           downstreamHostPaths.set(host, path);
@@ -129,17 +133,21 @@ export function generateSystemDiagramSVG(
   });
   
   const downstream = Array.from(downstreamHostPaths.entries()).slice(0, 4);
+  // Layout downstream nodes with cumulative width
+  currentX = 100;
   downstream.forEach(([host, path], i) => {
     // Show host + path with · separator for nested nodes
     const label = `${host} · ${path}`;
+    const width = getNodeWidth(label);
     nodes.push({
       id: `downstream-${host}`,
       label,
       type: 'downstream',
-      x: 100 + i * NODE_GAP,
+      x: currentX,
       y,
-      width: getNodeWidth(label)
+      width
     });
+    currentX += width + NODE_GAP;
   });
   
   // Create edges
