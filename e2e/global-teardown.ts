@@ -98,10 +98,34 @@ function scrubUrlSecrets(url: string): string {
   );
   
   // Redact common secret patterns in hash fragments
+  // First pass: handle #param=value at the start of the fragment
   scrubbed = scrubbed.replace(
-    /(#[^?]*[?&])(token|apikey|api_key|password|secret|auth|authorization|key)=[^&]*/gi,
+    /#(token|apikey|api_key|password|secret|auth|authorization|access_token|key)=[^&#]*/gi,
+    '#$1=<redacted>'
+  );
+  
+  // Second pass: handle subsequent &param=value or ?param=value within the fragment
+  // This regex only matches within hash fragments (after #)
+  scrubbed = scrubbed.replace(
+    /(#[^?]*[?&])(token|apikey|api_key|password|secret|auth|authorization|access_token|key)=[^&#]*/gi,
     '$1$2=<redacted>'
   );
+  
+  // Third pass: handle &param=value that comes after other fragment params
+  // Match any & within a hash fragment followed by secret params
+  const hashIndex = scrubbed.indexOf('#');
+  if (hashIndex !== -1) {
+    const beforeHash = scrubbed.substring(0, hashIndex + 1);
+    let fragment = scrubbed.substring(hashIndex + 1);
+    
+    // Redact &param=value patterns in the fragment
+    fragment = fragment.replace(
+      /([&])(token|apikey|api_key|password|secret|auth|authorization|access_token|key)=[^&#]*/gi,
+      '$1$2=<redacted>'
+    );
+    
+    scrubbed = beforeHash + fragment;
+  }
   
   return scrubbed;
 }

@@ -1520,15 +1520,33 @@ function normalizeUrlToTemplate(url) {
   try {
     var urlObj = new URL(url, 'http://dummy');
     var path = decodeURIComponent(urlObj.pathname);
-    // UUID pattern
-    path = path.replace(/\\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\\b|\\/|$)/gi, '/{uuid}');
+    var parameters = [];
+    
+    // UUIDs
+    path = path.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, function() {
+      parameters.push('uuid');
+      return '{uuid}';
+    });
+    
+    // Long hashes (MD5, SHA1, SHA256) - \\b word boundary for standalone hashes
+    path = path.replace(/\\b[0-9a-f]{32,64}\\b/gi, function() {
+      parameters.push('hash');
+      return '{hash}';
+    });
+    
+    // Slugs (hyphenated identifiers like 'my-post-title')
+    path = path.replace(/\\/[a-z0-9]+-[a-z0-9-]+(?=\\/|$)/gi, function(match) {
+      parameters.push('slug');
+      return '/{slug}';
+    });
+    
     // Numeric IDs
-    path = path.replace(/\\/\\d+(\\b|\\/|$)/g, '/{id}');
-    // MongoDB ObjectId
-    path = path.replace(/\\/[0-9a-f]{24}(\\b|\\/|$)/gi, '/{id}');
-    // Base64-like strings (JWTs, etc.)
-    path = path.replace(/\\/[A-Za-z0-9_-]{32,}(\\b|\\/|$)/g, '/{token}');
-    return { template: path, parameters: [] };
+    path = path.replace(/\\/\\d+(?=\\/|$)/g, function() {
+      parameters.push('id');
+      return '/{id}';
+    });
+    
+    return { template: path, parameters: parameters };
   } catch (err) {
     return { template: url, parameters: [] };
   }
