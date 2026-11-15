@@ -171,13 +171,13 @@ export async function ensureTestData() {
     }
     
     // Check temperature
-    const mockData = await dashboard.getMock(scenarioAthensMock.filename, scenario);
+    const mockData = await dashboard.getMock(athensMock.filename, scenario);
     const currentTemp = mockData.data?.response?.data?.current?.temperature_2m;
     
     if (currentTemp !== expectedTemp) {
       console.log(`[Setup] Updating ${scenario} temperature: ${currentTemp} -> ${expectedTemp}°`);
       mockData.data.response.data.current.temperature_2m = expectedTemp;
-      await dashboard.putMock(scenarioAthensMock.filename, {
+      await dashboard.putMock(athensMock.filename, {
         responseData: mockData.data.response.data,
         statusOverride: 200,
         replayMode: 'stored',
