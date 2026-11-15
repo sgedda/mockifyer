@@ -22,6 +22,7 @@ export interface ScannedEndpoint {
 export interface ScanResult {
   endpoints: ScannedEndpoint[];
   errors: Array<{ file: string; message: string }>;
+  envVars: Record<string, string>;
 }
 
 interface AxiosInstance {
@@ -350,6 +351,44 @@ function scanSourceFile(
 }
 
 /**
+ * Load environment variables from .env file.
+ */
+function loadEnvFile(envPath: string): Record<string, string> {
+  const envVars: Record<string, string> = {};
+  try {
+    const content = fs.readFileSync(envPath, 'utf8');
+    const lines = content.split('\n');
+    
+    for (const line of lines) {
+      const trimmed = line.trim();
+      // Skip comments and empty lines
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      
+      // Parse KEY=value
+      const match = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
+      if (match) {
+        const key = match[1];
+        let value = match[2].trim();
+        
+        // Remove quotes if present
+        if ((value.startsWith('"') && value.endsWith('"')) || 
+            (value.startsWith("'") && value.endsWith("'"))) {
+          value = value.slice(1, -1);
+        }
+        
+        // Only store non-empty values, but don't store the actual secrets
+        // Just store that the var exists
+        envVars[key] = '<env-value>';
+      }
+    }
+  } catch {
+    // .env file not found or not readable
+  }
+  
+  return envVars;
+}
+
+/**
  * Scan a directory recursively for TypeScript/JavaScript files and find HTTP calls.
  */
 export function scanCodeForEndpoints(
@@ -364,6 +403,11 @@ export function scanCodeForEndpoints(
   const errors: Array<{ file: string; message: string }> = [];
   const exclude = options?.exclude || ['node_modules', 'dist', 'build', '.git'];
   const include = options?.include || ['.ts', '.tsx', '.js', '.jsx'];
+  
+  // Try to load .env file from root
+  const envVars = loadEnvFile(path.join(rootDir, '../.env')) || 
+                  loadEnvFile(path.join(rootDir, '.env')) ||
+                  {};
 
   function shouldIncludeFile(filePath: string): boolean {
     const ext = path.extname(filePath);
@@ -431,9 +475,9 @@ export function scanCodeForEndpoints(
 
   if (!fs.existsSync(rootDir)) {
     errors.push({ file: rootDir, message: 'Directory does not exist' });
-    return { endpoints, errors };
+    return { endpoints, errors, envVars: {} };
   }
 
   scanDirectory(rootDir);
-  return { endpoints, errors };
+  return { endpoints, errors, envVars };
 }
