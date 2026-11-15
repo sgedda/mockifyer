@@ -3197,9 +3197,15 @@ function renderErrorPanelHtml(analysis, escFn) {
     
     // Only show Last Observed if this endpoint has actual calls
     if (calls > 0) {
-      // Find matching events
+      // Find matching events - match by host, method, AND url template
       var matchingEvents = events.filter(function (e) {
-        return e.url && e.url.includes(host) && e.method === method;
+        if (!e.url || e.method !== method) return false;
+        // Check host matches
+        var eventHost = extractHost(e.url);
+        if (eventHost !== host) return false;
+        // Check that the URL pattern matches (not just any endpoint on this host)
+        var normalized = normalizeUrlToTemplate(e.url);
+        return normalized.template === urlTemplate;
       });
       
       if (matchingEvents.length > 0) {
