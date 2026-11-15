@@ -77,6 +77,56 @@ function resolveUrlExpression(
     if (right) return '{param}' + right;
   }
 
+  // Binary expression (logical OR fallback: x || 'literal')
+  if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.BarBarToken) {
+    // Try left first (the expression), fall back to right (the literal)
+    const left = resolveUrlExpression(node.left, sourceFile, checker, constants, maxDepth - 1);
+    if (left) return left;
+    const right = resolveUrlExpression(node.right, sourceFile, checker, constants, maxDepth - 1);
+    if (right) return right;
+  }
+
+  // Conditional expression (ternary or nullish coalescing: x ?? 'literal')
+  if (ts.isConditionalExpression(node)) {
+    // For ternary, try whenTrue first, fall back to whenFalse
+    const whenTrue = resolveUrlExpression(node.whenTrue, sourceFile, checker, constants, maxDepth - 1);
+    if (whenTrue) return whenTrue;
+    const whenFalse = resolveUrlExpression(node.whenFalse, sourceFile, checker, constants, maxDepth - 1);
+    if (whenFalse) return whenFalse;
+  }
+
+  // Binary expression (nullish coalescing: x ?? 'literal')
+  if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken) {
+    // Try left first, fall back to right
+    const left = resolveUrlExpression(node.left, sourceFile, checker, constants, maxDepth - 1);
+    if (left) return left;
+    const right = resolveUrlExpression(node.right, sourceFile, checker, constants, maxDepth - 1);
+    if (right) return right;
+  }
+
+  // Call expression (zero-arg functions that return literals)
+  if (ts.isCallExpression(node) && node.arguments.length === 0 && ts.isIdentifier(node.expression)) {
+    const fnName = node.expression.text;
+    // Try to find the function declaration in the same file
+    let fnDecl: ts.FunctionDeclaration | undefined;
+    ts.forEachChild(sourceFile, function visit(n) {
+      if (ts.isFunctionDeclaration(n) && n.name?.text === fnName) {
+        fnDecl = n;
+      }
+      ts.forEachChild(n, visit);
+    });
+    
+    if (fnDecl && fnDecl.body) {
+      // Look for a simple return statement
+      for (const stmt of fnDecl.body.statements) {
+        if (ts.isReturnStatement(stmt) && stmt.expression) {
+          const resolved = resolveUrlExpression(stmt.expression, sourceFile, checker, constants, maxDepth - 1);
+          if (resolved) return resolved;
+        }
+      }
+    }
+  }
+
   // Identifier - check constants map
   if (ts.isIdentifier(node)) {
     const name = node.text;
@@ -94,6 +144,17 @@ function resolveUrlExpression(
   }
 
   return null;
+}
+
+/**
+ * Clean up URL templates: collapse consecutive {param} placeholders.
+ * Examples:
+ *   /{param}{param} -> /{param}
+ *   /{param}/graphql{param} -> /{param}/graphql
+ */
+function cleanUrlTemplate(url: string): string {
+  // Collapse consecutive {param} into single {param}
+  return url.replace(/(\{param\})+/g, '{param}');
 }
 
 /**
@@ -183,13 +244,61 @@ function findAxiosInstances(sourceFile: ts.SourceFile, checker: ts.TypeChecker, 
 function collectConstants(sourceFile: ts.SourceFile): Map<string, string> {
   const constants = new Map<string, string>();
 
+  function tryResolve(node: ts.Node): string | null {
+    if (ts.isStringLiteral(node)) {
+      return node.text;
+    }
+    
+    // Handle ?? and || fallback patterns: process.env.X ?? 'fallback'
+    if (ts.isBinaryExpression(node)) {
+      if (node.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken ||
+          node.operatorToken.kind === ts.SyntaxKind.BarBarToken) {
+        // Try right side (the fallback literal)
+        const right = tryResolve(node.right);
+        if (right) return right;
+      }
+    }
+    
+    // Handle template literals without substitutions
+    if (ts.isNoSubstitutionTemplateLiteral(node)) {
+      return node.text;
+    }
+    
+    // Handle function calls to zero-arg functions
+    if (ts.isCallExpression(node) && node.arguments.length === 0 && ts.isIdentifier(node.expression)) {
+      const fnName = node.expression.text;
+      // Try to find function in same file
+      let fnDecl: ts.FunctionDeclaration | undefined;
+      ts.forEachChild(sourceFile, function visitFn(n) {
+        if (ts.isFunctionDeclaration(n) && n.name?.text === fnName) {
+          fnDecl = n;
+        }
+        ts.forEachChild(n, visitFn);
+      });
+      
+      if (fnDecl && fnDecl.body) {
+        // Look for return statements
+        for (const stmt of fnDecl.body.statements) {
+          if (ts.isReturnStatement(stmt) && stmt.expression) {
+            const resolved = tryResolve(stmt.expression);
+            if (resolved) return resolved;
+          }
+        }
+      }
+    }
+    
+    return null;
+  }
+
   function visit(node: ts.Node) {
-    // const BASE_URL = 'https://...'
+    // const BASE_URL = 'https://...' or process.env.X ?? 'https://...'
     if (ts.isVariableDeclaration(node) &&
         ts.isIdentifier(node.name) &&
-        node.initializer &&
-        ts.isStringLiteral(node.initializer)) {
-      constants.set(node.name.text, node.initializer.text);
+        node.initializer) {
+      const resolved = tryResolve(node.initializer);
+      if (resolved) {
+        constants.set(node.name.text, resolved);
+      }
     }
 
     // Look for process.env.X or import.meta.env.X
@@ -197,7 +306,9 @@ function collectConstants(sourceFile: ts.SourceFile): Map<string, string> {
       const full = node.getText(sourceFile);
       if (full.startsWith('process.env.') || full.startsWith('import.meta.env.')) {
         // We can't resolve env vars, but we can note them
-        constants.set(full, ''); // Empty means unresolved
+        if (!constants.has(full)) {
+          constants.set(full, ''); // Empty means unresolved
+        }
       }
     }
 
@@ -255,12 +366,12 @@ function scanSourceFile(
 
         endpoints.push({
           method,
-          urlTemplate: url || 'unresolved',
+          urlTemplate: url ? cleanUrlTemplate(url) : 'unresolved',
           filePath,
           line: line + 1,
           column: character + 1,
           callType: url ? 'fetch' : 'unresolved',
-          resolvedUrl: url || undefined,
+          resolvedUrl: url ? cleanUrlTemplate(url) : undefined,
           componentName
         });
       }
@@ -275,12 +386,12 @@ function scanSourceFile(
           
           endpoints.push({
             method: methodName.toUpperCase(),
-            urlTemplate: url || 'unresolved',
+            urlTemplate: url ? cleanUrlTemplate(url) : 'unresolved',
             filePath,
             line: line + 1,
             column: character + 1,
             callType: url ? 'axios' : 'unresolved',
-            resolvedUrl: url || undefined,
+            resolvedUrl: url ? cleanUrlTemplate(url) : undefined,
             componentName
           });
         }
@@ -306,12 +417,12 @@ function scanSourceFile(
 
         endpoints.push({
           method,
-          urlTemplate: url || 'unresolved',
+          urlTemplate: url ? cleanUrlTemplate(url) : 'unresolved',
           filePath,
           line: line + 1,
           column: character + 1,
           callType: url ? 'axios' : 'unresolved',
-          resolvedUrl: url || undefined,
+          resolvedUrl: url ? cleanUrlTemplate(url) : undefined,
           componentName
         });
       }
@@ -329,12 +440,12 @@ function scanSourceFile(
 
             endpoints.push({
               method: methodName.toUpperCase(),
-              urlTemplate: fullUrl || 'unresolved',
+              urlTemplate: fullUrl ? cleanUrlTemplate(fullUrl) : 'unresolved',
               filePath,
               line: line + 1,
               column: character + 1,
               callType: fullUrl ? 'axios-instance' : 'unresolved',
-              resolvedUrl: fullUrl || undefined,
+              resolvedUrl: fullUrl ? cleanUrlTemplate(fullUrl) : undefined,
               baseUrl: instance.baseURL,
               componentName
             });

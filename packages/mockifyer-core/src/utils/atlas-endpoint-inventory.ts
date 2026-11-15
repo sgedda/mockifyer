@@ -230,6 +230,53 @@ export function buildEndpointInventory(
     }
   }
 
+  // Consolidate unresolved endpoints into a single row per host
+  const unresolvedByHost = new Map<string, EndpointInventoryItem[]>();
+  const keysToRemove: string[] = [];
+  
+  for (const [key, item] of itemsMap.entries()) {
+    if (item.urlTemplate === 'unresolved') {
+      if (!unresolvedByHost.has(item.host)) {
+        unresolvedByHost.set(item.host, []);
+      }
+      unresolvedByHost.get(item.host)!.push(item);
+      keysToRemove.push(key);
+    }
+  }
+  
+  // Remove individual unresolved entries
+  for (const key of keysToRemove) {
+    itemsMap.delete(key);
+  }
+  
+  // Add consolidated unresolved entries
+  for (const [host, unresolvedItems] of unresolvedByHost.entries()) {
+    if (unresolvedItems.length > 0) {
+      // Aggregate all code locations and methods
+      const allLocations: Array<{ filePath: string; line: number; component?: string }> = [];
+      const methods = new Set<string>();
+      
+      for (const item of unresolvedItems) {
+        methods.add(item.method);
+        allLocations.push(...item.codeLocations);
+      }
+      
+      // Create single consolidated entry
+      const methodList = Array.from(methods).join('/');
+      const key = `${host}::${methodList}::unresolved`;
+      itemsMap.set(key, {
+        host,
+        method: methodList,
+        urlTemplate: 'unresolved',
+        status: 'unresolved',
+        observations: [],
+        codeLocations: allLocations,
+        mockExists: false,
+        callCount: 0
+      });
+    }
+  }
+
   // Group by host
   const byHost = new Map<string, EndpointInventoryItem[]>();
   const all: EndpointInventoryItem[] = [];
