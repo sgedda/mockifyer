@@ -24,7 +24,8 @@ export interface NormalizedUrl {
 export function normalizeUrlToTemplate(url: string): NormalizedUrl {
   try {
     const urlObj = new URL(url, 'http://dummy');
-    let path = urlObj.pathname;
+    // Decode URL-encoded characters like %7B -> {, %7D -> }
+    let path = decodeURIComponent(urlObj.pathname);
     const parameters: string[] = [];
 
     // UUIDs

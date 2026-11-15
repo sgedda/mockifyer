@@ -483,10 +483,7 @@ pre.json {
   border: 1px solid hsl(var(--border));
   border-radius: 8px;
   padding: 1rem;
-  margin: 0 0 1.5rem;
-  max-width: 16rem;
-  float: right;
-  margin-left: 1.5rem;
+  align-self: start;
 }
 .atlas-toc-title {
   font-weight: 700;
@@ -6026,8 +6023,8 @@ function renderErrorPanelHtml(analysis, escFn) {
 `.trim();
 }
 
-function buildInteractiveIndex(map: AtlasDocMap, events: NetworkEvent[]): string {
-  const body = buildInteractiveAtlasBody(map, events);
+function buildInteractiveIndex(map: AtlasDocMap, events: NetworkEvent[], scannedEndpoints?: any[]): string {
+  const body = buildInteractiveAtlasBody(map, events, { scannedEndpoints });
   // Pass scenario only, not "Atlas —" prefix (header template handles branding)
   return shell(map.scenario || 'Interactive Session', body);
 }
@@ -6104,6 +6101,7 @@ interface InteractiveAtlasBodyOptions {
   /** Crash forensics: show every embedded hop (skip CMS doc filtering). */
   mode?: 'crash';
   crash?: CrashHtmlPayload;
+  scannedEndpoints?: any[];
 }
 
 /**
@@ -6130,8 +6128,36 @@ function buildArchitecturePrerenderedSections(
     scannedEndpoints: scannedEndpoints || []
   });
   
-  // Detect auth for endpoints
-  const authByEndpoint = detectAuthFromTraffic(events);
+  // Detect auth for endpoints and remap to match inventory keys
+  const authByUrl = detectAuthFromTraffic(events);
+  const authByEndpoint = new Map<string, any>();
+  
+  // Map auth by URL to auth by ${host}::${method}::${urlTemplate}
+  for (const [host, endpoints] of inventory.byHost.entries()) {
+    for (const endpoint of endpoints) {
+      // Find auth from events matching this endpoint
+      const matchingEvents = events.filter(e => {
+        if (!e.url || e.method !== endpoint.method) return false;
+        try {
+          const url = new URL(e.url);
+          return url.hostname === host && e.url.includes(endpoint.urlTemplate.split('{')[0]);
+        } catch {
+          return false;
+        }
+      });
+      
+      if (matchingEvents.length > 0) {
+        // Use auth from any matching event's URL
+        for (const evt of matchingEvents) {
+          const auth = authByUrl.get(evt.url);
+          if (auth) {
+            authByEndpoint.set(`${host}::${endpoint.method}::${endpoint.urlTemplate}`, auth);
+            break;
+          }
+        }
+      }
+    }
+  }
   
   // Generate TOC
   const sections = ['Overview', 'System Diagram', 'Services & Endpoints', 'Key Flows', 'Issues & Gaps'];
@@ -6170,7 +6196,7 @@ function buildInteractiveAtlasBody(
   const guiLinkedRequestIds = buildGuiLinkedRequestIdSet(map);
   
   // Generate prerendered architecture sections
-  const archSections = buildArchitecturePrerenderedSections(merged);
+  const archSections = buildArchitecturePrerenderedSections(merged, options?.scannedEndpoints);
   
   const payload: {
     doc: AtlasDocMap;
@@ -6213,7 +6239,7 @@ function buildInteractiveAtlasBody(
     <button type="button" data-view="data">Data</button>
   </div>
   <div class="layout layout-architecture">
-    <div>
+    <div style="max-width: 100%;">
       <div id="view-architecture" class="panel active"></div>
       <div id="view-timeline" class="panel">
         <div class="timeline-controls">
@@ -6270,6 +6296,8 @@ export function buildAtlasDocHtmlFiles(
   options?: {
     /** atlas-html root — when set, spilled body files are read into bodies-search.json. */
     bodiesRoot?: string;
+    /** Scanned endpoints from static code analysis */
+    scannedEndpoints?: any[];
   }
 ): Record<string, string> {
   const pages = Object.values(map.pages).sort((a, b) => a.pageId.localeCompare(b.pageId));
@@ -6294,7 +6322,7 @@ export function buildAtlasDocHtmlFiles(
   });
 
   const files: Record<string, string> = {
-    'index.html': buildInteractiveIndex(map, events),
+    'index.html': buildInteractiveIndex(map, events, options?.scannedEndpoints),
     'atlas.har': buildAtlasHarJson(events, {
       scenario: map.scenario,
       creatorVersion: creatorVersion || undefined,

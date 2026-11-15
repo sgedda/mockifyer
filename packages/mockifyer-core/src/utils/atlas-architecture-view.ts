@@ -12,7 +12,7 @@ import { generateEndpointSnippets } from './atlas-code-snippets';
 interface SystemDiagramNode {
   id: string;
   label: string;
-  type: 'screen' | 'app' | 'backend' | 'downstream' | 'thirdparty';
+  type: 'screen' | 'app' | 'backend' | 'mocked-backend' | 'code-backend' | 'downstream' | 'thirdparty';
   x: number;
   y: number;
 }
@@ -38,10 +38,12 @@ export function generateSystemDiagramSVG(
   const nodes: SystemDiagramNode[] = [];
   const edges: SystemDiagramEdge[] = [];
   
-  // Node positioning (simple layered layout)
-  const LAYER_GAP = 200;
-  const NODE_GAP = 120;
-  let y = 50;
+  // Node positioning (wider spacing for full labels)
+  const LAYER_GAP = 180;
+  const NODE_GAP = 200; // Wider to fit full host names
+  const NODE_WIDTH = 180;
+  const NODE_HEIGHT = 50;
+  let y = 80;
   
   // Layer 1: Screens
   if (screens && screens.length > 0) {
@@ -67,13 +69,34 @@ export function generateSystemDiagramSVG(
   });
   y += LAYER_GAP;
   
-  // Layer 3: Backend hosts
+  // Layer 3: Backend hosts (color-coded by status)
   const hosts = Array.from(inventory.byHost.keys()).slice(0, 5);
+  const hostStatuses = new Map<string, 'mocked' | 'live' | 'error' | 'code-only'>();
+  
+  hosts.forEach(host => {
+    const hostInventory = inventory.byHost.get(host);
+    if (!hostInventory) return;
+    
+    const hasErrors = hostInventory.some(e => e.errorRate && e.errorRate > 0);
+    const allMocked = hostInventory.every(e => e.status === 'mocked-only');
+    const hasCodeOnly = hostInventory.some(e => e.status === 'code-only');
+    const hasObserved = hostInventory.some(e => e.status.startsWith('observed'));
+    
+    hostStatuses.set(host, 
+      hasErrors ? 'error' :
+      allMocked ? 'mocked' :
+      hasCodeOnly ? 'code-only' :
+      hasObserved ? 'live' : 'live'
+    );
+  });
+  
   hosts.forEach((host, i) => {
     nodes.push({
       id: `host-${host}`,
       label: host,
-      type: 'backend',
+      type: hostStatuses.get(host) === 'mocked' ? 'mocked-backend' : 
+            hostStatuses.get(host) === 'code-only' ? 'code-backend' :
+            'backend',
       x: 50 + i * NODE_GAP,
       y
     });
@@ -115,27 +138,19 @@ export function generateSystemDiagramSVG(
     });
   }
   
-  // App -> Hosts
-  hosts.forEach(host => {
+  // App -> Hosts (position labels to avoid overlap)
+  hosts.forEach((host, i) => {
     const hostInventory = inventory.byHost.get(host);
     if (!hostInventory) return;
     
     const entries = hostInventory;
-    const hasErrors = entries.some((e: EndpointInventoryItem) => e.errorRate && e.errorRate > 0);
-    const allMocked = entries.every((e: EndpointInventoryItem) => e.status === 'mocked-only');
-    const hasCodeOnly = entries.some((e: EndpointInventoryItem) => e.status === 'code-only');
-    
-    const status: SystemDiagramEdge['status'] = 
-      hasErrors ? 'error' :
-      allMocked ? 'mocked' :
-      hasCodeOnly ? 'code-only' :
-      'live';
+    const status = hostStatuses.get(host) || 'live';
     
     edges.push({
       from: 'app',
       to: `host-${host}`,
-      label: `${entries.length} endpoints`,
-      status,
+      label: `${entries.length} ep`,
+      status: status as any,
       count: entries.length
     });
   });
@@ -150,11 +165,12 @@ export function generateSystemDiagramSVG(
     });
   });
   
-  // Generate SVG
-  const width = Math.max(600, hosts.length * NODE_GAP + 100);
-  const height = y + 50;
+  // Generate SVG with legend
+  const diagramWidth = Math.max(900, hosts.length * NODE_GAP + 100);
+  const legendHeight = 80;
+  const height = y + legendHeight + 50;
   
-  let svg = `<svg viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" class="atlas-system-diagram">`;
+  let svg = `<svg viewBox="0 0 ${diagramWidth} ${height}" xmlns="http://www.w3.org/2000/svg" class="atlas-system-diagram" style="max-width: 100%; height: auto;">`;
   
   // Define arrow markers (Mock=green, Live=blue, Error=red, Code-only=grey)
   svg += `<defs>
@@ -187,35 +203,75 @@ export function generateSystemDiagramSVG(
     const strokeDasharray = (edge.status === 'code-only' || edge.status === 'unexercised') ? '5,5' : 'none';
     const marker = `arrow-${edge.status === 'error' ? 'error' : edge.status === 'mocked' ? 'mocked' : edge.status === 'code-only' ? 'code-only' : 'live'}`;
     
-    svg += `<line x1="${fromNode.x + 50}" y1="${fromNode.y + 20}" x2="${toNode.x + 50}" y2="${toNode.y}" 
+    const x1 = fromNode.x + NODE_WIDTH / 2;
+    const y1 = fromNode.y + NODE_HEIGHT;
+    const x2 = toNode.x + NODE_WIDTH / 2;
+    const y2 = toNode.y;
+    
+    svg += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" 
       stroke="${color}" stroke-width="2" stroke-dasharray="${strokeDasharray}" marker-end="url(#${marker})" />`;
     
+    // Position label slightly offset to avoid overlaps
     if (edge.label) {
-      const midX = (fromNode.x + toNode.x) / 2 + 50;
-      const midY = (fromNode.y + toNode.y) / 2;
-      svg += `<text x="${midX}" y="${midY}" font-size="11" fill="${color}" text-anchor="middle">${escapeHtml(edge.label)}</text>`;
+      const midX = (x1 + x2) / 2;
+      const midY = (y1 + y2) / 2;
+      // Offset label slightly to the side based on index to avoid stacking
+      const offset = (edges.indexOf(edge) % 2 === 0 ? 10 : -10);
+      svg += `<text x="${midX + offset}" y="${midY}" font-size="10" fill="${color}" text-anchor="middle" font-weight="600">${escapeHtml(edge.label)}</text>`;
     }
   });
   
-  // Draw nodes
+  // Draw nodes (full width, no truncation, color-coded)
   nodes.forEach(node => {
     const fillColor = 
       node.type === 'screen' ? '#f3f4f6' :
       node.type === 'app' ? '#dbeafe' :
-      node.type === 'backend' ? '#fef3c7' :
-      '#e0e7ff';
+      node.type === 'mocked-backend' ? '#dcfce7' : // Green for mocked
+      node.type === 'code-backend' ? '#f3f4f6' : // Light gray for code-only
+      node.type === 'backend' ? '#dbeafe' : // Blue for live
+      node.type === 'downstream' ? '#e0e7ff' :
+      '#fef3c7';
     
     const strokeColor = 
       node.type === 'screen' ? '#9ca3af' :
       node.type === 'app' ? '#3b82f6' :
-      node.type === 'backend' ? '#f59e0b' :
-      '#6366f1';
+      node.type === 'mocked-backend' ? '#22c55e' : // Green stroke
+      node.type === 'code-backend' ? '#9ca3af' : // Gray stroke
+      node.type === 'backend' ? '#3b82f6' : // Blue stroke
+      node.type === 'downstream' ? '#6366f1' :
+      '#f59e0b';
     
-    svg += `<rect x="${node.x}" y="${node.y}" width="100" height="40" rx="4" 
-      fill="${fillColor}" stroke="${strokeColor}" stroke-width="2" />`;
-    svg += `<text x="${node.x + 50}" y="${node.y + 24}" font-size="12" text-anchor="middle" fill="#1f2937">${escapeHtml(truncate(node.label, 12))}</text>`;
+    svg += `<rect x="${node.x}" y="${node.y}" width="${NODE_WIDTH}" height="${NODE_HEIGHT}" rx="6" 
+      fill="${fillColor}" stroke="${strokeColor}" stroke-width="2" ${node.type === 'code-backend' ? 'stroke-dasharray="5,5"' : ''} />`;
+    
+    // Show full label, wrapping if needed
+    const label = node.label.length > 24 ? node.label.slice(0, 24) : node.label;
+    svg += `<text x="${node.x + NODE_WIDTH/2}" y="${node.y + NODE_HEIGHT/2 + 5}" font-size="11" text-anchor="middle" fill="#1f2937" font-weight="500">${escapeHtml(label)}</text>`;
   });
   
+  // Add legend at bottom
+  const legendY = y + 20;
+  const legendX = 50;
+  svg += `<g class="legend">`;
+  svg += `<text x="${legendX}" y="${legendY}" font-size="12" font-weight="600" fill="#374151">Legend:</text>`;
+  
+  // Mocked (green)
+  svg += `<rect x="${legendX}" y="${legendY + 10}" width="60" height="20" rx="4" fill="#dcfce7" stroke="#22c55e" stroke-width="2" />`;
+  svg += `<text x="${legendX + 30}" y="${legendY + 24}" font-size="9" text-anchor="middle" fill="#1f2937" font-weight="500">Mocked</text>`;
+  
+  // Live (blue)
+  svg += `<rect x="${legendX + 80}" y="${legendY + 10}" width="60" height="20" rx="4" fill="#dbeafe" stroke="#3b82f6" stroke-width="2" />`;
+  svg += `<text x="${legendX + 110}" y="${legendY + 24}" font-size="9" text-anchor="middle" fill="#1f2937" font-weight="500">Live</text>`;
+  
+  // Error (red)
+  svg += `<rect x="${legendX + 160}" y="${legendY + 10}" width="60" height="20" rx="4" fill="#fee2e2" stroke="#ef4444" stroke-width="2" />`;
+  svg += `<text x="${legendX + 190}" y="${legendY + 24}" font-size="9" text-anchor="middle" fill="#1f2937" font-weight="500">Error</text>`;
+  
+  // Code-only (gray dashed)
+  svg += `<rect x="${legendX + 240}" y="${legendY + 10}" width="80" height="20" rx="4" fill="#f3f4f6" stroke="#9ca3af" stroke-width="2" stroke-dasharray="5,5" />`;
+  svg += `<text x="${legendX + 280}" y="${legendY + 24}" font-size="9" text-anchor="middle" fill="#1f2937" font-weight="500">Code-only</text>`;
+  
+  svg += `</g>`;
   svg += '</svg>';
   
   return svg;
@@ -370,19 +426,23 @@ export function generateKeyFlowsHTML(
     let depth = 1;
     let count = 1;
     
-    // Find all children recursively
+    // Find all children recursively (check both id and requestId)
     const findChildren = (parentId: string, currentDepth: number) => {
       const children = events.filter(e => e.parentRequestId === parentId);
       if (children.length > 0) {
         depth = Math.max(depth, currentDepth + 1);
         count += children.length;
         children.forEach(child => {
-          if (child.id) findChildren(child.id, currentDepth + 1);
+          // Use requestId if available, fall back to id
+          const childId = (child as any).requestId || child.id;
+          if (childId) findChildren(childId, currentDepth + 1);
         });
       }
     };
     
-    if (root.id) findChildren(root.id, 1);
+    // Use requestId if available, fall back to id
+    const rootId = (root as any).requestId || root.id;
+    if (rootId) findChildren(rootId, 1);
     
     if (depth > 1) {
       flows.push({ root, depth, count });
