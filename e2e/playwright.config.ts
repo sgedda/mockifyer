@@ -34,7 +34,6 @@ export default defineConfig({
     ...(process.env.CI ? [['junit', { outputFile: 'test-results/junit.xml' }] as const] : []),
   ],
   globalSetup: './global-setup.ts',
-  globalTeardown: './global-teardown.ts',
   metadata: { cwd: path.relative(REPO_ROOT, process.cwd()) || '.', env: recordedEnv },
   use: {
     baseURL: process.env.APP_URL ?? 'http://127.0.0.1:8090',
