@@ -343,7 +343,18 @@ export function generateEndpointInventoryHTML(
       
       html += '<tr>';
       html += `<td><span class="method method-${endpoint.method.toLowerCase()}">${endpoint.method}</span></td>`;
-      html += `<td><code class="url-template">${escapeHtml(endpoint.urlTemplate)}</code></td>`;
+      
+      // Show file location for unresolved URLs
+      if (endpoint.urlTemplate === 'unresolved' && endpoint.codeLocations.length > 0) {
+        const loc = endpoint.codeLocations[0];
+        const filePath = loc.filePath.replace(/^.*\//, ''); // Show only filename
+        html += `<td><em style="color: var(--muted-foreground); font-size: 0.9em;">`;
+        html += `Unresolved in ${escapeHtml(filePath)}:${loc.line}`;
+        if (loc.component) html += ` (${escapeHtml(loc.component)})`;
+        html += `</em></td>`;
+      } else {
+        html += `<td><code class="url-template">${escapeHtml(endpoint.urlTemplate)}</code></td>`;
+      }
       
       // Auth badge
       html += '<td>';
