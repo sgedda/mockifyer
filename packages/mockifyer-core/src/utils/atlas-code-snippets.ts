@@ -18,8 +18,10 @@ export interface SnippetOptions {
 
 /**
  * Redact sensitive header values to placeholders.
+ * For cURL: returns $VAR_NAME (shell expansion)
+ * For fetch/axios: returns process.env.VAR_NAME
  */
-function redactHeaderValue(name: string, value: string, auth?: EndpointAuthInfo): string {
+function redactHeaderValue(name: string, value: string, auth?: EndpointAuthInfo, format: 'curl' | 'js' = 'curl'): string {
   const lowerName = name.toLowerCase();
   
   if (lowerName === 'authorization') {
@@ -27,7 +29,9 @@ function redactHeaderValue(name: string, value: string, auth?: EndpointAuthInfo)
       // Use auth source if available
       const envSource = auth?.staticSources.find(s => s.sourceType === 'env');
       if (envSource?.identifier) {
-        return `Bearer $${envSource.identifier}`;
+        return format === 'curl' 
+          ? `Bearer $${envSource.identifier}`
+          : `Bearer \${process.env.${envSource.identifier}}`;
       }
       return 'Bearer <token>';
     }
@@ -42,7 +46,9 @@ function redactHeaderValue(name: string, value: string, auth?: EndpointAuthInfo)
   if (lowerName === 'x-api-key' || lowerName === 'x-rapidapi-key' || lowerName === 'api-key') {
     const envSource = auth?.staticSources.find(s => s.sourceType === 'env');
     if (envSource?.identifier) {
-      return `$${envSource.identifier}`;
+      return format === 'curl'
+        ? `$${envSource.identifier}`
+        : `\${process.env.${envSource.identifier}}`;
     }
     return '<api-key>';
   }
@@ -163,12 +169,21 @@ function redactObjectSecrets(obj: unknown): unknown {
 }
 
 /**
+ * Check if a string contains shell variable placeholders.
+ */
+function containsShellVariable(str: string): boolean {
+  return str.includes('$');
+}
+
+/**
  * Generate cURL command.
  */
 export function generateCurlSnippet(options: SnippetOptions): string {
   const { method, url, headers = {}, body, auth } = options;
   
-  let curl = `curl -X ${method.toUpperCase()} '${url}'`;
+  // Use double quotes if URL contains env var placeholder
+  const urlQuote = containsShellVariable(url) ? '"' : "'";
+  let curl = `curl -X ${method.toUpperCase()} ${urlQuote}${url}${urlQuote}`;
   
   // Add headers
   const safeHeaders = { ...headers };
@@ -178,13 +193,16 @@ export function generateCurlSnippet(options: SnippetOptions): string {
   
   for (const [name, value] of Object.entries(safeHeaders)) {
     const redacted = redactHeaderValue(name, value, auth);
-    curl += ` \\\n  -H '${name}: ${redacted}'`;
+    // Use double quotes if header value contains env var placeholder
+    const headerQuote = containsShellVariable(redacted) ? '"' : "'";
+    curl += ` \\\n  -H ${headerQuote}${name}: ${redacted}${headerQuote}`;
   }
   
   // Add body
   if (body && (method === 'POST' || method === 'PUT' || method === 'PATCH')) {
     const bodyStr = typeof body === 'string' ? body : JSON.stringify(body, null, 2);
-    curl += ` \\\n  -d '${bodyStr}'`;
+    const bodyQuote = containsShellVariable(bodyStr) ? '"' : "'";
+    curl += ` \\\n  -d ${bodyQuote}${bodyStr}${bodyQuote}`;
   }
   
   return curl;
@@ -206,7 +224,7 @@ export function generateFetchSnippet(options: SnippetOptions): string {
     if (name.toLowerCase() !== 'host' && 
         name.toLowerCase() !== 'content-length' &&
         name.toLowerCase() !== 'user-agent') {
-      safeHeaders[name] = redactHeaderValue(name, value, auth);
+      safeHeaders[name] = redactHeaderValue(name, value, auth, 'js');
     }
   }
   
@@ -234,6 +252,11 @@ export function generateFetchSnippet(options: SnippetOptions): string {
     code = code.replace('"JSON.stringify(...)"', `JSON.stringify(${bodyStr})`);
   }
   
+  // Replace escaped env var placeholders with template literal expressions
+  // JSON.stringify turns "${process.env.X}" into "\${process.env.X}" (backslash-escaped)
+  code = code.replace(/"\\?\$\{process\.env\.([A-Z_]+)\}"/g, '`${process.env.$1}`');
+  code = code.replace(/"Bearer \\?\$\{process\.env\.([A-Z_]+)\}"/g, '`Bearer ${process.env.$1}`');
+  
   code += 'const data = await response.json();';
   
   return code;
@@ -254,7 +277,7 @@ export function generateAxiosSnippet(options: SnippetOptions): string {
     if (name.toLowerCase() !== 'host' && 
         name.toLowerCase() !== 'content-length' &&
         name.toLowerCase() !== 'user-agent') {
-      safeHeaders[name] = redactHeaderValue(name, value, auth);
+      safeHeaders[name] = redactHeaderValue(name, value, auth, 'js');
     }
   }
   

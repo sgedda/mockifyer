@@ -78,6 +78,8 @@ describe('atlas-code-snippets', () => {
       
       expect(curl).not.toContain(REAL_BEARER_TOKEN);
       expect(curl).toContain('Bearer $API_TOKEN');
+      // Should use double quotes for shell variable expansion
+      expect(curl).toMatch(/"authorization: Bearer \$API_TOKEN"/);
     });
 
     it('should redact API keys', () => {
@@ -118,6 +120,8 @@ describe('atlas-code-snippets', () => {
       
       expect(curl).not.toContain(REAL_API_KEY);
       expect(curl).toContain('$WEATHER_API_KEY');
+      // Should use double quotes for shell variable expansion
+      expect(curl).toMatch(/"x-api-key: \$WEATHER_API_KEY"/);
     });
 
     it('should include request body for POST', () => {
@@ -174,18 +178,28 @@ describe('atlas-code-snippets', () => {
     });
 
     it('should redact auth headers', () => {
+      const auth: EndpointAuthInfo = {
+        scheme: 'bearer',
+        staticSources: [{ sourceType: 'env', identifier: 'API_TOKEN' }],
+        observedInTraffic: true,
+        authFailures: 0,
+        challengeSchemes: [],
+        precededByAuthFlow: false
+      };
+      
       const options: SnippetOptions = {
         method: 'GET',
         url: 'https://api.example.com/users',
         headers: {
           'authorization': `Bearer ${REAL_BEARER_TOKEN}`
-        }
+        },
+        auth
       };
       
       const fetch = generateFetchSnippet(options);
       
       expect(fetch).not.toContain(REAL_BEARER_TOKEN);
-      expect(fetch).toContain('Bearer <token>');
+      expect(fetch).toContain('process.env.API_TOKEN');
     });
 
     it('should include JSON body for POST', () => {
@@ -240,7 +254,7 @@ describe('atlas-code-snippets', () => {
       const axios = generateAxiosSnippet(options);
       
       expect(axios).not.toContain(REAL_BEARER_TOKEN);
-      expect(axios).toContain('Bearer $AUTH_TOKEN');
+      expect(axios).toContain('process.env.AUTH_TOKEN');
     });
 
     it('should include body for POST with headers', () => {
@@ -454,6 +468,10 @@ describe('atlas-code-snippets', () => {
       expect(snippets.curl).toMatch(/Bearer \$API_TOKEN|Bearer <token>/);
       expect(snippets.curl).toMatch(/<api-key>|\$[A-Z_]+/);
       expect(snippets.curl).toContain('<redacted>');
+      
+      // Verify JavaScript snippets use process.env
+      expect(snippets.fetch).toMatch(/process\.env\.[A-Z_]+|<token>/);
+      expect(snippets.axios).toMatch(/process\.env\.[A-Z_]+|<token>/);
     });
   });
 });
