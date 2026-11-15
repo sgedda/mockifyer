@@ -1506,6 +1506,33 @@ function slimNetworkEvent(
 function interactiveClientScript(): string {
   return `
 (function () {
+function extractHost(url) {
+  try {
+    var urlObj = new URL(url);
+    return urlObj.host;
+  } catch (err) {
+    var match = url.match(/^https?:\\/\\/([^\\/]+)/);
+    if (match) return match[1];
+    return 'Same-origin API';
+  }
+}
+function normalizeUrlToTemplate(url) {
+  try {
+    var urlObj = new URL(url, 'http://dummy');
+    var path = decodeURIComponent(urlObj.pathname);
+    // UUID pattern
+    path = path.replace(/\\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\\b|\\/|$)/gi, '/{uuid}');
+    // Numeric IDs
+    path = path.replace(/\\/\\d+(\\b|\\/|$)/g, '/{id}');
+    // MongoDB ObjectId
+    path = path.replace(/\\/[0-9a-f]{24}(\\b|\\/|$)/gi, '/{id}');
+    // Base64-like strings (JWTs, etc.)
+    path = path.replace(/\\/[A-Za-z0-9_-]{32,}(\\b|\\/|$)/g, '/{token}');
+    return { template: path, parameters: [] };
+  } catch (err) {
+    return { template: url, parameters: [] };
+  }
+}
 function normalizeGraphQLQueryForKey(query) {
   if (!query) return '';
   return String(query).replace(/\\s+/g, ' ').trim();
@@ -6215,53 +6242,19 @@ function buildArchitecturePrerenderedSections(
     scannedEndpoints: scannedEndpoints || []
   });
   
-  // Detect auth for endpoints and remap to match inventory keys
-  const authByUrl = detectAuthFromTraffic(events);
+  // Detect auth for endpoints - returns Map<compositeKey, auth>
+  // where compositeKey is already in the format ${host}::${method}::${template}
+  const authByCompositeKey = detectAuthFromTraffic(events);
   const authByEndpoint = new Map<string, any>();
   
-  // Build a map by URL -> auth, then match to inventory endpoints
-  // The challenge: events have full URLs, inventory has host + urlTemplate
-  const authByMethodPath = new Map<string, any>();
-  
-  for (const [url, auth] of authByUrl.entries()) {
-    try {
-      const urlObj = new URL(url);
-      const host = urlObj.host;
-      let path = urlObj.pathname;
-      
-      // Find the event to get the method
-      const event = events.find(e => e.url === url);
-      if (!event) continue;
-      const method = event.method;
-      
-      // Store by host::method::path
-      const key = `${host}::${method}::${path}`;
-      authByMethodPath.set(key, auth);
-      
-      // Also store by prefix (path up to first '{' or last real segment)
-      const pathPrefix = path.split('{')[0].replace(/\/$/, '');
-      if (pathPrefix !== path) {
-        authByMethodPath.set(`${host}::${method}::${pathPrefix}`, auth);
-      }
-    } catch {}
-  }
-  
   // Map to inventory keys: ${host}::${method}::${urlTemplate}
+  // Auth detection already uses composite keys, so we can directly look them up
   for (const [host, endpoints] of inventory.byHost.entries()) {
     for (const endpoint of endpoints) {
-      const templatePath = endpoint.urlTemplate.split('?')[0];
-      
-      // Try exact match first
-      let auth = authByMethodPath.get(`${host}::${endpoint.method}::${templatePath}`);
-      
-      // If no exact match, try prefix match
-      if (!auth) {
-        const prefix = templatePath.split('{')[0].replace(/\/$/, '');
-        auth = authByMethodPath.get(`${host}::${endpoint.method}::${prefix}`);
-      }
-      
+      const key = `${host}::${endpoint.method}::${endpoint.urlTemplate}`;
+      const auth = authByCompositeKey.get(key);
       if (auth) {
-        authByEndpoint.set(`${host}::${endpoint.method}::${endpoint.urlTemplate}`, auth);
+        authByEndpoint.set(key, auth);
       }
     }
   }

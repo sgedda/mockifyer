@@ -89,11 +89,21 @@ function scrubNetworkEvent(event: any): any {
 function scrubUrlSecrets(url: string): string {
   if (!url || typeof url !== 'string') return url;
   
+  let scrubbed = url;
+  
   // Redact common secret parameter patterns in query strings
-  return url.replace(
-    /([?&])(token|apikey|api_key|password|secret|auth|authorization|key)=[^&]*/gi,
+  scrubbed = scrubbed.replace(
+    /([?&])(token|apikey|api_key|password|secret|auth|authorization|key)=[^&#]*/gi,
     '$1$2=<redacted>'
   );
+  
+  // Redact common secret patterns in hash fragments
+  scrubbed = scrubbed.replace(
+    /(#[^?]*[?&])(token|apikey|api_key|password|secret|auth|authorization|key)=[^&]*/gi,
+    '$1$2=<redacted>'
+  );
+  
+  return scrubbed;
 }
 
 /**
@@ -165,7 +175,7 @@ async function globalTeardown(config: FullConfig) {
         const data = await response.json();
         networkEvents = data.events || data;
         console.log(`  ✓ Fetched ${networkEvents.length} network events`);
-        if (networkEvents.length >= 10000) {
+        if (networkEvents.length === 10000) {
           console.warn(`  ⚠ Hit limit of 10000 events; some traffic may be missing`);
         }
       } else {

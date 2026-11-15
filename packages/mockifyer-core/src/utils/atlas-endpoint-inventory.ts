@@ -90,16 +90,28 @@ export function buildEndpointInventory(
   const itemsMap = new Map<string, EndpointInventoryItem>();
 
   // Determine a reasonable fallback host from network events
-  const observedHosts = new Set<string>();
+  // Count host frequencies to pick the most common as fallback for relative paths
+  const hostCounts = new Map<string, number>();
   for (const event of networkEvents) {
     if (event.url) {
       try {
         const urlObj = new URL(event.url);
-        observedHosts.add(urlObj.host);
+        const host = urlObj.host;
+        hostCounts.set(host, (hostCounts.get(host) || 0) + 1);
       } catch {}
     }
   }
-  const fallbackHost = observedHosts.size > 0 ? Array.from(observedHosts)[0] : 'Same-origin API';
+  // Pick the most frequently observed host as fallback, or 'Same-origin API' if none observed
+  let fallbackHost = 'Same-origin API';
+  if (hostCounts.size > 0) {
+    let maxCount = 0;
+    for (const [host, count] of hostCounts.entries()) {
+      if (count > maxCount) {
+        maxCount = count;
+        fallbackHost = host;
+      }
+    }
+  }
 
   // Helper to get or create an inventory item
   function getOrCreate(host: string, method: string, urlTemplate: string): EndpointInventoryItem {
@@ -261,7 +273,7 @@ export function buildEndpointInventory(
 
   // Count unresolved endpoints BEFORE consolidation to get accurate call site count
   const unresolvedCountBeforeConsolidation = Array.from(itemsMap.values())
-    .filter(i => i.urlTemplate === 'unresolved').length;
+    .filter(i => i.host === 'Unresolved base URL').length;
 
   // Consolidate unresolved endpoints into a single row per host
   const unresolvedByHost = new Map<string, EndpointInventoryItem[]>();
