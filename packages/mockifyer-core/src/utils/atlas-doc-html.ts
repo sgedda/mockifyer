@@ -460,6 +460,292 @@ pre.json {
 @media (min-width: 900px) {
   .layout.layout-architecture { grid-template-columns: minmax(0, 1.85fr) minmax(15rem, 0.9fr); }
 }
+/* Enhanced Architecture View Styles */
+.atlas-toc {
+  position: sticky;
+  top: 1rem;
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  padding: 1rem;
+  margin: 0 0 1.5rem;
+  max-width: 16rem;
+  float: right;
+  margin-left: 1.5rem;
+}
+.atlas-toc-title {
+  font-weight: 700;
+  font-size: 0.85rem;
+  margin-bottom: 0.65rem;
+  color: hsl(var(--foreground));
+}
+.atlas-toc ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.atlas-toc li {
+  margin: 0.35rem 0;
+}
+.atlas-toc a {
+  font-size: 0.8rem;
+  color: hsl(var(--muted-foreground));
+  text-decoration: none;
+  display: block;
+  padding: 0.25rem 0;
+  transition: color 0.2s;
+}
+.atlas-toc a:hover {
+  color: hsl(var(--primary));
+}
+.atlas-system-diagram {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 1rem 0;
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  padding: 1rem;
+}
+.atlas-host-section {
+  margin: 1.5rem 0;
+}
+.atlas-host-section h3 {
+  font-size: 1.05rem;
+  margin: 0 0 0.5rem;
+  font-weight: 600;
+}
+.atlas-host-stats {
+  display: flex;
+  gap: 0.65rem;
+  margin: 0.5rem 0 0.75rem;
+  font-size: 0.8rem;
+}
+.atlas-host-stats .stat {
+  padding: 0.25rem 0.65rem;
+  background: hsl(var(--muted));
+  border: 1px solid hsl(var(--border));
+  border-radius: 6px;
+}
+.atlas-host-stats .stat.error {
+  background: hsl(0 84.2% 60.2% / 0.1);
+  border-color: hsl(var(--destructive));
+  color: hsl(var(--destructive));
+}
+.atlas-endpoint-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  overflow: hidden;
+}
+.atlas-endpoint-table th {
+  text-align: left;
+  padding: 0.55rem 0.65rem;
+  background: hsl(var(--muted));
+  border-bottom: 1px solid hsl(var(--border));
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+.atlas-endpoint-table td {
+  padding: 0.55rem 0.65rem;
+  border-bottom: 1px solid hsl(var(--border));
+  vertical-align: middle;
+}
+.atlas-endpoint-table tr:last-child td {
+  border-bottom: none;
+}
+.method {
+  display: inline-block;
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+.method-get { background: #3b82f6; color: white; }
+.method-post { background: #22c55e; color: white; }
+.method-put { background: #f59e0b; color: white; }
+.method-patch { background: #8b5cf6; color: white; }
+.method-delete { background: #ef4444; color: white; }
+.url-template {
+  font-family: ui-monospace, monospace;
+  font-size: 0.8rem;
+  color: hsl(var(--foreground));
+}
+.auth-badge {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  border: 1px solid;
+}
+.auth-badge.auth-bearer { background: #dbeafe; color: #1e40af; border-color: #3b82f6; }
+.auth-badge.auth-api-key { background: #fef3c7; color: #92400e; border-color: #f59e0b; }
+.auth-badge.auth-basic { background: #e0e7ff; color: #3730a3; border-color: #6366f1; }
+.auth-badge.auth-cookie { background: #fce7f3; color: #9f1239; border-color: #ec4899; }
+.auth-badge.auth-none { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); border-color: hsl(var(--border)); }
+.status-badge {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+.status-badge.status-observed_with_chain { background: #dbeafe; color: #1e40af; }
+.status-badge.status-observed_no_chain { background: #3b82f6; color: white; }
+.status-badge.status-mocked_only { background: #22c55e; color: white; }
+.status-badge.status-code_only { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
+.status-badge.status-unresolved { background: #fef3c7; color: #92400e; }
+.atlas-actions {
+  text-align: right;
+}
+.btn-snippet {
+  padding: 0.35rem 0.65rem;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  border: none;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  font-family: inherit;
+  transition: opacity 0.2s;
+}
+.btn-snippet:hover {
+  opacity: 0.85;
+}
+.snippet-panel td {
+  background: hsl(var(--muted) / 0.3);
+  padding: 1rem !important;
+}
+.snippet-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  border-bottom: 1px solid hsl(var(--border));
+}
+.snippet-tab {
+  padding: 0.5rem 1rem;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: hsl(var(--muted-foreground));
+  transition: all 0.2s;
+}
+.snippet-tab:hover {
+  color: hsl(var(--foreground));
+}
+.snippet-tab.active {
+  color: hsl(var(--primary));
+  border-bottom-color: hsl(var(--primary));
+}
+.snippet-code {
+  display: none;
+  background: hsl(240 3.7% 12%);
+  border: 1px solid hsl(var(--border));
+  border-radius: 6px;
+  padding: 1rem;
+  overflow-x: auto;
+  font-family: ui-monospace, monospace;
+  font-size: 0.8rem;
+  line-height: 1.6;
+  color: #d4d4d4;
+  margin-bottom: 0.75rem;
+}
+.snippet-code.active {
+  display: block;
+}
+.btn-copy-snippet {
+  padding: 0.45rem 0.85rem;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  border: none;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  font-family: inherit;
+}
+.btn-copy-snippet:hover {
+  opacity: 0.85;
+}
+.flow-card {
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  padding: 0.85rem 1rem;
+  margin: 0.65rem 0;
+}
+.flow-header {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.85rem;
+}
+.flow-header strong {
+  font-weight: 600;
+}
+.flow-header .badge.depth {
+  background: #dbeafe;
+  color: #1e40af;
+}
+.flow-header .badge.count {
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+}
+.flow-root {
+  font-size: 0.8rem;
+  color: hsl(var(--muted-foreground));
+}
+.flow-root code {
+  font-size: 0.75rem;
+}
+.issue-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0;
+}
+.issue {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 0.65rem 0.85rem;
+  margin: 0.35rem 0;
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+.issue.issue-error {
+  background: hsl(0 84.2% 60.2% / 0.05);
+  border-color: hsl(var(--destructive) / 0.3);
+}
+.issue.issue-warning {
+  background: hsl(48 96% 53% / 0.05);
+  border-color: hsl(var(--warning) / 0.3);
+}
+.issue.issue-info {
+  background: hsl(var(--muted) / 0.3);
+}
+.issue-icon {
+  font-size: 1rem;
+  line-height: 1;
+}
+.issue-message {
+  flex: 1;
+  line-height: 1.5;
+}
 .error-panel {
   background: hsl(0 84.2% 60.2% / 0.1);
   border: 1px solid hsl(var(--destructive) / 0.3);
@@ -1002,6 +1288,7 @@ ${crumbHtml}
 ${body}
 </main>
 </body>
+@media print { @page { size: A4; margin: 1.5cm; } body { font-size: 10pt; line-height: 1.4; color: #000; background: #fff; } header { border-bottom: 2px solid #000; padding-bottom: 0.5cm; margin-bottom: 1cm; } main { max-width: 100%; } .atlas-toc { position: static; float: none; margin: 0 0 1cm; page-break-inside: avoid; } h2, h3 { page-break-after: avoid; } .atlas-host-section { page-break-inside: avoid; } .snippet-panel, .atlas-system-diagram, .flow-card { page-break-inside: avoid; } .btn-snippet, .btn-copy-snippet, .snippet-tabs, .arch-nav-hint, button[data-view] { display: none !important; } .snippet-code { display: block !important; background: #f5f5f5 !important; border: 1px solid #ccc !important; color: #000 !important; font-size: 8pt; } .atlas-endpoint-table { font-size: 8pt; } .atlas-endpoint-table th, .atlas-endpoint-table td { padding: 0.3cm 0.4cm; } a { color: #000; text-decoration: underline; } }
 </html>
 `;
 }

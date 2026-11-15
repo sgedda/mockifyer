@@ -156,13 +156,13 @@ export function generateSystemDiagramSVG(
   
   let svg = `<svg viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" class="atlas-system-diagram">`;
   
-  // Define arrow markers
+  // Define arrow markers (Mock=green, Live=blue, Error=red, Code-only=grey)
   svg += `<defs>
     <marker id="arrow-live" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
-      <path d="M0,0 L0,6 L9,3 z" fill="#22c55e" />
+      <path d="M0,0 L0,6 L9,3 z" fill="#3b82f6" />
     </marker>
     <marker id="arrow-mocked" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
-      <path d="M0,0 L0,6 L9,3 z" fill="#3b82f6" />
+      <path d="M0,0 L0,6 L9,3 z" fill="#22c55e" />
     </marker>
     <marker id="arrow-error" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
       <path d="M0,0 L0,6 L9,3 z" fill="#ef4444" />
@@ -180,9 +180,9 @@ export function generateSystemDiagramSVG(
     
     const color = 
       edge.status === 'error' ? '#ef4444' :
-      edge.status === 'mocked' ? '#3b82f6' :
+      edge.status === 'mocked' ? '#22c55e' :
       edge.status === 'code-only' ? '#9ca3af' :
-      '#22c55e';
+      '#3b82f6';
     
     const strokeDasharray = (edge.status === 'code-only' || edge.status === 'unexercised') ? '5,5' : 'none';
     const marker = `arrow-${edge.status === 'error' ? 'error' : edge.status === 'mocked' ? 'mocked' : edge.status === 'code-only' ? 'code-only' : 'live'}`;
