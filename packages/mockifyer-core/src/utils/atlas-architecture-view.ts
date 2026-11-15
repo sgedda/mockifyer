@@ -180,13 +180,14 @@ export function generateSystemDiagramSVG(
     if (!parentPos) return;
     
     const label = `${downHost} · ${info.path}`;
+    const nodeWidth = getNodeWidth(label); // Calculate width based on label
     nodes.push({
       id: `downstream-${downHost}`,
       label,
       type: 'downstream',
       x: parentPos.x,
       y,
-      width: cellWidth
+      width: nodeWidth
     });
   });
   

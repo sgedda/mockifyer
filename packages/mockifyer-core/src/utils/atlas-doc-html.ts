@@ -439,7 +439,7 @@ pre.json {
 .arch-hero h2 { margin: 0 0 0.4rem; font-size: 1.15rem; }
 .arch-hero .arch-intent { margin: 0.35rem 0 0.65rem; font-size: 0.95rem; max-width: 48rem; }
 .arch-stats { display: flex; flex-wrap: wrap; gap: 0.45rem; margin: 0.5rem 0 0; }
-.arch-stat { border: 1px solid hsl(var(--border)); border-radius: 6px; padding: 0.25rem 0.55rem; font-size: 0.78rem; background: #f3f3ef; }
+.arch-stat { border: 1px solid hsl(var(--border)); border-radius: 6px; padding: 0.25rem 0.55rem; font-size: 0.78rem; background: hsl(var(--muted)); color: hsl(var(--foreground)); }
 .arch-stat strong { font-weight: 700; }
 .arch-shot-strip { display: flex; flex-wrap: wrap; gap: 0.75rem; margin: 0.5rem 0 1rem; }
 .arch-shot { max-width: 11rem; border: 1px solid transparent; border-radius: 8px; padding: 0.25rem; cursor: pointer; background: transparent; font: inherit; text-align: left; color: inherit; }
