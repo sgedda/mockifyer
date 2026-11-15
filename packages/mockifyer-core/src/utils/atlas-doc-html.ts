@@ -4398,20 +4398,20 @@ function renderErrorPanelHtml(analysis, escFn) {
   
   function generateArchitectureMarkdown() {
     var prerendered = payload.arch;
-    if (!prerendered || !prerendered.overview) return '# Architecture\n\nNo data available.';
+    if (!prerendered || !prerendered.overview) return '# Architecture\\n\\nNo data available.';
     
-    var md = '# Architecture\n\n';
-    md += '## Overview\n\n';
-    md += prerendered.overview.summary + '\n\n';
-    md += '- **Total Endpoints**: ' + prerendered.overview.totalEndpoints + '\n';
-    md += '- **Observed Endpoints**: ' + prerendered.overview.observedEndpoints + '\n';
-    md += '- **Code-Only Endpoints**: ' + prerendered.overview.codeOnlyEndpoints + '\n';
-    md += '- **Total Requests**: ' + prerendered.overview.totalRequests + '\n';
-    md += '- **Average Response Time**: ' + prerendered.overview.avgResponseTime + 'ms\n';
+    var md = '# Architecture\\n\\n';
+    md += '## Overview\\n\\n';
+    md += prerendered.overview.summary + '\\n\\n';
+    md += '- **Total Endpoints**: ' + prerendered.overview.totalEndpoints + '\\n';
+    md += '- **Observed Endpoints**: ' + prerendered.overview.observedEndpoints + '\\n';
+    md += '- **Code-Only Endpoints**: ' + prerendered.overview.codeOnlyEndpoints + '\\n';
+    md += '- **Total Requests**: ' + prerendered.overview.totalRequests + '\\n';
+    md += '- **Average Response Time**: ' + prerendered.overview.avgResponseTime + 'ms\\n';
     if (prerendered.overview.errorRate > 0) {
-      md += '- **Error Rate**: ' + (prerendered.overview.errorRate * 100).toFixed(1) + '%\n';
+      md += '- **Error Rate**: ' + (prerendered.overview.errorRate * 100).toFixed(1) + '%\\n';
     }
-    md += '\n';
+    md += '\\n';
     
     return md;
   }
