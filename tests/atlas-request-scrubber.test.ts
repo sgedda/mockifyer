@@ -116,7 +116,7 @@ describe('atlas doc screenshot history', () => {
 });
 
 describe('atlas HTML scrub tab', () => {
-  it('embeds Scrub tab and playhead controls', () => {
+  it('embeds Scrub in Timeline view with playhead controls', () => {
     const map: AtlasDocMap = {
       scenario: 'default',
       updatedAt: new Date().toISOString(),
@@ -139,11 +139,13 @@ describe('atlas HTML scrub tab', () => {
     ];
     const files = buildAtlasDocHtmlFiles(map, events);
     const index = files['index.html'];
-    expect(index).toContain('data-view="scrub"');
+    // Scrub is now under Timeline view with mode switcher
+    expect(index).toContain('data-view="timeline"');
     expect(index).toContain('id="view-scrub"');
+    expect(index).toContain('id="timeline-mode"');
+    expect(index).toContain('<option value="scrub">Scrub</option>');
     expect(index).toContain('data-scrub-ms');
     expect(index).toContain('data-scrub-hide-future');
     expect(index).toContain('scrub-playhead');
-    expect(index).toContain('Scrub');
   });
 });

@@ -19,6 +19,16 @@ import type { NetworkEvent } from './network-event-types';
 import { computeUsedResponsePaths } from './response-field-usage';
 import { getAtlasUsageAnnotations, mergeUsageOntoNetworkEvents } from './atlas-usage-annotations';
 import { prettyPrintJsonText } from './json-pretty';
+import { buildEndpointInventory } from './atlas-endpoint-inventory';
+import { generateArchitectureDoc, type ArchitectureDoc } from './atlas-architecture-doc';
+import {
+  generateSystemDiagramSVG,
+  generateArchitectureTOC,
+  generateEndpointInventoryHTML,
+  generateKeyFlowsHTML,
+  generateIssuesHTML
+} from './atlas-architecture-view';
+import { detectAuthFromTraffic } from './atlas-auth-detection';
 
 let fs: typeof import('fs') | undefined;
 let pathMod: typeof import('path') | undefined;
@@ -399,6 +409,11 @@ pre.json {
   .json-n { color: #fb7185; }
   .json-b { color: #a78bfa; }
   .json-null { color: #94a3b8; }
+  .req-table th, .arch-conn-table th, .atlas-endpoint-table th { background: hsl(240 3.7% 15.9%); color: hsl(var(--foreground)); }
+  .req-table tr.req-row:hover, .arch-conn-table tr.arch-conn-row:hover { background: hsl(240 3.7% 12%); }
+  .req-table tr.req-row.selected, .arch-conn-table tr.arch-conn-row.selected { background: hsl(217 91% 20%); }
+  .req-table tr.req-row.has-error { background: hsl(0 84% 15%); color: hsl(0 0% 98%); }
+  .req-table tr.req-row.has-slow { background: hsl(38 92% 15%); color: hsl(0 0% 98%); }
 }
 .json-used-direct {
   background: rgba(34, 197, 94, 0.15);
@@ -678,6 +693,34 @@ pre.json {
 }
 .btn-copy-snippet:hover {
   opacity: 0.85;
+}
+.timeline-controls, .data-controls {
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: hsl(var(--muted) / 0.3);
+  border-radius: var(--radius);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.timeline-controls label, .data-controls label {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: hsl(var(--foreground));
+}
+#timeline-mode, #data-mode {
+  padding: 0.5rem 1rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+#timeline-mode:focus, #data-mode:focus {
+  outline: none;
+  border-color: hsl(var(--primary));
 }
 .flow-card {
   background: hsl(var(--card));
@@ -1262,6 +1305,7 @@ nav.crumb { margin-bottom: 1rem; font-size: 0.9rem; }
 .chain-box.kind-backend { border-left: 4px solid #7c3aed; }
 .chain-box.kind-other { border-left: 4px solid #64748b; }
 .chain-box.kind-noise { border-left: 4px solid #94a3b8; opacity: 0.85; }
+@media print { @page { size: A4; margin: 1.5cm; } body { font-size: 10pt; line-height: 1.4; color: #000; background: #fff; } header { border-bottom: 2px solid #000; padding-bottom: 0.5cm; margin-bottom: 1cm; } main { max-width: 100%; } .atlas-toc { position: static; float: none; margin: 0 0 1cm; page-break-inside: avoid; } h2, h3 { page-break-after: avoid; } .atlas-host-section { page-break-inside: avoid; } .snippet-panel, .atlas-system-diagram, .flow-card { page-break-inside: avoid; } .btn-snippet, .btn-copy-snippet, .snippet-tabs, .arch-nav-hint, button[data-view] { display: none !important; } .snippet-code { display: block !important; background: #f5f5f5 !important; border: 1px solid #ccc !important; color: #000 !important; font-size: 8pt; } .atlas-endpoint-table { font-size: 8pt; } .atlas-endpoint-table th, .atlas-endpoint-table td { padding: 0.3cm 0.4cm; } a { color: #000; text-decoration: underline; } }
 `.trim();
 }
 
@@ -1288,7 +1332,6 @@ ${crumbHtml}
 ${body}
 </main>
 </body>
-@media print { @page { size: A4; margin: 1.5cm; } body { font-size: 10pt; line-height: 1.4; color: #000; background: #fff; } header { border-bottom: 2px solid #000; padding-bottom: 0.5cm; margin-bottom: 1cm; } main { max-width: 100%; } .atlas-toc { position: static; float: none; margin: 0 0 1cm; page-break-inside: avoid; } h2, h3 { page-break-after: avoid; } .atlas-host-section { page-break-inside: avoid; } .snippet-panel, .atlas-system-diagram, .flow-card { page-break-inside: avoid; } .btn-snippet, .btn-copy-snippet, .snippet-tabs, .arch-nav-hint, button[data-view] { display: none !important; } .snippet-code { display: block !important; background: #f5f5f5 !important; border: 1px solid #ccc !important; color: #000 !important; font-size: 8pt; } .atlas-endpoint-table { font-size: 8pt; } .atlas-endpoint-table th, .atlas-endpoint-table td { padding: 0.3cm 0.4cm; } a { color: #000; text-decoration: underline; } }
 </html>
 `;
 }
@@ -2103,6 +2146,7 @@ function renderErrorPanelHtml(analysis, escFn) {
   var DATA = JSON.parse(raw.textContent);
   var doc = DATA.doc || {};
   var events = DATA.events || [];
+  var payload = DATA;
   /** Fill missing parent durationMs from child wall-clock span (GraphQL BFF often lacked client duration). */
   (function estimateMissingParentDurations(list) {
     var childrenOf = {};
@@ -2128,6 +2172,8 @@ function renderErrorPanelHtml(analysis, escFn) {
   })(events);
   var collapsed = {};
   var view = 'architecture';
+  var timelineMode = 'trace';
+  var dataMode = 'requests';
   var selectedId = null;
   /** Map selection: { type: 'page'|'prefetch'|'node', id, pageId? } */
   var selectedMap = null;
@@ -3009,6 +3055,67 @@ function renderErrorPanelHtml(analysis, escFn) {
       html += '</ul>';
     }
     return html;
+  }
+
+  function attachSnippetHandlers() {
+    // Snippet panel toggle
+    document.querySelectorAll('.btn-snippet').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var key = btn.getAttribute('data-endpoint-key');
+        var panel = document.getElementById('snippets-' + key);
+        if (panel) {
+          var isVisible = panel.style.display !== 'none';
+          panel.style.display = isVisible ? 'none' : 'table-row';
+        }
+      });
+    });
+    
+    // Snippet tab switching
+    document.querySelectorAll('.snippet-tab').forEach(function (tab) {
+      tab.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var lang = tab.getAttribute('data-lang');
+        var panel = tab.closest('.snippet-panel');
+        if (!panel) return;
+        
+        // Update tabs
+        panel.querySelectorAll('.snippet-tab').forEach(function (t) {
+          t.classList.toggle('active', t === tab);
+        });
+        
+        // Update code blocks
+        panel.querySelectorAll('.snippet-code').forEach(function (code) {
+          var codeLang = code.classList.contains('snippet-' + lang);
+          code.classList.toggle('active', codeLang);
+        });
+      });
+    });
+    
+    // Copy snippet button
+    document.querySelectorAll('.btn-copy-snippet').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var panel = btn.closest('.snippet-panel');
+        if (!panel) return;
+        
+        var activeCode = panel.querySelector('.snippet-code.active code');
+        if (!activeCode) return;
+        
+        var text = activeCode.textContent || '';
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(function () {
+            var originalText = btn.textContent;
+            btn.textContent = 'Copied!';
+            setTimeout(function () {
+              btn.textContent = originalText;
+            }, 1500);
+          }).catch(function () {
+            // Ignore
+          });
+        }
+      });
+    });
   }
 
   function renderArchitectureHopDetail(e) {
@@ -4130,31 +4237,53 @@ function renderErrorPanelHtml(analysis, escFn) {
   }
 
   function renderArchitecture(el) {
-    var base = applyKindFilter(filterEvents());
-    var uniqueMeta = applyUniqueFilter(base, { mode: uniqueMode === 'off' ? 'endpoint' : uniqueMode, scope: uniqueScope, keep: uniqueKeep }, usageList);
-    var archList = uniqueMeta.list;
-    var chains = buildUniqueChains(base);
-    var shots = collectArchitectureScreenshots();
-    var connections = collectConnectionRows(archList, chains);
-    var guiNotes = collectGuiBindingNotes();
+    var prerendered = payload.arch;
+    if (!prerendered) {
+      el.innerHTML = '<p class="empty">No architecture data available.</p>';
+      return;
+    }
+
     var html = '';
-    html += '<div class="arch-hero">';
-    html += '<h2>Architecture</h2>';
-    html += '<p class="arch-intent">' + buildArchitectureIntent(base, uniqueMeta, chains) + '</p>';
-    html += '<p class="meta">updatedAt ' + esc(doc.updatedAt || '') + ' · Unique filter defaults to endpoints (repeats collapsed)</p>';
-    html += '<div class="arch-stats">';
-    html += '<span class="arch-stat"><strong>' + uniqueMeta.uniqueCount + '</strong> unique</span>';
-    html += '<span class="arch-stat"><strong>' + uniqueMeta.totalCount + '</strong> hops</span>';
-    html += '<span class="arch-stat"><strong>' + chains.length + '</strong> chain pattern' + (chains.length === 1 ? '' : 's') + '</span>';
-    html += '<span class="arch-stat"><strong>' + Object.keys(doc.screens || {}).length + '</strong> screens</span>';
-    html += '<span class="arch-stat"><strong>' + Object.keys(doc.pages || {}).length + '</strong> pages</span>';
-    html += '<span class="arch-stat"><strong>' + Object.keys(doc.prefetches || {}).length + '</strong> prefetches</span>';
-    html += '</div></div>';
-
-    html += renderUniqueFilters(base, uniqueMeta);
-
+    
+    // TOC
+    html += prerendered.toc;
+    
+    // Overview section
+    html += '<div id="arch-overview" class="arch-section">';
+    html += '<h2>Overview</h2>';
+    if (prerendered.overview) {
+      html += '<p class="arch-summary">' + esc(prerendered.overview.summary) + '</p>';
+      html += '<div class="arch-stats">';
+      html += '<span class="arch-stat"><strong>' + prerendered.overview.totalEndpoints + '</strong> endpoints</span>';
+      html += '<span class="arch-stat"><strong>' + prerendered.overview.observedEndpoints + '</strong> observed</span>';
+      html += '<span class="arch-stat"><strong>' + prerendered.overview.codeOnlyEndpoints + '</strong> code-only</span>';
+      html += '<span class="arch-stat"><strong>' + prerendered.overview.totalRequests + '</strong> requests</span>';
+      html += '<span class="arch-stat"><strong>' + prerendered.overview.avgResponseTime + 'ms</strong> avg response</span>';
+      if (prerendered.overview.errorRate > 0) {
+        html += '<span class="arch-stat error"><strong>' + (prerendered.overview.errorRate * 100).toFixed(1) + '%</strong> error rate</span>';
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+    
+    // System diagram
+    html += '<div id="arch-system-diagram" class="arch-section">';
+    html += '<h2>System Diagram</h2>';
+    html += '<p class="meta">Offline SVG diagram showing application flow. Green = mocked, Blue = live, Red = errors, Grey dashed = code-only/unexercised.</p>';
+    html += prerendered.diagram;
+    html += '</div>';
+    
+    // Endpoint inventory
+    html += prerendered.inventory;
+    
+    // Key flows
+    html += prerendered.keyFlows;
+    
+    // Screenshots (from legacy architecture view)
+    var shots = collectArchitectureScreenshots();
     if (shots.length) {
-      html += '<div class="arch-section"><h2>Screenshots</h2>';
+      html += '<div class="arch-section" id="arch-screens">';
+      html += '<h2>Screens</h2>';
       html += '<p class="meta">Click a capture to open screen / page context in the detail pane.</p>';
       html += '<div class="arch-shot-strip">';
       shots.forEach(function (s) {
@@ -4172,65 +4301,17 @@ function renderErrorPanelHtml(analysis, escFn) {
       });
       html += '</div></div>';
     }
-
-    html += '<div class="arch-section"><h2>Unique call graph</h2>';
-    html += '<p class="meta">Illustrative flowchart of unique parent→child connections (Mermaid source — paste into docs). Click any chain box for hop detail.</p>';
-    html += '<pre class="arch-mermaid">' + esc(buildMermaidFromChains(chains)) + '</pre>';
-    if (!chains.length) {
-      html += '<p class="empty">No nested chains yet — enable includeTraceHeader / parentRequestId to link hops. Unique endpoints still appear under Connections.</p>';
-    } else {
-      chains.slice(0, 4).forEach(function (ch) {
-        html += '<div class="chain-card">';
-        html += '<div class="chain-h"><span><strong>' + esc(ch.title) + '</strong></span>';
-        if (ch.context) html += ' <span class="meta">· ' + esc(ch.context) + '</span>';
-        if (ch.count > 1) html += ' <span class="badge repeat">×' + ch.count + '</span>';
-        html += '</div>';
-        html += renderChainTree(ch.tree);
-        html += '</div>';
-      });
-      if (chains.length > 4) {
-        html += '<p class="meta">+' + (chains.length - 4) + ' more pattern(s) — open the <button type="button" data-view="chains">Chains</button> tab.</p>';
-      }
-    }
-    html += '</div>';
-
-    html += '<div class="arch-section"><h2>Connections</h2>';
-    html += '<p class="meta">Unique links between screens, CMS nodes, and network hops — click a row to inspect (not every timed call).</p>';
-    if (!connections.length) {
-      html += '<p class="empty">No connections yet. Browse with screen session + CMS presentation capture, or traffic with parentRequestId nesting.</p>';
-    } else {
-      html += '<table class="arch-conn-table"><thead><tr><th>Kind</th><th>From</th><th>To</th><th>Explanation</th></tr></thead><tbody>';
-      connections.forEach(function (row) {
-        var sel = selectedId && row.hopId === selectedId ? ' selected' : '';
-        html += '<tr class="arch-conn-row' + sel + '"';
-        if (row.hopId) html += ' data-select="' + esc(row.hopId) + '"';
-        else if (row.kind === 'screen→hop' && row.from) html += ' data-select-screen="' + esc(row.from) + '"';
-        html += '>';
-        html += '<td><span class="badge">' + esc(row.kind) + '</span></td>';
-        html += '<td>' + esc(row.from) + '</td>';
-        html += '<td>' + esc(row.to) + '</td>';
-        html += '<td class="meta">' + esc(row.note) + '</td>';
-        html += '</tr>';
-      });
-      html += '</tbody></table>';
-    }
-    html += '</div>';
-
-    if (guiNotes.length) {
-      html += '<div class="arch-section"><h2>GUI bindings</h2>';
-      html += '<p class="meta">Click a component to open props + datasource hop in the detail pane.</p>';
-      html += '<ul class="arch-gui-list">';
-      guiNotes.forEach(function (n) {
-        var guiSelected = selectedMap && selectedMap.type === 'node' && selectedMap.pageId === n.pageId && selectedMap.id === n.nodeId;
-        html += '<li><button type="button" class="arch-gui-item' + (guiSelected ? ' selected' : '') + '" data-select-node="' + esc(n.pageId) + '" data-node-id="' + esc(n.nodeId) + '">';
-        html += '<strong>' + esc(n.title) + '</strong><div class="meta">' + esc(n.detail) + '</div>';
-        html += '</button></li>';
-      });
-      html += '</ul></div>';
-    }
-
-    html += '<p class="arch-nav-hint">Session forensics: <button type="button" data-view="trace">Trace</button> · <button type="button" data-view="waterfall">Waterfall</button> · <button type="button" data-view="map">Map</button> · <button type="button" data-view="requests">Requests</button> · <button type="button" data-view="fields">Fields</button></p>';
+    
+    // Issues
+    html += prerendered.issues;
+    
+    // Navigation hint
+    html += '<p class="arch-nav-hint">Explore: <button type="button" data-view="timeline">Timeline</button> · <button type="button" data-view="data">Data</button></p>';
+    
     el.innerHTML = html;
+    
+    // Attach snippet toggle handlers
+    attachSnippetHandlers();
   }
 
   function buildPageTreeRows() {
@@ -5392,9 +5473,11 @@ function renderErrorPanelHtml(analysis, escFn) {
     prefetchByHopId = null;
     var uniqueMeta = buildViewList();
     var list = uniqueMeta.list;
-    if (!selectedId && !selectedMap && list.length && view !== 'map' && view !== 'architecture' && view !== 'fields') {
+    if (!selectedId && !selectedMap && list.length && view !== 'map' && view !== 'architecture' && view !== 'fields' && view !== 'timeline' && view !== 'data') {
       selectedId = list[list.length - 1].id;
     }
+    
+    // Get elements
     var mapEl = document.getElementById('view-map');
     var traceEl = document.getElementById('view-trace');
     var chainsEl = document.getElementById('view-chains');
@@ -5406,27 +5489,57 @@ function renderErrorPanelHtml(analysis, escFn) {
     var fieldsEl = document.getElementById('view-fields');
     var detailEl = document.getElementById('hop-detail');
     var layoutEl = document.querySelector('#atlas-app .layout');
+    
+    // Update layout classes
     if (layoutEl) {
-      layoutEl.classList.toggle('layout-journey', view === 'journey');
+      layoutEl.classList.toggle('layout-journey', view === 'timeline' && timelineMode === 'journey');
       layoutEl.classList.toggle('layout-architecture', view === 'architecture');
     }
+    
+    // Render main views
     var archEl = document.getElementById('view-architecture');
     if (view === 'architecture') renderArchitecture(archEl);
-    if (view === 'map') renderMap(mapEl);
-    if (view === 'trace') renderTrace(traceEl, list, uniqueMeta);
-    if (view === 'chains') renderChains(chainsEl, applyKindFilter(filterEvents()), uniqueMeta);
-    if (view === 'waterfall') renderWaterfall(wfEl, list, uniqueMeta);
-    if (view === 'gantt') renderGantt(ganttEl, uniqueMeta);
-    if (view === 'journey') renderJourney(journeyEl, uniqueMeta);
-    if (view === 'scrub') renderScrub(scrubEl, uniqueMeta);
-    if (view === 'requests') renderRequests(requestsEl, uniqueMeta);
-    if (view === 'fields') renderFields(fieldsEl, uniqueMeta);
+    
+    // Timeline view with mode switcher
+    if (view === 'timeline') {
+      var timelineContent = document.getElementById('timeline-content');
+      var timelineModeSelect = document.getElementById('timeline-mode');
+      if (timelineModeSelect && timelineModeSelect.value !== timelineMode) {
+        timelineModeSelect.value = timelineMode;
+      }
+      
+      if (timelineMode === 'trace') renderTrace(timelineContent || traceEl, list, uniqueMeta);
+      else if (timelineMode === 'waterfall') renderWaterfall(timelineContent || wfEl, list, uniqueMeta);
+      else if (timelineMode === 'gantt') renderGantt(timelineContent || ganttEl, uniqueMeta);
+      else if (timelineMode === 'journey') renderJourney(timelineContent || journeyEl, uniqueMeta);
+      else if (timelineMode === 'scrub') renderScrub(timelineContent || scrubEl, uniqueMeta);
+    }
+    
+    // Data view with mode switcher
+    if (view === 'data') {
+      var dataContent = document.getElementById('data-content');
+      var dataModeSelect = document.getElementById('data-mode');
+      if (dataModeSelect && dataModeSelect.value !== dataMode) {
+        dataModeSelect.value = dataMode;
+      }
+      
+      if (dataMode === 'requests') renderRequests(dataContent || requestsEl, uniqueMeta);
+      else if (dataMode === 'fields') renderFields(dataContent || fieldsEl, uniqueMeta);
+      else if (dataMode === 'map') renderMap(dataContent || mapEl);
+      else if (dataMode === 'chains') renderChains(dataContent || chainsEl, applyKindFilter(filterEvents()), uniqueMeta);
+    }
+    
     renderDetail(detailEl);
+    
+    // Update tab buttons
     document.querySelectorAll('.tabs button').forEach(function (btn) {
       btn.classList.toggle('active', btn.getAttribute('data-view') === view);
     });
+    
+    // Update panel visibility
     document.querySelectorAll('.panel').forEach(function (p) {
-      p.classList.toggle('active', p.id === 'view-' + view);
+      var panelView = p.id.replace('view-', '');
+      p.classList.toggle('active', panelView === view);
     });
   }
 
@@ -5520,6 +5633,16 @@ function renderErrorPanelHtml(analysis, escFn) {
         selectedMap = null;
       }
       if (view !== 'scrub') stopScrubPlayback();
+      render();
+      return;
+    }
+    if (t.id === 'timeline-mode' && t.value) {
+      timelineMode = t.value;
+      render();
+      return;
+    }
+    if (t.id === 'data-mode' && t.value) {
+      dataMode = t.value;
       render();
       return;
     }
@@ -5718,6 +5841,16 @@ function renderErrorPanelHtml(analysis, escFn) {
   document.getElementById('atlas-app').addEventListener('change', function (ev) {
     var t = ev.target;
     if (!t || !t.getAttribute) return;
+    if (t.id === 'timeline-mode') {
+      timelineMode = t.value || 'trace';
+      render();
+      return;
+    }
+    if (t.id === 'data-mode') {
+      dataMode = t.value || 'requests';
+      render();
+      return;
+    }
     if (t.getAttribute('data-req-date-from') != null) {
       requestDateFrom = t.value || '';
       render();
@@ -5829,6 +5962,60 @@ interface InteractiveAtlasBodyOptions {
   crash?: CrashHtmlPayload;
 }
 
+/**
+ * Generate pre-rendered architecture HTML sections from events.
+ * These are embedded in the HTML and rendered by the client without recomputation.
+ */
+function buildArchitecturePrerenderedSections(
+  events: NetworkEvent[],
+  scannedEndpoints?: any[]
+): {
+  toc: string;
+  diagram: string;
+  inventory: string;
+  keyFlows: string;
+  issues: string;
+  archDoc: ArchitectureDoc;
+} {
+  // Build inventory
+  const inventory = buildEndpointInventory(events, scannedEndpoints || []);
+  
+  // Generate architecture doc
+  const archDoc = generateArchitectureDoc({
+    networkEvents: events,
+    scannedEndpoints: scannedEndpoints || []
+  });
+  
+  // Detect auth for endpoints
+  const authByEndpoint = detectAuthFromTraffic(events);
+  
+  // Generate TOC
+  const sections = ['Overview', 'System Diagram', 'Services & Endpoints', 'Key Flows', 'Issues & Gaps'];
+  const toc = generateArchitectureTOC(sections);
+  
+  // Generate SVG diagram
+  const screens: string[] = [];  // TODO: extract screens from map if available
+  const diagram = generateSystemDiagramSVG(inventory, events, screens.length > 0 ? screens : undefined);
+  
+  // Generate endpoint inventory
+  const inventoryHtml = generateEndpointInventoryHTML(inventory, events, authByEndpoint);
+  
+  // Generate key flows
+  const keyFlows = generateKeyFlowsHTML(events, 5);
+  
+  // Generate issues
+  const issues = generateIssuesHTML(inventory, events);
+  
+  return {
+    toc,
+    diagram,
+    inventory: inventoryHtml,
+    keyFlows,
+    issues,
+    archDoc
+  };
+}
+
 function buildInteractiveAtlasBody(
   map: AtlasDocMap,
   events: NetworkEvent[],
@@ -5837,14 +6024,34 @@ function buildInteractiveAtlasBody(
   const annotations = getAtlasUsageAnnotations();
   const merged = mergeUsageOntoNetworkEvents(events, annotations);
   const guiLinkedRequestIds = buildGuiLinkedRequestIdSet(map);
+  
+  // Generate prerendered architecture sections
+  const archSections = buildArchitecturePrerenderedSections(merged);
+  
   const payload: {
     doc: AtlasDocMap;
     events: ReturnType<typeof slimNetworkEvent>[];
     mode?: 'crash';
     crash?: CrashHtmlPayload;
+    arch?: {
+      toc: string;
+      diagram: string;
+      inventory: string;
+      keyFlows: string;
+      issues: string;
+      overview: any;
+    };
   } = {
     doc: map,
     events: merged.map((ev) => slimNetworkEvent(ev, guiLinkedRequestIds, map)),
+    arch: {
+      toc: archSections.toc,
+      diagram: archSections.diagram,
+      inventory: archSections.inventory,
+      keyFlows: archSections.keyFlows,
+      issues: archSections.issues,
+      overview: archSections.archDoc.overview
+    }
   };
   if (options?.mode === 'crash') {
     payload.mode = 'crash';
@@ -5855,31 +6062,49 @@ function buildInteractiveAtlasBody(
   const json = JSON.stringify(payload).replace(/</g, '\\u003c');
   const body = `
 <div id="atlas-app">
-  <p class="meta">Living architecture doc (unique connections, screenshots, explanations). Session forensics: Map / Trace (call tree via requestId) / Chains / Waterfall / Gantt / Journey / Scrub / Requests / Fields. Click a hop or chain box for bodies (when captureBodies is on).</p>
+  <p class="meta">Interactive architecture documentation and session forensics. Architecture (design doc) / Timeline (Trace, Waterfall, Gantt, Journey, Scrub) / Data (Requests, Fields, Map, Chains). Click endpoints for code snippets; click hops for request & response bodies.</p>
   <div class="tabs">
     <button type="button" class="active" data-view="architecture">Architecture</button>
-    <button type="button" data-view="map">Map</button>
-    <button type="button" data-view="trace">Trace</button>
-    <button type="button" data-view="chains">Chains</button>
-    <button type="button" data-view="waterfall">Waterfall</button>
-    <button type="button" data-view="gantt">Gantt</button>
-    <button type="button" data-view="journey">Journey</button>
-    <button type="button" data-view="scrub">Scrub</button>
-    <button type="button" data-view="requests">Requests</button>
-    <button type="button" data-view="fields">Fields</button>
+    <button type="button" data-view="timeline">Timeline</button>
+    <button type="button" data-view="data">Data</button>
   </div>
   <div class="layout layout-architecture">
     <div>
       <div id="view-architecture" class="panel active"></div>
-      <div id="view-map" class="panel"></div>
-      <div id="view-trace" class="panel"></div>
-      <div id="view-chains" class="panel"></div>
-      <div id="view-waterfall" class="panel"></div>
-      <div id="view-gantt" class="panel"></div>
-      <div id="view-journey" class="panel"></div>
-      <div id="view-scrub" class="panel"></div>
-      <div id="view-requests" class="panel"></div>
-      <div id="view-fields" class="panel"></div>
+      <div id="view-timeline" class="panel">
+        <div class="timeline-controls">
+          <label>Mode:</label>
+          <select id="timeline-mode">
+            <option value="trace">Trace</option>
+            <option value="waterfall">Waterfall</option>
+            <option value="gantt">Gantt</option>
+            <option value="journey">Journey</option>
+            <option value="scrub">Scrub</option>
+          </select>
+        </div>
+        <div id="timeline-content"></div>
+      </div>
+      <div id="view-data" class="panel">
+        <div class="data-controls">
+          <label>View:</label>
+          <select id="data-mode">
+            <option value="requests">Requests</option>
+            <option value="fields">Fields</option>
+            <option value="map">Map</option>
+            <option value="chains">Chains</option>
+          </select>
+        </div>
+        <div id="data-content"></div>
+      </div>
+      <div id="view-map" class="panel" style="display:none"></div>
+      <div id="view-trace" class="panel" style="display:none"></div>
+      <div id="view-chains" class="panel" style="display:none"></div>
+      <div id="view-waterfall" class="panel" style="display:none"></div>
+      <div id="view-gantt" class="panel" style="display:none"></div>
+      <div id="view-journey" class="panel" style="display:none"></div>
+      <div id="view-scrub" class="panel" style="display:none"></div>
+      <div id="view-requests" class="panel" style="display:none"></div>
+      <div id="view-fields" class="panel" style="display:none"></div>
     </div>
     <aside id="hop-detail" class="detail"></aside>
   </div>
