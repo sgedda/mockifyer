@@ -694,6 +694,21 @@ pre.json {
 .btn-copy-snippet:hover {
   opacity: 0.85;
 }
+.btn-export {
+  padding: 0.5rem 1rem;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  border: none;
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: opacity 0.2s;
+}
+.btn-export:hover {
+  opacity: 0.9;
+}
 .timeline-controls, .data-controls {
   margin-bottom: 1.5rem;
   padding: 1rem;
@@ -4270,6 +4285,9 @@ function renderErrorPanelHtml(analysis, escFn) {
     html += '<div id="arch-system-diagram" class="arch-section">';
     html += '<h2>System Diagram</h2>';
     html += '<p class="meta">Offline SVG diagram showing application flow. Green = mocked, Blue = live, Red = errors, Grey dashed = code-only/unexercised.</p>';
+    html += '<div class="arch-diagram-actions" style="margin-bottom: 0.75rem;">';
+    html += '<button type="button" class="btn-export" data-export="mermaid">Copy Mermaid</button>';
+    html += '</div>';
     html += prerendered.diagram;
     html += '</div>';
     
@@ -4305,6 +4323,15 @@ function renderErrorPanelHtml(analysis, escFn) {
     // Issues
     html += prerendered.issues;
     
+    // Export actions
+    html += '<div class="arch-section" style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid hsl(var(--border));">';
+    html += '<h2>Export</h2>';
+    html += '<div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">';
+    html += '<button type="button" class="btn-export" data-export="markdown">Copy as Markdown</button>';
+    html += '<button type="button" class="btn-export" data-export="openapi">Download OpenAPI</button>';
+    html += '</div>';
+    html += '</div>';
+    
     // Navigation hint
     html += '<p class="arch-nav-hint">Explore: <button type="button" data-view="timeline">Timeline</button> · <button type="button" data-view="data">Data</button></p>';
     
@@ -4312,6 +4339,123 @@ function renderErrorPanelHtml(analysis, escFn) {
     
     // Attach snippet toggle handlers
     attachSnippetHandlers();
+    
+    // Attach export handlers
+    attachExportHandlers();
+  }
+  
+  function attachExportHandlers() {
+    document.querySelectorAll('.btn-export').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var exportType = btn.getAttribute('data-export');
+        
+        if (exportType === 'mermaid') {
+          // Generate Mermaid diagram from chains
+          var base = applyKindFilter(filterEvents());
+          var chains = buildUniqueChains(base);
+          var mermaid = buildMermaidFromChains(chains);
+          
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(mermaid).then(function () {
+              var originalText = btn.textContent;
+              btn.textContent = 'Copied!';
+              setTimeout(function () {
+                btn.textContent = originalText;
+              }, 1500);
+            });
+          }
+        } else if (exportType === 'markdown') {
+          // Generate Markdown from architecture data
+          var markdown = generateArchitectureMarkdown();
+          
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(markdown).then(function () {
+              var originalText = btn.textContent;
+              btn.textContent = 'Copied!';
+              setTimeout(function () {
+                btn.textContent = originalText;
+              }, 1500);
+            });
+          }
+        } else if (exportType === 'openapi') {
+          // Generate OpenAPI spec from events
+          var openapi = generateOpenApiFromEvents(events);
+          var blob = new Blob([JSON.stringify(openapi, null, 2)], { type: 'application/json' });
+          var url = URL.createObjectURL(blob);
+          var a = document.createElement('a');
+          a.href = url;
+          a.download = 'atlas-openapi.json';
+          a.click();
+          URL.revokeObjectURL(url);
+          
+          var originalText = btn.textContent;
+          btn.textContent = 'Downloaded!';
+          setTimeout(function () {
+            btn.textContent = originalText;
+          }, 1500);
+        }
+      });
+    });
+  }
+  
+  function generateArchitectureMarkdown() {
+    var prerendered = payload.arch;
+    if (!prerendered || !prerendered.overview) return '# Architecture\n\nNo data available.';
+    
+    var md = '# Architecture\n\n';
+    md += '## Overview\n\n';
+    md += prerendered.overview.summary + '\n\n';
+    md += '- **Total Endpoints**: ' + prerendered.overview.totalEndpoints + '\n';
+    md += '- **Observed Endpoints**: ' + prerendered.overview.observedEndpoints + '\n';
+    md += '- **Code-Only Endpoints**: ' + prerendered.overview.codeOnlyEndpoints + '\n';
+    md += '- **Total Requests**: ' + prerendered.overview.totalRequests + '\n';
+    md += '- **Average Response Time**: ' + prerendered.overview.avgResponseTime + 'ms\n';
+    if (prerendered.overview.errorRate > 0) {
+      md += '- **Error Rate**: ' + (prerendered.overview.errorRate * 100).toFixed(1) + '%\n';
+    }
+    md += '\n';
+    
+    return md;
+  }
+  
+  function generateOpenApiFromEvents(evts) {
+    var paths = {};
+    var servers = new Set();
+    
+    evts.forEach(function (ev) {
+      if (!ev.url || !ev.method) return;
+      
+      try {
+        var url = new URL(ev.url);
+        var serverUrl = url.protocol + '//' + url.host;
+        servers.add(serverUrl);
+        
+        var path = url.pathname;
+        if (!paths[path]) paths[path] = {};
+        
+        var method = ev.method.toLowerCase();
+        if (!paths[path][method]) {
+          paths[path][method] = {
+            summary: method.toUpperCase() + ' ' + path,
+            responses: {
+              '200': { description: 'Success' }
+            }
+          };
+        }
+      } catch {}
+    });
+    
+    return {
+      openapi: '3.0.0',
+      info: {
+        title: 'Atlas API',
+        version: '1.0.0',
+        description: 'Generated from captured network events'
+      },
+      servers: Array.from(servers).map(function (s) { return { url: s }; }),
+      paths: paths
+    };
   }
 
   function buildPageTreeRows() {
