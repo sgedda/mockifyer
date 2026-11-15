@@ -75,7 +75,7 @@ export function generateArchitectureDoc(options: ArchitectureDocOptions): Archit
   const avgResponseTime = durations.length > 0 
     ? durations.reduce((a, b) => a + b, 0) / durations.length 
     : 0;
-  const errors = networkEvents.filter(e => e.error || (e.status && e.status >= 400)).length;
+  const errors = networkEvents.filter(e => e.errorMessage || e.source === 'error' || (e.status && e.status >= 400)).length;
   const errorRate = totalRequests > 0 ? errors / totalRequests : 0;
 
   // Detect key flows (chains with multiple hops)
@@ -91,7 +91,7 @@ export function generateArchitectureDoc(options: ArchitectureDocOptions): Archit
     const hostDurations = hostEvents
       .map(e => e.durationMs)
       .filter((d): d is number => d !== undefined);
-    const hostErrors = hostEvents.filter(e => e.error || (e.status && e.status >= 400)).length;
+    const hostErrors = hostEvents.filter(e => e.errorMessage || e.source === 'error' || (e.status && e.status >= 400)).length;
 
     return {
       host: coverage.host,

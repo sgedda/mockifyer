@@ -19,8 +19,8 @@ export interface EndpointObservation {
   timestamp?: string;
   durationMs?: number;
   status?: number;
-  error?: string;
-  source?: 'mock-hit' | 'live' | 'recording';
+  errorMessage?: string;
+  source?: 'mock-hit' | 'mock-miss' | 'upstream' | 'blocked' | 'error';
   parentRequestId?: string | null;
   childCount?: number;
 }
@@ -167,7 +167,7 @@ export function buildEndpointInventory(
       timestamp: event.timestamp,
       durationMs: event.durationMs,
       status: event.status,
-      error: event.error,
+      errorMessage: event.errorMessage,
       source: event.source,
       parentRequestId: event.parentRequestId,
       childCount: childCounts.get(event.requestId || '') || 0
@@ -203,7 +203,7 @@ export function buildEndpointInventory(
         item.avgDurationMs = durations.reduce((a, b) => a + b, 0) / durations.length;
       }
 
-      const errors = item.observations.filter(o => o.error || (o.status && o.status >= 400)).length;
+      const errors = item.observations.filter(o => o.errorMessage || o.source === 'error' || (o.status && o.status >= 400)).length;
       item.errorRate = errors / item.observations.length;
     }
 
