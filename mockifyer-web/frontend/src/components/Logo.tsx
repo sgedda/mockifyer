@@ -10,9 +10,9 @@ interface LogoProps {
 
 export default function Logo({ className, showIcon = true, size = 'md', as = 'link' }: LogoProps) {
   const sizeClasses = {
-    sm: { text: 'text-lg', icon: 'text-2xl', padding: 'p-1.5' },
-    md: { text: 'text-xl', icon: 'text-3xl', padding: 'p-2' },
-    lg: { text: 'text-3xl md:text-4xl', icon: 'text-5xl md:text-6xl', padding: 'p-2.5 md:p-3' },
+    sm: { text: 'text-lg', imgSize: 32, imgClass: 'w-8 h-8' },
+    md: { text: 'text-xl', imgSize: 48, imgClass: 'w-12 h-12' },
+    lg: { text: 'text-3xl md:text-4xl', imgSize: 64, imgClass: 'w-16 h-16 md:w-20 md:h-20' },
   }
 
   const content = (
@@ -25,18 +25,16 @@ export default function Logo({ className, showIcon = true, size = 'md', as = 'li
     >
       {showIcon && (
         <div className="relative flex-shrink-0 group">
-          {/* Icon container */}
-          <div className={cn(
-            'relative rounded-lg transition-all duration-300',
-            sizeClasses[size].padding
-          )}>
-            <span className={cn(
-              'text-foreground transition-transform duration-300 group-hover:scale-110 inline-block',
-              sizeClasses[size].icon
-            )}>
-              🎭
-            </span>
-          </div>
+          <img
+            src="/logo-192.png"
+            alt="Mockifyer"
+            width={sizeClasses[size].imgSize}
+            height={sizeClasses[size].imgSize}
+            className={cn(
+              'transition-transform duration-300 group-hover:scale-110',
+              sizeClasses[size].imgClass
+            )}
+          />
         </div>
       )}
       <span className="text-foreground font-extrabold tracking-tight">
