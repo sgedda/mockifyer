@@ -186,7 +186,7 @@ For more information: https://mockifyer.dev/docs/drift-check
   console.log(help);
 }
 
-async function main() {
+export async function main() {
   const args = parseArgs();
 
   if (args.help) {
