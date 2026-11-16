@@ -19,16 +19,7 @@ import type { NetworkEvent } from './network-event-types';
 import { computeUsedResponsePaths } from './response-field-usage';
 import { getAtlasUsageAnnotations, mergeUsageOntoNetworkEvents } from './atlas-usage-annotations';
 import { prettyPrintJsonText } from './json-pretty';
-import { buildEndpointInventory } from './atlas-endpoint-inventory';
-import { generateArchitectureDoc, type ArchitectureDoc } from './atlas-architecture-doc';
-import {
-  generateSystemDiagramSVG,
-  generateArchitectureTOC,
-  generateEndpointInventoryHTML,
-  generateKeyFlowsHTML,
-  generateIssuesHTML
-} from './atlas-architecture-view';
-import { detectAuthFromTraffic } from './atlas-auth-detection';
+import type { ArchitectureDoc } from './atlas-architecture-doc';
 
 let fs: typeof import('fs') | undefined;
 let pathMod: typeof import('path') | undefined;
@@ -6251,6 +6242,18 @@ function buildArchitecturePrerenderedSections(
   issues: string;
   archDoc: ArchitectureDoc;
 } {
+  // Lazy-load heavy architecture modules to avoid pulling them into runtime import graph
+  const { buildEndpointInventory } = require('./atlas-endpoint-inventory');
+  const { generateArchitectureDoc } = require('./atlas-architecture-doc');
+  const { detectAuthFromTraffic } = require('./atlas-auth-detection');
+  const {
+    generateSystemDiagramSVG,
+    generateArchitectureTOC,
+    generateEndpointInventoryHTML,
+    generateKeyFlowsHTML,
+    generateIssuesHTML
+  } = require('./atlas-architecture-view');
+  
   // Build inventory
   const inventory = buildEndpointInventory(events, scannedEndpoints || []);
   

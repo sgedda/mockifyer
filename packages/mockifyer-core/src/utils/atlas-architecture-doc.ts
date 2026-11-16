@@ -6,7 +6,7 @@
 import type { NetworkEvent } from './network-event-types';
 import type { EndpointInventory, EndpointInventoryItem } from './atlas-endpoint-inventory';
 import { buildEndpointInventory } from './atlas-endpoint-inventory';
-import { scanCodeForEndpoints, type ScannedEndpoint } from './atlas-code-scanner';
+import type { ScannedEndpoint } from './atlas-code-scanner';
 import { normalizeUrlToTemplate } from './atlas-url-normalizer';
 
 export interface ArchitectureDocOptions {
