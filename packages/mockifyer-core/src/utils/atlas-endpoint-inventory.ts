@@ -250,13 +250,31 @@ export function buildEndpointInventory(
     // Check if there's an unresolved endpoint with same method/template that we should merge with
     let item: EndpointInventoryItem | undefined;
     const unresolvedKey = `Unresolved base URL::${method}::${normalized.template}`;
+    const resolvedKey = `${host}::${method}::${normalized.template}`;
+    
     if (itemsMap.has(unresolvedKey)) {
-      // Found an unresolved endpoint - update its host and reuse it
-      item = itemsMap.get(unresolvedKey)!;
+      // Found an unresolved endpoint - need to promote it to resolved host
+      const unresolvedItem = itemsMap.get(unresolvedKey)!;
       itemsMap.delete(unresolvedKey);
-      item.host = host;
-      const newKey = `${host}::${method}::${normalized.template}`;
-      itemsMap.set(newKey, item);
+      
+      // Check if there's already a resolved entry at the target key
+      if (itemsMap.has(resolvedKey)) {
+        // Merge with existing resolved entry instead of overwriting
+        item = itemsMap.get(resolvedKey)!;
+        // Merge code locations from unresolved entry
+        item.codeLocations.push(...unresolvedItem.codeLocations);
+        // Preserve mockExists flag if either has it
+        item.mockExists = item.mockExists || unresolvedItem.mockExists;
+        // Keep the more specific status (observed > code-only > unresolved)
+        if (unresolvedItem.status === 'mocked-only' && item.status !== 'observed-with-chain' && item.status !== 'observed-no-chain') {
+          item.status = 'mocked-only';
+        }
+      } else {
+        // No existing entry, just move the unresolved one
+        unresolvedItem.host = host;
+        itemsMap.set(resolvedKey, unresolvedItem);
+        item = unresolvedItem;
+      }
     } else {
       item = getOrCreate(host, method, normalized.template);
     }
