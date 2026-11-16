@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.10.197] - 2026-11-16
+
+### Fixed
+- **Core**: CLI bins (`mockifyer-atlas`, `mockifyer-atlas-har`, `mockifyer-sync-to-device`, `mockifyer-sync-from-device`) now run from compiled dist files with plain Node instead of requiring ts-node
+- **Core**: Atlas architecture diagrams now use orthogonal edge routing to avoid node intersections and properly show all host-level edges
+
 ## [1.10.195] - 2026-11-14
 
 ### Added
