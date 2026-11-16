@@ -21,13 +21,14 @@ describe('atlas-url-normalizer', () => {
     });
 
     it('should normalize slugs', () => {
-      const result = normalizeUrlToTemplate('https://api.example.com/posts/my-blog-post-title');
+      // Slug pattern requires both letters and digits to avoid matching static routes
+      const result = normalizeUrlToTemplate('https://api.example.com/posts/my-blog-post-title-2024');
       expect(result.template).toBe('/posts/{slug}');
       expect(result.parameters).toContain('slug');
     });
 
     it('should handle multiple parameters', () => {
-      const result = normalizeUrlToTemplate('https://api.example.com/users/42/posts/my-post');
+      const result = normalizeUrlToTemplate('https://api.example.com/users/42/posts/my-post-123');
       expect(result.template).toBe('/users/{id}/posts/{slug}');
       expect(result.parameters).toContain('id');
       expect(result.parameters).toContain('slug');

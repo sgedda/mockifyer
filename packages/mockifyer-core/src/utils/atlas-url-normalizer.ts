@@ -26,8 +26,16 @@ export interface NormalizedUrl {
 export function normalizeUrlToTemplate(url: string): NormalizedUrl {
   try {
     const urlObj = new URL(url, 'http://dummy');
-    // Decode URL-encoded characters like %7B -> {, %7D -> }
-    let path = decodeURIComponent(urlObj.pathname);
+    // Decode URL-encoded characters EXCEPT %2F (encoded slash) to prevent segment splitting
+    // %2F in a path represents a slash character within a filename, not a path separator
+    const pathname = urlObj.pathname.replace(/%2F/gi, '\x00ENCODED_SLASH\x00');
+    let path: string;
+    try {
+      path = decodeURIComponent(pathname).replace(/\x00ENCODED_SLASH\x00/g, '%2F');
+    } catch {
+      // If decode fails, use original
+      path = urlObj.pathname;
+    }
     const parameters: string[] = [];
 
     // First, normalize any template syntax (:id, {userId}) that might be in the URL

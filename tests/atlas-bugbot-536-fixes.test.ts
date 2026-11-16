@@ -134,7 +134,7 @@ describe('Bugbot PR #536 fixes', () => {
 
     it('should normalize slugs (hyphenated identifiers)', () => {
       const urls = [
-        'https://blog.example.com/posts/my-first-post',
+        'https://blog.example.com/posts/my-first-post-2024',
         'https://blog.example.com/posts/this-is-a-slug-123'
       ];
 
@@ -163,7 +163,7 @@ describe('Bugbot PR #536 fixes', () => {
     it('should match patterns that server normalizer handles', () => {
       // Test cases that should produce identical results on both client and server
       const testCases = [
-        { url: 'https://api.example.com/repos/my-repo-name', expected: '/repos/{slug}' },
+        { url: 'https://api.example.com/repos/my-repo-name-2024', expected: '/repos/{slug}' },
         { url: 'https://api.example.com/users/42', expected: '/users/{id}' },
         { url: 'https://api.example.com/posts/550e8400-e29b-41d4-a716-446655440000', expected: '/posts/{uuid}' },
         { url: 'https://api.example.com/files/9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08', expected: '/files/{hash}' }

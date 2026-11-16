@@ -453,6 +453,9 @@ export function generateOpenApiSpec(
   const paths: Record<string, Record<string, unknown>> = {};
   const servers = new Set<string>();
 
+  // Group operations by path and method to detect collisions
+  const operationsByPath = new Map<string, Map<string, typeof inventory.all>>();
+
   for (const item of inventory.all) {
     if (item.status === 'unresolved') continue;
 
@@ -460,44 +463,43 @@ export function generateOpenApiSpec(
     if (hostUrl) servers.add(hostUrl);
 
     const pathKey = item.urlTemplate;
+    const methodKey = item.method.toLowerCase();
+    
+    if (!operationsByPath.has(pathKey)) {
+      operationsByPath.set(pathKey, new Map());
+    }
+    if (!operationsByPath.get(pathKey)!.has(methodKey)) {
+      operationsByPath.get(pathKey)!.set(methodKey, []);
+    }
+    operationsByPath.get(pathKey)!.get(methodKey)!.push(item);
+  }
+
+  // Generate paths, handling collisions with x-host extension
+  for (const [pathKey, methodOps] of operationsByPath.entries()) {
     if (!paths[pathKey]) {
       paths[pathKey] = {};
     }
 
-    const operation: Record<string, unknown> = {
-      summary: `${item.method} ${pathKey}`,
-      responses: {
-        '200': {
-          description: 'Success',
-          ...(item.responseSchema && {
-            content: {
-              'application/json': {
-                schema: item.responseSchema
-              }
-            }
-          })
-        }
+    for (const [methodKey, items] of methodOps.entries()) {
+      if (items.length === 1) {
+        // Single operation, no collision
+        const item = items[0];
+        paths[pathKey][methodKey] = buildOperation(item);
+      } else {
+        // Multiple hosts have the same path+method - include host in operation
+        // Use x-oneOf to list all variants
+        const variants = items.map(item => ({
+          ...buildOperation(item),
+          'x-host': item.host
+        }));
+        
+        paths[pathKey][methodKey] = {
+          summary: `${methodKey.toUpperCase()} ${pathKey}`,
+          description: `Multiple hosts serve this endpoint. Use x-host to identify the server.`,
+          'x-oneOf': variants
+        };
       }
-    };
-
-    if (item.requestSchema) {
-      operation.requestBody = {
-        content: {
-          'application/json': {
-            schema: item.requestSchema
-          }
-        }
-      };
     }
-
-    if (item.observations.length > 0) {
-      const example = item.observations[0];
-      operation.description = `Observed ${item.observations.length} time(s)${
-        item.avgDurationMs ? `, avg ${Math.round(item.avgDurationMs)}ms` : ''
-      }`;
-    }
-
-    paths[pathKey][item.method.toLowerCase()] = operation;
   }
 
   return {
@@ -506,4 +508,40 @@ export function generateOpenApiSpec(
     servers: Array.from(servers).map(url => ({ url })),
     paths
   };
+}
+
+function buildOperation(item: EndpointInventoryItem): Record<string, unknown> {
+  const operation: Record<string, unknown> = {
+    summary: `${item.method} ${item.urlTemplate}`,
+    responses: {
+      '200': {
+        description: 'Success',
+        ...(item.responseSchema && {
+          content: {
+            'application/json': {
+              schema: item.responseSchema
+            }
+          }
+        })
+      }
+    }
+  };
+
+  if (item.requestSchema) {
+    operation.requestBody = {
+      content: {
+        'application/json': {
+          schema: item.requestSchema
+        }
+      }
+    };
+  }
+
+  if (item.observations.length > 0) {
+    operation.description = `Observed ${item.observations.length} time(s)${
+      item.avgDurationMs ? `, avg ${Math.round(item.avgDurationMs)}ms` : ''
+    }`;
+  }
+
+  return operation;
 }
