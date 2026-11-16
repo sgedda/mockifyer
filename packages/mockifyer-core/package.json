@@ -158,5 +158,8 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/sgedda/mockifyer.git"
+  },
+  "dependencies": {
+    "@dagrejs/dagre": "^3.1.3"
   }
 }

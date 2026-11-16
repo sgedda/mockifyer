@@ -1,0 +1,289 @@
+[
+  {
+    "requestId": "89119351-9774-4270-9e0e-8355631bec27",
+    "host": "127.0.0.1:4203",
+    "url": "http://127.0.0.1:4203/discover?destinationKey=atlantis",
+    "method": "GET",
+    "path": "/discover",
+    "status": 200,
+    "parentRequestId": "3301ba26-4905-49e3-b5da-c8ee54b5c31a",
+    "id": "ef0a72fb-8e2a-46ea-95fc-581d4f8108df"
+  },
+  {
+    "requestId": "d995b9f7-1759-47d2-a672-e173d6c36b94",
+    "host": "api.adviceslip.com",
+    "url": "https://api.adviceslip.com/advice",
+    "method": "GET",
+    "path": "/advice",
+    "status": 200,
+    "parentRequestId": "89119351-9774-4270-9e0e-8355631bec27",
+    "id": "d478de5a-3396-45ec-860d-a368b38314b1"
+  },
+  {
+    "requestId": "e23aed78-763a-4ac3-9739-fa6f88f421f9",
+    "host": "www.apicountries.com",
+    "url": "https://www.apicountries.com/countries/name/greece",
+    "method": "GET",
+    "path": "/countries/name/greece",
+    "status": 200,
+    "parentRequestId": "89119351-9774-4270-9e0e-8355631bec27",
+    "id": "059985e6-fbac-4e6b-8f12-a8763f30f19e"
+  },
+  {
+    "requestId": "fb61fb0e-0687-44ab-9c22-af88c1b36b95",
+    "host": "bored-api.appbrewery.com",
+    "url": "https://bored-api.appbrewery.com/random",
+    "method": "GET",
+    "path": "/random",
+    "status": 200,
+    "parentRequestId": "89119351-9774-4270-9e0e-8355631bec27",
+    "id": "9ab003ca-ee1e-4a3a-95e3-f3c19d5cfcb3"
+  },
+  {
+    "requestId": "eeb1d155-1dee-418d-8aca-71267d33d982",
+    "host": "api.open-meteo.com",
+    "url": "https://api.open-meteo.com/v1/forecast?latitude=37.9838&longitude=23.7275&current=temperature_2m%2Cweather_code%2Cwind_speed_10m&daily=temperature_2m_max%2Ctemperature_2m_min%2Cprecipitation_probability_max&timezone=auto&forecast_days=3",
+    "method": "GET",
+    "path": "/v1/forecast",
+    "status": 200,
+    "parentRequestId": "89119351-9774-4270-9e0e-8355631bec27",
+    "id": "65cf555e-ad4e-4ede-ac94-922b4cdb5847"
+  },
+  {
+    "requestId": "60724118-6b43-4b17-9d83-d1873d7ddefa",
+    "host": "127.0.0.1:4206",
+    "url": "http://127.0.0.1:4206/graphql",
+    "method": "POST",
+    "path": "/graphql",
+    "status": 200,
+    "parentRequestId": "req-1794815949386-wl4brdujd",
+    "id": "49f3e2cd-cbbe-4ae3-bd37-fbe7638f81f8"
+  },
+  {
+    "requestId": "13d63c57-0b63-4a0a-9f87-b00cce9ba7e8",
+    "host": "127.0.0.1:4205",
+    "url": "http://127.0.0.1:4205/navigation",
+    "method": "GET",
+    "path": "/navigation",
+    "status": 200,
+    "parentRequestId": "60724118-6b43-4b17-9d83-d1873d7ddefa",
+    "id": "dfd3d981-88b4-411f-b64f-85482c27a217"
+  },
+  {
+    "requestId": "acb0a2a1-523d-471c-b04d-13ae41eedb58",
+    "host": "127.0.0.1:4203",
+    "url": "http://127.0.0.1:4203/discover",
+    "method": "GET",
+    "path": "/discover",
+    "status": 200,
+    "parentRequestId": "13d63c57-0b63-4a0a-9f87-b00cce9ba7e8",
+    "id": "230ce570-7afc-409c-ada0-6b2c6e04217a"
+  },
+  {
+    "requestId": "acb0a2a1-523d-471c-b04d-13ae41eedb58",
+    "host": "127.0.0.1:4203",
+    "url": "http://127.0.0.1:4203/discover",
+    "method": "GET",
+    "path": "/discover",
+    "status": 200,
+    "parentRequestId": "60724118-6b43-4b17-9d83-d1873d7ddefa",
+    "id": "ab7376a2-7f5d-43fe-971e-fc9d83e7994c"
+  },
+  {
+    "requestId": "25a69149-0f81-46e5-94d9-24e433060ab1",
+    "host": "api.frankfurter.app",
+    "url": "https://api.frankfurter.app/latest?from=EUR&to=ISK",
+    "method": "GET",
+    "path": "/latest",
+    "status": 200,
+    "parentRequestId": "acb0a2a1-523d-471c-b04d-13ae41eedb58",
+    "id": "063695f0-cccb-40c9-ae5a-ed33004f383a"
+  },
+  {
+    "requestId": "7ef6fa35-f24a-4de6-9cff-222f3420de94",
+    "host": "127.0.0.1:4202",
+    "url": "http://127.0.0.1:4202/trips?userId=u-wanderer",
+    "method": "GET",
+    "path": "/trips",
+    "status": 200,
+    "parentRequestId": "13d63c57-0b63-4a0a-9f87-b00cce9ba7e8",
+    "id": "47f242c7-ed8b-4713-b4ed-15f79764c263"
+  },
+  {
+    "requestId": "d0d8cfbb-cafc-45b8-8088-595e1ddfa606",
+    "host": "127.0.0.1:4204",
+    "url": "http://127.0.0.1:4204/navigation",
+    "method": "GET",
+    "path": "/navigation",
+    "status": 200,
+    "parentRequestId": "13d63c57-0b63-4a0a-9f87-b00cce9ba7e8",
+    "id": "abc305bb-accd-403e-ad3a-46c1985af3c9"
+  },
+  {
+    "requestId": "6f8e4501-6b7a-43ac-a21e-1f37efba9eaa",
+    "host": "127.0.0.1:4202",
+    "url": "http://127.0.0.1:4202/passport/u-wanderer",
+    "method": "GET",
+    "path": "/passport/u-wanderer",
+    "status": 200,
+    "parentRequestId": "60724118-6b43-4b17-9d83-d1873d7ddefa",
+    "id": "443b62b3-d5ac-4027-a0b7-ee04d61f8e7c"
+  },
+  {
+    "requestId": "750853de-6f85-480b-854f-91973bbb68f5",
+    "host": "127.0.0.1:4201",
+    "url": "http://127.0.0.1:4201/login",
+    "method": "POST",
+    "path": "/login",
+    "status": 200,
+    "parentRequestId": "req-1794815949288-yp2t7buzc",
+    "id": "b4cb8293-2a1f-4e45-9a69-1166f9e73b53"
+  },
+  {
+    "requestId": "13d63c57-0b63-4a0a-9f87-b00cce9ba7e8",
+    "host": "127.0.0.1:4205",
+    "url": "http://127.0.0.1:4205/navigation",
+    "method": "GET",
+    "path": "/navigation",
+    "status": 200,
+    "parentRequestId": "req-1794815949068-dg5ipc1ce",
+    "id": "f509e836-edd4-42d4-867f-52a105121a18"
+  },
+  {
+    "requestId": "req-1794816658372-6qxtbgvda",
+    "host": "127.0.0.1:4200",
+    "url": "http://127.0.0.1:4200/api/discover?destinationKey=atlantis",
+    "method": "GET",
+    "path": "/api/discover",
+    "status": 200,
+    "id": "53012623-d7c7-47a2-b96b-ff482078a236"
+  },
+  {
+    "requestId": "365f3030-c136-4ae6-8d55-436ef6a8a606",
+    "host": "127.0.0.1:4203",
+    "url": "http://127.0.0.1:4203/discover?destinationKey=atlantis",
+    "method": "GET",
+    "path": "/discover",
+    "status": 200,
+    "parentRequestId": "req-1794816658372-6qxtbgvda",
+    "id": "0c190a58-fe77-4096-aaa8-a2495285ba45"
+  },
+  {
+    "requestId": "req-1794816658264-wog9ct5ap",
+    "host": "127.0.0.1:4200",
+    "url": "http://127.0.0.1:4200/graphql",
+    "method": "POST",
+    "path": "/graphql",
+    "status": 200,
+    "id": "920952ad-2302-4eec-99e2-09b2cb1da1d2"
+  },
+  {
+    "requestId": "08b60b3d-2173-4b65-8649-414f9f1348ce",
+    "host": "127.0.0.1:4206",
+    "url": "http://127.0.0.1:4206/graphql",
+    "method": "POST",
+    "path": "/graphql",
+    "status": 200,
+    "parentRequestId": "req-1794816658264-wog9ct5ap",
+    "id": "9b6329b2-e462-4cf1-a5cf-051bb6ec6eba"
+  },
+  {
+    "requestId": "ee28a77c-c9ca-477f-803c-032b64943e15",
+    "host": "127.0.0.1:4204",
+    "url": "http://127.0.0.1:4204/navigation",
+    "method": "GET",
+    "path": "/navigation",
+    "status": 200,
+    "parentRequestId": "339ae799-e2a4-4653-8bd6-00b426c19368",
+    "id": "ed2d9a83-953e-4a2a-9b6f-04b0c009637f"
+  },
+  {
+    "requestId": "4a5bac4d-6834-46f5-a265-09639d1ead9b",
+    "host": "127.0.0.1:4400",
+    "url": "http://127.0.0.1:4400/umbraco/delivery/api/v2/content?filter=contentType%3AmobileApp&expand=properties%5B%24all%5D&take=1",
+    "method": "GET",
+    "path": "/umbraco/delivery/api/v2/content",
+    "status": 500,
+    "parentRequestId": "ee28a77c-c9ca-477f-803c-032b64943e15",
+    "id": "6dd36d3c-6b49-45bb-8ee8-899433f426f0"
+  },
+  {
+    "requestId": "6f8e4501-6b7a-43ac-a21e-1f37efba9eaa",
+    "host": "127.0.0.1:4202",
+    "url": "http://127.0.0.1:4202/passport/u-wanderer",
+    "method": "GET",
+    "path": "/passport/u-wanderer",
+    "status": 200,
+    "parentRequestId": "a544dfcc-0f66-403c-b3c4-d81f2e90d903",
+    "id": "3d08049a-d932-48a0-b55a-c8119d38ad1f"
+  },
+  {
+    "requestId": "d0d8cfbb-cafc-45b8-8088-595e1ddfa606",
+    "host": "127.0.0.1:4204",
+    "url": "http://127.0.0.1:4204/navigation",
+    "method": "GET",
+    "path": "/navigation",
+    "status": 200,
+    "parentRequestId": "c3473fd2-3165-40da-b4fd-a85c71311c49",
+    "id": "83d6d3db-102e-4c66-9086-55841b01f0c3"
+  },
+  {
+    "requestId": "a99e088e-d4b7-4088-a0e9-9045c3448ee6",
+    "host": "api.open-meteo.com",
+    "url": "https://api.open-meteo.com/v1/forecast?latitude=37.9838&longitude=23.7275&current=temperature_2m%2Cweather_code%2Cwind_speed_10m&daily=temperature_2m_max%2Ctemperature_2m_min%2Cprecipitation_probability_max&timezone=auto&forecast_days=3",
+    "method": "GET",
+    "path": "/v1/forecast",
+    "status": 412,
+    "id": "949ed382-f94f-4297-b19d-e5ba7bd72deb"
+  },
+  {
+    "requestId": "e23aed78-763a-4ac3-9739-fa6f88f421f9",
+    "host": "www.apicountries.com",
+    "url": "https://www.apicountries.com/countries/name/greece",
+    "method": "GET",
+    "path": "/countries/name/greece",
+    "status": 200,
+    "parentRequestId": "fd5e67f8-f2c6-4f85-ab80-a478c60b46fc",
+    "id": "4727206d-7346-4b4d-8589-27749b4b8596"
+  },
+  {
+    "requestId": "d995b9f7-1759-47d2-a672-e173d6c36b94",
+    "host": "api.adviceslip.com",
+    "url": "https://api.adviceslip.com/advice",
+    "method": "GET",
+    "path": "/advice",
+    "status": 200,
+    "parentRequestId": "fd5e67f8-f2c6-4f85-ab80-a478c60b46fc",
+    "id": "c5f0df9c-1190-49b2-a609-b2691a18599d"
+  },
+  {
+    "requestId": "fb61fb0e-0687-44ab-9c22-af88c1b36b95",
+    "host": "bored-api.appbrewery.com",
+    "url": "https://bored-api.appbrewery.com/random",
+    "method": "GET",
+    "path": "/random",
+    "status": 200,
+    "parentRequestId": "fd5e67f8-f2c6-4f85-ab80-a478c60b46fc",
+    "id": "d6c3be02-b328-4533-8a2b-b12a14f03055"
+  },
+  {
+    "requestId": "bdcf6a3b-fc63-44f5-917f-fab21f4ff3f0",
+    "host": "api.frankfurter.app",
+    "url": "https://api.frankfurter.app/latest?from=EUR&to=CHF",
+    "method": "GET",
+    "path": "/latest",
+    "status": 200,
+    "parentRequestId": "229c86eb-07fa-4742-837c-a3846d1d82a7",
+    "id": "aae47db6-c211-48ef-be29-8f32d58e3267"
+  },
+  {
+    "requestId": "738f31de-6f0d-4c4c-bdb1-ccace5156295",
+    "host": "api.frankfurter.app",
+    "url": "https://api.frankfurter.app/latest?from=EUR&to=BMD",
+    "method": "GET",
+    "path": "/latest",
+    "status": 404,
+    "parentRequestId": "eae4a159-3bf2-4765-afcc-a9751df32f58",
+    "id": "3e1a4b55-cbaa-4370-aa57-22daddc040f9"
+  }
+]

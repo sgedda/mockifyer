@@ -8,6 +8,7 @@ import type { NetworkEvent } from './network-event-types';
 import type { EndpointAuthInfo } from './atlas-auth-detection';
 import type { EndpointInventory, EndpointInventoryItem } from './atlas-endpoint-inventory';
 import { generateEndpointSnippets } from './atlas-code-snippets';
+import * as dagre from '@dagrejs/dagre';
 
 interface SystemDiagramNode {
   id: string;
@@ -37,50 +38,86 @@ export function generateSystemDiagramSVG(
   screens?: string[]
 ): string {
   const nodes: SystemDiagramNode[] = [];
-  const edges: SystemDiagramEdge[] = [];
   
-  // Node positioning (larger for readability)
-  const LAYER_GAP = 120;
-  const NODE_GAP = 200;
+  // Node positioning constants
   const NODE_HEIGHT = 45;
   const CHAR_WIDTH = 7; // ~7px per character
   const NODE_PADDING = 20; // padding on each side
+  const TIER_GAP = 120; // Vertical gap between tiers
+  const NODE_GAP = 40;  // Horizontal gap between nodes in same tier
+  const MARGIN = 50;
   
   // Helper to calculate node width based on text
   const getNodeWidth = (text: string): number => {
     return Math.max(160, text.length * CHAR_WIDTH + NODE_PADDING * 2);
   };
   
-  // **GRID LAYOUT ALGORITHM**
-  // Row 0: Application (centered)
-  // Rows 1..n: All hosts in grid (up to 4 columns), sorted by call count
-  // Downstream: Separate band below, under parent host column
+  // Helper to extract host from URL when host field is missing
+  const getEventHost = (ev: NetworkEvent): string | undefined => {
+    if (ev.host) return ev.host;
+    if (!ev.url) return undefined;
+    try {
+      const url = new URL(ev.url);
+      return url.host;
+    } catch {
+      return undefined;
+    }
+  };
   
-  const GRID_COLS = 4;
-  const ROW_HEIGHT = 80;
-  const COL_GAP = 20;
-  const ROW_GAP = 100;
-  const MARGIN = 50;
+  // Build parent-child relationships from events
+  // Track proven edges (no parentRequestId) vs inferred edges (parentRequestId set but parent not found)
+  const parentChildMap = new Map<string, Set<string>>(); // parent host -> Set<child hosts>
+  const childParentMap = new Map<string, Set<string>>(); // child host -> Set<parent hosts>
+  const appChildren = new Set<string>(); // Hosts called directly by Application (proven: no parentRequestId)
+  const appChildrenInferred = new Set<string>(); // Hosts with inferred Application call (parentRequestId set but not found)
   
-  // Get all hosts with call counts
-  const allHosts = Array.from(inventory.byHost.keys());
-  const hostCallCounts = new Map<string, number>();
-  allHosts.forEach(host => {
-    const hostInventory = inventory.byHost.get(host);
-    if (hostInventory) {
-      const totalCalls = hostInventory.reduce((sum, e) => sum + (e.callCount || 0), 0);
-      hostCallCounts.set(host, totalCalls);
+  events.forEach(ev => {
+    const host = getEventHost(ev);
+    if (!host) return;
+    
+    if (!ev.parentRequestId) {
+      // No parent = proven Application call
+      appChildren.add(host);
+    } else {
+      const parentEvent = events.find(e => e.requestId === ev.parentRequestId || e.id === ev.parentRequestId);
+      if (!parentEvent) {
+        // Unresolved parent = inferred Application call
+        appChildrenInferred.add(host);
+      } else {
+        const parentHost = getEventHost(parentEvent);
+        if (parentHost && parentHost !== host) {
+          // Host → host
+          if (!parentChildMap.has(parentHost)) {
+            parentChildMap.set(parentHost, new Set());
+          }
+          parentChildMap.get(parentHost)!.add(host);
+          
+          if (!childParentMap.has(host)) {
+            childParentMap.set(host, new Set());
+          }
+          childParentMap.get(host)!.add(parentHost);
+        }
+      }
     }
   });
   
-  // Sort hosts by call count descending
-  const sortedHosts = allHosts.sort((a, b) => 
-    (hostCallCounts.get(b) || 0) - (hostCallCounts.get(a) || 0)
-  );
+  // Get all hosts
+  const allHosts = Array.from(inventory.byHost.keys());
+  
+  // Use dagre for graph layout
+  const g = new dagre.graphlib.Graph();
+  g.setGraph({ 
+    rankdir: 'TB',
+    ranksep: 80,
+    nodesep: 60,  // Increased from 30 to reduce edge overlaps
+    marginx: 40,
+    marginy: 40
+  });
+  g.setDefaultEdgeLabel(() => ({}));
   
   // Calculate host statuses
   const hostStatuses = new Map<string, 'mocked' | 'live' | 'error' | 'code-only'>();
-  sortedHosts.forEach(host => {
+  allHosts.forEach(host => {
     const hostInventory = inventory.byHost.get(host);
     if (!hostInventory) return;
     
@@ -89,7 +126,6 @@ export function generateSystemDiagramSVG(
     const hasCodeOnly = hostInventory.some(e => e.status === 'code-only');
     const hasObserved = hostInventory.some(e => e.status.startsWith('observed'));
     
-    // Bug #40: Fix priority - hasCodeOnly was checked but never used due to hasObserved returning 'live' first
     hostStatuses.set(host, 
       hasErrors ? 'error' :
       allMocked ? 'mocked' :
@@ -98,148 +134,174 @@ export function generateSystemDiagramSVG(
     );
   });
   
-  // Calculate cell width (widest label + padding)
-  const maxHostWidth = Math.max(
-    160,
-    ...sortedHosts.map(h => getNodeWidth(h))
-  );
-  const cellWidth = maxHostWidth;
-  
-  // Calculate grid dimensions (handle empty inventory)
-  const cols = sortedHosts.length === 0 ? 1 : Math.min(sortedHosts.length, GRID_COLS);
-  const rows = sortedHosts.length === 0 ? 0 : Math.ceil(sortedHosts.length / cols);
-  const gridWidth = sortedHosts.length === 0 ? cellWidth : (cols * cellWidth + (cols - 1) * COL_GAP);
-  
-  // Row 0: Application (centered in grid)
-  let y = MARGIN;
-  const appX = MARGIN + gridWidth / 2 - cellWidth / 2;
-  nodes.push({
-    id: 'app',
+  // Add nodes to dagre graph with real dimensions
+  const appWidth = getNodeWidth('Application');
+  g.setNode('app', { 
     label: 'Application',
-    type: 'app',
-    x: appX,
-    y,
-    width: cellWidth
+    width: appWidth,
+    height: NODE_HEIGHT
   });
-  y += ROW_GAP;
   
-  // Rows 1..n: Host grid
-  const hostPositions = new Map<string, { x: number; y: number; col: number }>();
-  sortedHosts.forEach((host, i) => {
-    const row = Math.floor(i / cols);
-    const col = i % cols;
-    
-    // Center each row
-    const rowCols = Math.min(cols, sortedHosts.length - row * cols);
-    const rowWidth = rowCols * cellWidth + (rowCols - 1) * COL_GAP;
-    const rowStartX = MARGIN + (gridWidth - rowWidth) / 2;
-    
-    const x = rowStartX + col * (cellWidth + COL_GAP);
-    const nodeY = y + row * ROW_HEIGHT;
-    
-    hostPositions.set(host, { x, y: nodeY, col });
-    
-    nodes.push({
-      id: `host-${host}`,
+  allHosts.forEach(host => {
+    const width = getNodeWidth(host);
+    g.setNode(`host-${host}`, {
       label: host,
-      type: hostStatuses.get(host) === 'mocked' ? 'mocked-backend' : 
-            hostStatuses.get(host) === 'code-only' ? 'code-backend' :
-            hostStatuses.get(host) === 'error' ? 'error-backend' : // Bug #41: map error status to error node type
-            'backend',
-      x,
-      y: nodeY,
-      width: cellWidth
+      width,
+      height: NODE_HEIGHT
     });
   });
   
-  y += rows * ROW_HEIGHT + ROW_GAP;
+  // Track which edges are inferred
+  const inferredEdges = new Set<string>(); // Set of "from→to" keys for inferred edges
   
-  // Downstream: Map each to parent host, position under parent column
-  const downstreamHostPaths = new Map<string, { path: string; parentHost: string }>();
-  events.forEach(ev => {
-    if (ev.parentRequestId && ev.url) {
-      try {
-        const url = new URL(ev.url);
-        const downHost = url.host; // Include port (bug #49)
-        const path = decodeURIComponent(url.pathname);
-        
-        // Find parent host from the parent request (bug #50: try both requestId and id)
-        const parentEvent = events.find(e => e.requestId === ev.parentRequestId || e.id === ev.parentRequestId);
-        if (parentEvent && parentEvent.url) {
-          const parentUrl = new URL(parentEvent.url);
-          const parentHost = parentUrl.host; // Include port (bug #49)
-          
-          if (!downstreamHostPaths.has(downHost) && sortedHosts.includes(parentHost)) {
-            downstreamHostPaths.set(downHost, { path, parentHost });
-          }
-        }
-      } catch {}
+  // Add edges to dagre graph
+  // App -> hosts (proven)
+  appChildren.forEach(host => {
+    g.setEdge('app', `host-${host}`);
+  });
+  
+  // App -> hosts (inferred) - only if not already proven
+  appChildrenInferred.forEach(host => {
+    if (!appChildren.has(host)) {
+      g.setEdge('app', `host-${host}`);
+      inferredEdges.add(`app→host-${host}`);
     }
   });
   
-  // Distribute downstream nodes vertically with gap to avoid overlap
-  const DOWNSTREAM_GAP = 10;
-  let downstreamY = y;
-  downstreamHostPaths.forEach((info, downHost) => {
-    const parentPos = hostPositions.get(info.parentHost);
-    if (!parentPos) return;
+  // Host -> host
+  parentChildMap.forEach((children, parentHost) => {
+    children.forEach(childHost => {
+      g.setEdge(`host-${parentHost}`, `host-${childHost}`);
+    });
+  });
+  
+  // Give parentless inventory hosts an Application edge (inferred)
+  // These are hosts that exist only in the inventory (code-only, mocked-only, URL-only)
+  // with no captured event
+  allHosts.forEach(host => {
+    if (!appChildren.has(host) && !appChildrenInferred.has(host) && !childParentMap.has(host)) {
+      g.setEdge('app', `host-${host}`);
+      inferredEdges.add(`app→host-${host}`);
+    }
+  });
+  
+  // Run dagre layout
+  dagre.layout(g);
+  
+  // Extract node positions from dagre
+  g.nodes().forEach(nodeId => {
+    const node = g.node(nodeId);
+    const host = nodeId === 'app' ? null : nodeId.replace('host-', '');
     
-    const label = `${downHost} · ${info.path}`;
-    const nodeWidth = getNodeWidth(label); // Calculate width based on label
     nodes.push({
-      id: `downstream-${downHost}`, // Bug #51: uses full host with port now
+      id: nodeId,
+      label: node.label,
+      type: nodeId === 'app' ? 'app' :
+            hostStatuses.get(host!) === 'mocked' ? 'mocked-backend' :
+            hostStatuses.get(host!) === 'code-only' ? 'code-backend' :
+            hostStatuses.get(host!) === 'error' ? 'error-backend' :
+            'backend',
+      x: node.x - node.width / 2, // dagre uses center, we use top-left
+      y: node.y - node.height / 2,
+      width: node.width
+    });
+  });
+  
+  // Create edges with dagre waypoints (extract first, then calculate bounds)
+  const edges: Array<{
+    from: string;
+    to: string;
+    label: string | undefined;
+    status: 'live' | 'error' | 'code-only' | 'mocked' | 'unexercised';
+    count: number;
+    points?: Array<{x: number, y: number}>;
+    inferred?: boolean;
+  }> = [];
+  
+  // Extract edges from dagre with points
+  g.edges().forEach(e => {
+    const edge = g.edge(e);
+    const fromNodeId = e.v;
+    const toNodeId = e.w;
+    
+    // Check if this edge is inferred
+    const edgeKey = `${fromNodeId}→${toNodeId}`;
+    const isInferred = inferredEdges.has(edgeKey);
+    
+    // Determine label and status
+    let label: string | undefined;
+    let status: 'live' | 'error' | 'code-only' | 'mocked' | 'unexercised' = 'live';
+    let count = 0;
+    
+    if (toNodeId.startsWith('host-')) {
+      const host = toNodeId.replace('host-', '');
+      const hostInventory = inventory.byHost.get(host);
+      if (hostInventory) {
+        count = hostInventory.length;
+        label = isInferred ? 'caller not recorded' : `${count} ep`;
+      }
+      const hostStatus = hostStatuses.get(host);
+      if (hostStatus === 'mocked') status = 'mocked';
+      else if (hostStatus === 'error') status = 'error';
+      else if (hostStatus === 'code-only') status = 'code-only';
+    }
+    
+    edges.push({
+      from: fromNodeId,
+      to: toNodeId,
       label,
-      type: 'downstream',
-      x: parentPos.x,
-      y: downstreamY,
-      width: nodeWidth
-    });
-    downstreamY += NODE_HEIGHT + DOWNSTREAM_GAP;
-  });
-  
-  if (downstreamHostPaths.size > 0) {
-    // Update y to after all downstream nodes
-    y = downstreamY;
-  }
-  
-  const contentWidth = gridWidth + MARGIN * 2;
-  const maxX = contentWidth;
-  
-  // Create edges
-  // App -> Hosts
-  sortedHosts.forEach(host => {
-    const hostInventory = inventory.byHost.get(host);
-    if (!hostInventory) return;
-    
-    const status = hostStatuses.get(host) || 'live';
-    
-    edges.push({
-      from: 'app',
-      to: `host-${host}`,
-      label: `${hostInventory.length} ep`,
-      status: status as any,
-      count: hostInventory.length
+      status,
+      count,
+      points: edge.points || [],
+      inferred: isInferred
     });
   });
   
-  // Hosts -> Downstream (each to its parent only)
-  downstreamHostPaths.forEach((info, downHost) => {
-    edges.push({
-      from: `host-${info.parentHost}`,
-      to: `downstream-${downHost}`,
-      label: 'nested',
-      status: 'live'
-    });
+  // Calculate actual diagram bounds from nodes, edges, and legend
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  
+  // Include nodes
+  nodes.forEach(node => {
+    const nodeWidth = node.width || 160;
+    minX = Math.min(minX, node.x);
+    minY = Math.min(minY, node.y);
+    maxX = Math.max(maxX, node.x + nodeWidth);
+    maxY = Math.max(maxY, node.y + NODE_HEIGHT);
   });
+  
+  // Include edge points and labels
+  edges.forEach(edge => {
+    if (edge.points) {
+      edge.points.forEach(p => {
+        minX = Math.min(minX, p.x);
+        maxX = Math.max(maxX, p.x);
+      });
+    }
+    // Account for edge labels (approximate width)
+    if (edge.label && edge.points && edge.points.length >= 2) {
+      const midIdx = Math.floor(edge.points.length / 2);
+      const labelWidth = edge.label.length * 7 + 8;
+      maxX = Math.max(maxX, edge.points[midIdx].x + labelWidth / 2);
+    }
+  });
+  
+  // Include legend extent
+  // Legend starts at x=40, rightmost item "Caller not recorded" text starts at x=410
+  // Text is ~20 chars * 7px = ~140px wide
+  const LEGEND_X = 40;
+  const legendRightmost = LEGEND_X + 410 + 20 * 7;
+  maxX = Math.max(maxX, legendRightmost);
+  
+  const contentWidth = maxX - minX + MARGIN * 2;
+  const diagramHeight = maxY - minY + MARGIN * 2;
   
   // Generate SVG with legend below
-  const diagramHeight = y + 40;
   const legendHeight = 60;
   const totalHeight = diagramHeight + legendHeight;
   
   let svg = `<svg viewBox="0 0 ${contentWidth} ${totalHeight}" xmlns="http://www.w3.org/2000/svg" class="atlas-system-diagram" style="width: 100%; height: auto; min-height: 400px;" preserveAspectRatio="xMidYMid meet">`;
   
-  // Define arrow markers (Mock=green, Live=blue, Error=red, Code-only=grey)
+  // Define arrow markers (Mock=green, Live=blue, Error=red, Code-only=grey, Inferred=grey)
   svg += `<defs>
     <marker id="arrow-live" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
       <path d="M0,0 L0,6 L9,3 z" fill="#3b82f6" />
@@ -253,41 +315,65 @@ export function generateSystemDiagramSVG(
     <marker id="arrow-code-only" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
       <path d="M0,0 L0,6 L9,3 z" fill="#9ca3af" />
     </marker>
+    <marker id="arrow-inferred" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#9ca3af" />
+    </marker>
   </defs>`;
   
-  // Draw edges
+  // Draw edges with smooth curves - each edge gets its own curve to avoid long shared segments
   edges.forEach(edge => {
     const fromNode = nodes.find(n => n.id === edge.from);
     const toNode = nodes.find(n => n.id === edge.to);
     if (!fromNode || !toNode) return;
     
-    const color = 
+    // Inferred edges: thin dashed grey
+    const color = edge.inferred ? '#9ca3af' :
       edge.status === 'error' ? '#ef4444' :
       edge.status === 'mocked' ? '#22c55e' :
       edge.status === 'code-only' ? '#9ca3af' :
       '#3b82f6';
     
-    const strokeDasharray = (edge.status === 'code-only' || edge.status === 'unexercised') ? '5,5' : 'none';
-    const marker = `arrow-${edge.status === 'error' ? 'error' : edge.status === 'mocked' ? 'mocked' : edge.status === 'code-only' ? 'code-only' : 'live'}`;
+    const strokeWidth = edge.inferred ? '1' : '2';
+    const strokeDasharray = (edge.inferred || edge.status === 'code-only' || edge.status === 'unexercised') ? '5,5' : 'none';
+    const marker = edge.inferred ? 'arrow-inferred' :
+      `arrow-${edge.status === 'error' ? 'error' : edge.status === 'mocked' ? 'mocked' : edge.status === 'code-only' ? 'code-only' : 'live'}`;
     
-    const x1 = fromNode.x + (fromNode.width || 160) / 2;
-    const y1 = fromNode.y + NODE_HEIGHT;
-    const x2 = toNode.x + (toNode.width || 160) / 2;
-    const y2 = toNode.y;
+    // Use dagre's edge points - draw straight polyline segments (no curves) to avoid overlaps
+    const points = edge.points || [];
+    let pathData: string;
     
-    svg += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" 
-      stroke="${color}" stroke-width="2" stroke-dasharray="${strokeDasharray}" marker-end="url(#${marker})" />`;
+    if (points.length >= 2) {
+      // Draw straight polyline through dagre points
+      pathData = `M ${points[0].x} ${points[0].y}`;
+      
+      for (let i = 1; i < points.length; i++) {
+        pathData += ` L ${points[i].x} ${points[i].y}`;
+      }
+    } else {
+      // Fallback: direct line from node centers
+      const x1 = fromNode.x + (fromNode.width || 160) / 2;
+      const y1 = fromNode.y + NODE_HEIGHT;
+      const x2 = toNode.x + (toNode.width || 160) / 2;
+      const y2 = toNode.y;
+      
+      pathData = `M ${x1} ${y1} L ${x2} ${y2}`;
+    }
     
-    // Label at midpoint with background rect
-    if (edge.label) {
-      const midX = (x1 + x2) / 2;
-      const midY = (y1 + y2) / 2;
+    svg += `<path d="${pathData}" 
+      stroke="${color}" stroke-width="${strokeWidth}" stroke-dasharray="${strokeDasharray}" 
+      fill="none" marker-end="url(#${marker})" 
+      data-from="${edge.from}" data-to="${edge.to}"${edge.inferred ? ' data-inferred="true"' : ''} />`;
+    
+    // Label at midpoint
+    if (edge.label && points.length >= 2) {
+      const midIdx = Math.floor(points.length / 2);
+      const labelX = points[midIdx].x;
+      const labelY = points[midIdx].y;
       const labelWidth = edge.label.length * 7 + 8;
       const labelHeight = 18;
       
-      // Background rect for label
-      svg += `<rect x="${midX - labelWidth/2}" y="${midY - labelHeight/2}" width="${labelWidth}" height="${labelHeight}" rx="3" fill="white" stroke="${color}" stroke-width="1" />`;
-      svg += `<text x="${midX}" y="${midY + 4}" font-size="12" fill="${color}" text-anchor="middle" font-weight="600">${escapeHtml(edge.label)}</text>`;
+      svg += `<rect x="${labelX - labelWidth/2}" y="${labelY - labelHeight/2}" width="${labelWidth}" height="${labelHeight}" rx="3" fill="white" stroke="${color}" stroke-width="1" />`;
+      svg += `<text x="${labelX}" y="${labelY + 4}" font-size="12" fill="${color}" text-anchor="middle" font-weight="600">${escapeHtml(edge.label)}</text>`;
     }
   });
   
@@ -342,6 +428,10 @@ export function generateSystemDiagramSVG(
   // Code-only (gray dashed)
   svg += `<rect x="${legendX + 250}" y="${legendY + 12}" width="85" height="24" rx="4" fill="#f3f4f6" stroke="#9ca3af" stroke-width="2" stroke-dasharray="5,5" />`;
   svg += `<text x="${legendX + 292}" y="${legendY + 28}" font-size="11" text-anchor="middle" fill="#1f2937" font-weight="500">Code-only</text>`;
+  
+  // Caller not recorded (thin gray dashed)
+  svg += `<line x1="${legendX + 355}" y1="${legendY + 24}" x2="${legendX + 405}" y2="${legendY + 24}" stroke="#9ca3af" stroke-width="1" stroke-dasharray="5,5" />`;
+  svg += `<text x="${legendX + 410}" y="${legendY + 28}" font-size="11" fill="#1f2937" font-weight="500">Caller not recorded</text>`;
   
   svg += `</g>`;
   svg += '</svg>';
