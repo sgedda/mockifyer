@@ -19,7 +19,7 @@ The HTML report shows which endpoints have drifted, what changed, and how to res
 # Install dependencies
 npm install
 
-# Terminal 1: Start drift simulator in v1 mode (stable)
+# Terminal 1: Start drift simulator in v1 mode (stable) on port 4290
 npm start
 
 # Terminal 2: Run drift check (should pass)

@@ -2,8 +2,8 @@
  * Drift Simulator for Mockifyer Showcase
  * 
  * A controllable drift endpoint for demonstrating drift detection on GitHub Pages.
- * Runs on localhost:4200 and provides a /api/weather endpoint with v1 (stable) 
- * and v2 (with drift) modes.
+ * Runs on localhost:4290 (configurable via PORT env var) and provides a /api/weather 
+ * endpoint with v1 (stable) and v2 (with drift) modes.
  * 
  * Usage:
  *   node drift-simulator.js              # v1 mode (stable)
@@ -14,7 +14,7 @@ const express = require('express');
 const app = express();
 
 const DRIFT_MODE = process.env.DRIFT_MODE || 'v1';
-const PORT = process.env.PORT || 4200;
+const PORT = process.env.PORT || 4290;
 
 console.log(`\n🎭 Drift Simulator starting in ${DRIFT_MODE} mode on port ${PORT}\n`);
 

@@ -1,8 +1,8 @@
 {
   "totalMocks": 3,
-  "driftedMocks": 1,
+  "driftedMocks": 3,
   "breakingDriftCount": 1,
-  "warningOnlyCount": 0,
+  "warningOnlyCount": 2,
   "skippedCount": 0,
   "notCheckedCount": 0,
   "mockReports": [
@@ -10,22 +10,68 @@
       "method": "GET",
       "url": "https://api.frankfurter.app/latest?from=USD&to=EUR,GBP",
       "mockFilePath": "mock-data/drift-watch/api.frankfurter.app/latest/GET.json",
-      "hasDrift": false,
+      "hasDrift": true,
       "hasBreakingDrift": false,
-      "issues": []
+      "issues": [
+        {
+          "path": "status",
+          "type": "status_change",
+          "severity": "warning",
+          "expected": "200",
+          "actual": "404",
+          "message": "HTTP status changed from 200 to 404",
+          "firstSeen": "2026-11-16T09:06:47.252Z",
+          "lastSeen": "2026-11-16T09:06:47.252Z",
+          "occurrences": 1
+        },
+        {
+          "path": "body",
+          "type": "type_change",
+          "severity": "warning",
+          "expected": "object",
+          "actual": "string",
+          "message": "Type changed from object to string",
+          "firstSeen": "2026-11-16T09:06:47.252Z",
+          "lastSeen": "2026-11-16T09:06:47.252Z",
+          "occurrences": 1
+        }
+      ]
     },
     {
       "method": "GET",
       "url": "https://api.open-meteo.com/v1/forecast?latitude=51.5074&longitude=-0.1278&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min",
       "mockFilePath": "mock-data/drift-watch/api.open-meteo.com/v1/forecast/GET.json",
-      "hasDrift": false,
+      "hasDrift": true,
       "hasBreakingDrift": false,
-      "issues": []
+      "issues": [
+        {
+          "path": "status",
+          "type": "status_change",
+          "severity": "warning",
+          "expected": "200",
+          "actual": "404",
+          "message": "HTTP status changed from 200 to 404",
+          "firstSeen": "2026-11-16T09:06:47.252Z",
+          "lastSeen": "2026-11-16T09:06:47.252Z",
+          "occurrences": 1
+        },
+        {
+          "path": "body",
+          "type": "type_change",
+          "severity": "warning",
+          "expected": "object",
+          "actual": "string",
+          "message": "Type changed from object to string",
+          "firstSeen": "2026-11-16T09:06:47.252Z",
+          "lastSeen": "2026-11-16T09:06:47.252Z",
+          "occurrences": 1
+        }
+      ]
     },
     {
       "method": "GET",
-      "url": "http://localhost:4200/api/weather/London",
-      "mockFilePath": "mock-data/drift-watch/localhost:4200/api/weather/GET_London.json",
+      "url": "http://localhost:4290/api/weather/London",
+      "mockFilePath": "mock-data/drift-watch/localhost:4290/api/weather/GET_London.json",
       "hasDrift": true,
       "hasBreakingDrift": true,
       "issues": [
@@ -35,8 +81,8 @@
           "severity": "breaking",
           "expected": "number",
           "message": "Key \"temperature\" removed",
-          "firstSeen": "2026-11-16T09:00:58.104Z",
-          "lastSeen": "2026-11-16T09:00:58.104Z",
+          "firstSeen": "2026-11-16T09:06:47.252Z",
+          "lastSeen": "2026-11-16T09:06:47.252Z",
           "occurrences": 1
         },
         {
@@ -45,8 +91,8 @@
           "severity": "warning",
           "actual": "number",
           "message": "New key \"humidity\" added",
-          "firstSeen": "2026-11-16T09:00:58.104Z",
-          "lastSeen": "2026-11-16T09:00:58.104Z",
+          "firstSeen": "2026-11-16T09:06:47.252Z",
+          "lastSeen": "2026-11-16T09:06:47.252Z",
           "occurrences": 1
         },
         {
@@ -55,8 +101,8 @@
           "severity": "warning",
           "actual": "number",
           "message": "New key \"temp_celsius\" added",
-          "firstSeen": "2026-11-16T09:00:58.104Z",
-          "lastSeen": "2026-11-16T09:00:58.104Z",
+          "firstSeen": "2026-11-16T09:06:47.252Z",
+          "lastSeen": "2026-11-16T09:06:47.252Z",
           "occurrences": 1
         },
         {
@@ -66,15 +112,15 @@
           "expected": "string",
           "actual": "array",
           "message": "Type changed from string to array at conditions",
-          "firstSeen": "2026-11-16T09:00:58.104Z",
-          "lastSeen": "2026-11-16T09:00:58.104Z",
+          "firstSeen": "2026-11-16T09:06:47.252Z",
+          "lastSeen": "2026-11-16T09:06:47.252Z",
           "occurrences": 1
         }
       ]
     }
   ],
-  "summary": "✗ 1 of 3 mocks drifted: 1 breaking",
+  "summary": "✗ 3 of 3 mocks drifted: 1 breaking, 2 warnings",
   "failOnWarnings": false,
   "reportVersion": 1,
-  "timestamp": "2026-11-16T09:00:58.104Z"
+  "timestamp": "2026-11-16T09:06:47.252Z"
 }

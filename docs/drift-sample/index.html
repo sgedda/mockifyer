@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Drift Check: drift-watch</title>
+  <style>
+    
+/* Mockifyer drift report styles - based on Atlas HTML design system */
+:root {
+  color-scheme: light dark;
+  --background: 0 0% 100%;
+  --foreground: 240 10% 3.9%;
+  --card: 0 0% 100%;
+  --card-foreground: 240 10% 3.9%;
+  --border: 240 5.9% 90%;
+  --primary: 221.2 83.2% 53.3%;
+  --primary-foreground: 210 40% 98%;
+  --secondary: 240 4.8% 95.9%;
+  --secondary-foreground: 240 5.9% 10%;
+  --muted: 240 4.8% 95.9%;
+  --muted-foreground: 240 3.8% 46.1%;
+  --accent: 240 4.8% 95.9%;
+  --accent-foreground: 240 5.9% 10%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 0 0% 98%;
+  --success: 142 76% 36%;
+  --success-foreground: 0 0% 98%;
+  --warning: 38 92% 50%;
+  --warning-foreground: 0 0% 98%;
+  --radius: 0.5rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 240 10% 3.9%;
+    --card-foreground: 0 0% 98%;
+    --border: 240 3.7% 15.9%;
+    --primary: 217.2 91.2% 59.8%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
+    --accent: 240 3.7% 15.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --success: 142 76% 36%;
+    --success-foreground: 0 0% 98%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 98%;
+  }
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  line-height: 1.5;
+  padding: 2rem;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.header {
+  text-align: center;
+  margin-bottom: 3rem;
+  padding-bottom: 2rem;
+  border-bottom: 2px solid hsl(var(--border));
+}
+
+.header h1 {
+  font-size: 2.5rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  color: hsl(var(--primary));
+}
+
+.subtitle {
+  font-size: 1.1rem;
+  color: hsl(var(--muted-foreground));
+  margin-bottom: 0.5rem;
+}
+
+.timestamp {
+  font-size: 0.9rem;
+  color: hsl(var(--muted-foreground));
+}
+
+.summary-section {
+  margin-bottom: 3rem;
+}
+
+.summary-card {
+  background: hsl(var(--card));
+  border: 2px solid hsl(var(--border));
+  border-radius: var(--radius);
+  padding: 2rem;
+  margin-bottom: 1.5rem;
+}
+
+.summary-card.success {
+  border-color: hsl(var(--success));
+}
+
+.summary-card.warning {
+  border-color: hsl(var(--warning));
+}
+
+.summary-card.error {
+  border-color: hsl(var(--destructive));
+}
+
+.summary-card h2 {
+  font-size: 1.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.summary-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1.5rem;
+}
+
+.stat {
+  text-align: center;
+}
+
+.stat-value {
+  font-size: 2.5rem;
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+}
+
+.stat-label {
+  font-size: 0.875rem;
+  color: hsl(var(--muted-foreground));
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.error-text {
+  color: hsl(var(--destructive));
+}
+
+.warning-text {
+  color: hsl(var(--warning));
+}
+
+.filter-bar {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.filter-btn {
+  padding: 0.5rem 1rem;
+  background: hsl(var(--secondary));
+  color: hsl(var(--secondary-foreground));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.filter-btn:hover {
+  background: hsl(var(--accent));
+}
+
+.filter-btn.active {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  border-color: hsl(var(--primary));
+}
+
+.drift-section, .clean-section, .not-checked-section, .skipped-section {
+  margin-bottom: 3rem;
+}
+
+.drift-section h2, .clean-section h2, .not-checked-section h2, .skipped-section h2 {
+  font-size: 1.5rem;
+  margin-bottom: 1.5rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid hsl(var(--border));
+}
+
+.section-note {
+  color: hsl(var(--muted-foreground));
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+}
+
+.endpoint-card {
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  margin-bottom: 1rem;
+  overflow: hidden;
+}
+
+.endpoint-card.error {
+  border-left: 4px solid hsl(var(--destructive));
+}
+
+.endpoint-card.warning {
+  border-left: 4px solid hsl(var(--warning));
+}
+
+.endpoint-header {
+  padding: 1rem 1.5rem;
+  background: hsl(var(--muted));
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: background 0.2s;
+}
+
+.endpoint-header:hover {
+  background: hsl(var(--accent));
+}
+
+.endpoint-title {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex: 1;
+}
+
+.method-badge {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  border-radius: calc(var(--radius) / 2);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+.method-get {
+  background: #10b981;
+  color: white;
+}
+
+.method-post {
+  background: #3b82f6;
+  color: white;
+}
+
+.method-put {
+  background: #f59e0b;
+  color: white;
+}
+
+.method-delete {
+  background: #ef4444;
+  color: white;
+}
+
+.endpoint-url {
+  font-family: 'Courier New', monospace;
+  font-size: 0.9rem;
+  word-break: break-all;
+}
+
+.badge {
+  padding: 0.25rem 0.5rem;
+  border-radius: calc(var(--radius) / 2);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.badge-simulated {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  margin-left: 0.5rem;
+}
+
+.endpoint-status {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.endpoint-details {
+  padding: 1.5rem;
+}
+
+.mock-file {
+  font-size: 0.875rem;
+  color: hsl(var(--muted-foreground));
+  margin-bottom: 1rem;
+  font-family: 'Courier New', monospace;
+}
+
+.issues-list {
+  margin-bottom: 1.5rem;
+}
+
+.issue-group {
+  margin-bottom: 1.5rem;
+}
+
+.issue-group h4 {
+  font-size: 1rem;
+  margin-bottom: 0.75rem;
+  color: hsl(var(--muted-foreground));
+}
+
+.issue-item {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  background: hsl(var(--muted));
+  border-radius: var(--radius);
+  margin-bottom: 0.5rem;
+}
+
+.issue-item.breaking {
+  background: hsl(0 84.2% 60.2% / 0.1);
+}
+
+.issue-item.warning {
+  background: hsl(38 92% 50% / 0.1);
+}
+
+.issue-icon {
+  font-size: 1.25rem;
+  margin-top: 0.125rem;
+}
+
+.issue-content {
+  flex: 1;
+}
+
+.issue-path {
+  font-family: 'Courier New', monospace;
+  font-weight: 600;
+  font-size: 0.875rem;
+  margin-bottom: 0.25rem;
+}
+
+.issue-message {
+  font-size: 0.875rem;
+  color: hsl(var(--muted-foreground));
+  margin-bottom: 0.5rem;
+}
+
+.issue-types {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+
+.type-badge {
+  padding: 0.125rem 0.5rem;
+  border-radius: calc(var(--radius) / 2);
+  font-size: 0.75rem;
+  font-family: 'Courier New', monospace;
+}
+
+.type-expected {
+  background: hsl(var(--secondary));
+  color: hsl(var(--secondary-foreground));
+}
+
+.type-actual {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}
+
+.type-separator {
+  color: hsl(var(--muted-foreground));
+}
+
+.accept-command {
+  background: hsl(var(--secondary));
+  padding: 1rem;
+  border-radius: var(--radius);
+  font-size: 0.875rem;
+}
+
+.accept-command strong {
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+.accept-command code {
+  display: block;
+  font-family: 'Courier New', monospace;
+  background: hsl(var(--background));
+  padding: 0.5rem;
+  border-radius: calc(var(--radius) / 2);
+  overflow-x: auto;
+}
+
+.clean-list, .status-list {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.clean-item, .status-item {
+  padding: 0.75rem 1rem;
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.clean-url, .status-url {
+  font-family: 'Courier New', monospace;
+  font-size: 0.875rem;
+  flex: 1;
+  word-break: break-all;
+}
+
+.status-reason {
+  font-size: 0.875rem;
+  color: hsl(var(--muted-foreground));
+  font-style: italic;
+}
+
+.footer {
+  margin-top: 4rem;
+  padding-top: 2rem;
+  border-top: 2px solid hsl(var(--border));
+  text-align: center;
+  color: hsl(var(--muted-foreground));
+  font-size: 0.875rem;
+}
+
+.footer p {
+  margin-bottom: 0.5rem;
+}
+
+.footer a {
+  color: hsl(var(--primary));
+  text-decoration: none;
+}
+
+.footer a:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 768px) {
+  body {
+    padding: 1rem;
+  }
+  
+  .header h1 {
+    font-size: 2rem;
+  }
+  
+  .summary-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .endpoint-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+  
+  .endpoint-title {
+    flex-wrap: wrap;
+  }
+}
+
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <h1>Drift Check: drift-watch</h1>
+      <p class="subtitle">Contract drift detection for 3 endpoints</p>
+      <p class="timestamp">Generated: November 16, 2026 at 09:06:47 AM UTC</p>
+    </header>
+
+    
+    <section class="summary-section">
+      <div class="summary-card error">
+        <h2>🚨 Breaking Changes Detected</h2>
+        <div class="summary-stats">
+          <div class="stat">
+            <div class="stat-value">3</div>
+            <div class="stat-label">Total Endpoints</div>
+          </div>
+          <div class="stat">
+            <div class="stat-value error-text">1</div>
+            <div class="stat-label">Breaking</div>
+          </div>
+          <div class="stat">
+            <div class="stat-value warning-text">2</div>
+            <div class="stat-label">Warnings</div>
+          </div>
+          <div class="stat">
+            <div class="stat-value">0</div>
+            <div class="stat-label">Clean</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="filter-bar">
+        <button class="filter-btn active" data-filter="all">All</button>
+        <button class="filter-btn" data-filter="breaking">Breaking</button>
+        <button class="filter-btn" data-filter="warning">Warnings</button>
+        
+      </div>
+    </section>
+  
+    
+    
+    <section class="drift-section breaking-section">
+      <h2>Breaking Changes (1)</h2>
+      
+    <div class="endpoint-card error">
+      <div class="endpoint-header">
+        <div class="endpoint-title">
+          <span class="method-badge method-get">GET</span>
+          <span class="endpoint-url">http://localhost:4290/api/weather/London</span>
+          <span class="badge badge-simulated">Simulated</span>
+        </div>
+        <span class="endpoint-status error-text">✗ 4 issues</span>
+      </div>
+      <div class="endpoint-details">
+        <div class="mock-file">📄 mock-data/drift-watch/localhost:4290/api/weather/GET_London.json</div>
+        
+        <div class="issues-list">
+          
+            <div class="issue-group">
+              <h4>Fields Removed</h4>
+              
+                <div class="issue-item breaking">
+                  <span class="issue-icon">✗</span>
+                  <div class="issue-content">
+                    <div class="issue-path">temperature</div>
+                    <div class="issue-message">Key &quot;temperature&quot; removed</div>
+                    
+                  </div>
+                </div>
+              
+            </div>
+          
+            <div class="issue-group">
+              <h4>Fields Added</h4>
+              
+                <div class="issue-item warning">
+                  <span class="issue-icon">⚠</span>
+                  <div class="issue-content">
+                    <div class="issue-path">humidity</div>
+                    <div class="issue-message">New key &quot;humidity&quot; added</div>
+                    
+                  </div>
+                </div>
+              
+                <div class="issue-item warning">
+                  <span class="issue-icon">⚠</span>
+                  <div class="issue-content">
+                    <div class="issue-path">temp_celsius</div>
+                    <div class="issue-message">New key &quot;temp_celsius&quot; added</div>
+                    
+                  </div>
+                </div>
+              
+            </div>
+          
+            <div class="issue-group">
+              <h4>Types Changed</h4>
+              
+                <div class="issue-item breaking">
+                  <span class="issue-icon">✗</span>
+                  <div class="issue-content">
+                    <div class="issue-path">conditions</div>
+                    <div class="issue-message">Type changed from string to array at conditions</div>
+                    
+                      <div class="issue-types">
+                        <span class="type-badge type-expected">Expected: string</span>
+                        <span class="type-separator">→</span>
+                        <span class="type-badge type-actual">Actual: array</span>
+                      </div>
+                    
+                  </div>
+                </div>
+              
+            </div>
+          
+        </div>
+
+        <div class="accept-command">
+          <strong>Accept command:</strong>
+          <code>npx mockifyer-drift-check --accept "GET /api/weather/London"</code>
+        </div>
+      </div>
+    </div>
+  
+    </section>
+  
+    
+    <section class="drift-section warning-section">
+      <h2>Warnings (2)</h2>
+      
+    <div class="endpoint-card warning">
+      <div class="endpoint-header">
+        <div class="endpoint-title">
+          <span class="method-badge method-get">GET</span>
+          <span class="endpoint-url">https://api.frankfurter.app/latest?from=USD&amp;to=EUR,GBP</span>
+          
+        </div>
+        <span class="endpoint-status warning-text">⚠ 2 issues</span>
+      </div>
+      <div class="endpoint-details">
+        <div class="mock-file">📄 mock-data/drift-watch/api.frankfurter.app/latest/GET.json</div>
+        
+        <div class="issues-list">
+          
+            <div class="issue-group">
+              <h4>HTTP Status Changed</h4>
+              
+                <div class="issue-item warning">
+                  <span class="issue-icon">⚠</span>
+                  <div class="issue-content">
+                    <div class="issue-path">status</div>
+                    <div class="issue-message">HTTP status changed from 200 to 404</div>
+                    
+                      <div class="issue-types">
+                        <span class="type-badge type-expected">Expected: 200</span>
+                        <span class="type-separator">→</span>
+                        <span class="type-badge type-actual">Actual: 404</span>
+                      </div>
+                    
+                  </div>
+                </div>
+              
+            </div>
+          
+            <div class="issue-group">
+              <h4>Types Changed</h4>
+              
+                <div class="issue-item warning">
+                  <span class="issue-icon">⚠</span>
+                  <div class="issue-content">
+                    <div class="issue-path">body</div>
+                    <div class="issue-message">Type changed from object to string</div>
+                    
+                      <div class="issue-types">
+                        <span class="type-badge type-expected">Expected: object</span>
+                        <span class="type-separator">→</span>
+                        <span class="type-badge type-actual">Actual: string</span>
+                      </div>
+                    
+                  </div>
+                </div>
+              
+            </div>
+          
+        </div>
+
+        <div class="accept-command">
+          <strong>Accept command:</strong>
+          <code>npx mockifyer-drift-check --accept "GET /latest?from=USD&to=EUR,GBP"</code>
+        </div>
+      </div>
+    </div>
+  
+
+    <div class="endpoint-card warning">
+      <div class="endpoint-header">
+        <div class="endpoint-title">
+          <span class="method-badge method-get">GET</span>
+          <span class="endpoint-url">https://api.open-meteo.com/v1/forecast?latitude=51.5074&amp;longitude=-0.1278&amp;current=temperature_2m,weather_code&amp;daily=temperature_2m_max,temperature_2m_min</span>
+          
+        </div>
+        <span class="endpoint-status warning-text">⚠ 2 issues</span>
+      </div>
+      <div class="endpoint-details">
+        <div class="mock-file">📄 mock-data/drift-watch/api.open-meteo.com/v1/forecast/GET.json</div>
+        
+        <div class="issues-list">
+          
+            <div class="issue-group">
+              <h4>HTTP Status Changed</h4>
+              
+                <div class="issue-item warning">
+                  <span class="issue-icon">⚠</span>
+                  <div class="issue-content">
+                    <div class="issue-path">status</div>
+                    <div class="issue-message">HTTP status changed from 200 to 404</div>
+                    
+                      <div class="issue-types">
+                        <span class="type-badge type-expected">Expected: 200</span>
+                        <span class="type-separator">→</span>
+                        <span class="type-badge type-actual">Actual: 404</span>
+                      </div>
+                    
+                  </div>
+                </div>
+              
+            </div>
+          
+            <div class="issue-group">
+              <h4>Types Changed</h4>
+              
+                <div class="issue-item warning">
+                  <span class="issue-icon">⚠</span>
+                  <div class="issue-content">
+                    <div class="issue-path">body</div>
+                    <div class="issue-message">Type changed from object to string</div>
+                    
+                      <div class="issue-types">
+                        <span class="type-badge type-expected">Expected: object</span>
+                        <span class="type-separator">→</span>
+                        <span class="type-badge type-actual">Actual: string</span>
+                      </div>
+                    
+                  </div>
+                </div>
+              
+            </div>
+          
+        </div>
+
+        <div class="accept-command">
+          <strong>Accept command:</strong>
+          <code>npx mockifyer-drift-check --accept "GET /v1/forecast?latitude=51.5074&longitude=-0.1278&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min"</code>
+        </div>
+      </div>
+    </div>
+  
+    </section>
+  
+    
+    
+    
+
+    <footer class="footer">
+      <p>Generated by <a href="https://mockifyer.dev" target="_blank">Mockifyer</a> — API mock record/replay with drift detection</p>
+      <p>Learn more: <a href="https://mockifyer.dev/docs/drift-check" target="_blank">Drift Check Documentation</a></p>
+    </footer>
+  </div>
+
+  <script>
+    // Toggle details
+    document.querySelectorAll('.endpoint-header').forEach(header => {
+      header.addEventListener('click', () => {
+        const details = header.nextElementSibling;
+        const isExpanded = details.style.display !== 'none';
+        details.style.display = isExpanded ? 'none' : 'block';
+        header.classList.toggle('collapsed', isExpanded);
+      });
+    });
+    
+    // Filter buttons
+    const filterButtons = document.querySelectorAll('.filter-btn');
+    const sections = document.querySelectorAll('.drift-section, .clean-section, .not-checked-section, .skipped-section');
+    
+    filterButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const filter = btn.dataset.filter;
+        
+        filterButtons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        
+        sections.forEach(section => {
+          if (filter === 'all' || section.classList.contains(filter + '-section')) {
+            section.style.display = 'block';
+          } else {
+            section.style.display = 'none';
+          }
+        });
+      });
+    });
+  </script>
+</body>
+</html>

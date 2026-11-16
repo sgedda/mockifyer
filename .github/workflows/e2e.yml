@@ -579,6 +579,7 @@ jobs:
         uses: actions/upload-pages-artifact@v3
         with:
           path: pages-root
+          retention-days: 1
 
       - name: Deploy to GitHub Pages
         if: steps.check_artifacts.outputs.skip != 'true'

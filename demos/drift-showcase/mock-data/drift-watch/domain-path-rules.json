@@ -2,7 +2,7 @@
   "version": 1,
   "rules": [
     {
-      "domain": "localhost:4200",
+      "domain": "localhost:4290",
       "pathPattern": "/api/weather/*",
       "pathTemplate": "/api/weather/{city}"
     },
