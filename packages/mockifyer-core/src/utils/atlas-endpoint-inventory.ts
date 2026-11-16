@@ -4,7 +4,7 @@
 
 import type { NetworkEvent } from './network-event-types';
 import type { ScannedEndpoint } from './atlas-code-scanner';
-import { normalizeUrlToTemplate } from './atlas-url-normalizer';
+import { normalizeUrlToTemplate, normalizeTemplatePlaceholders } from './atlas-url-normalizer';
 import { inferSchemaFromSamples, simplifySchema, type JsonSchema } from './atlas-schema-inference';
 
 export type EndpointStatus = 
@@ -159,25 +159,45 @@ export function buildEndpointInventory(
       if (match) {
         // Split: http://host:port{param} -> host:port and /{param}
         host = extractHost(match[1], fallbackHost);
-        pathTemplate = '/' + match[2] + match[3];
+        pathTemplate = normalizeTemplatePlaceholders('/' + match[2] + match[3]);
       } else {
         host = extractHost(scanned.resolvedUrl!, fallbackHost);
         const normalized = normalizeUrlToTemplate(scanned.resolvedUrl!);
-        pathTemplate = normalized.template;
+        pathTemplate = normalizeTemplatePlaceholders(normalized.template);
       }
     } else if (isRelativePath) {
       // Resolved relative path: use fallbackHost instead of "Unresolved base URL"
       host = fallbackHost;
       const normalized = normalizeUrlToTemplate(scanned.resolvedUrl!);
-      pathTemplate = normalized.template;
+      pathTemplate = normalizeTemplatePlaceholders(normalized.template);
     } else {
       // Truly unresolved (e.g., '{param}' or other templates)
       host = 'Unresolved base URL';
-      const normalized = scanned.resolvedUrl ? normalizeUrlToTemplate(scanned.resolvedUrl) : { template: scanned.urlTemplate, parameters: [] };
-      pathTemplate = normalized.template;
+      if (scanned.resolvedUrl) {
+        const normalized = normalizeUrlToTemplate(scanned.resolvedUrl);
+        pathTemplate = normalizeTemplatePlaceholders(normalized.template);
+      } else {
+        // Normalize template placeholders (:id, {param}) to standard format
+        pathTemplate = normalizeTemplatePlaceholders(scanned.urlTemplate);
+      }
     }
     
-    const item = getOrCreate(host, scanned.method, pathTemplate);
+    // When host is unresolved, try to find an existing endpoint with same method and template
+    let item: EndpointInventoryItem | undefined;
+    if (host === 'Unresolved base URL') {
+      // Search for existing endpoint in any host
+      for (const [key, existingItem] of itemsMap.entries()) {
+        if (existingItem.method === scanned.method && existingItem.urlTemplate === pathTemplate) {
+          item = existingItem;
+          break;
+        }
+      }
+    }
+    
+    // If not found or host is not unresolved, use getOrCreate
+    if (!item) {
+      item = getOrCreate(host, scanned.method, pathTemplate);
+    }
     
     item.codeLocations.push({
       filePath: scanned.filePath,
@@ -225,7 +245,20 @@ export function buildEndpointInventory(
     const host = extractHost(event.url);
     const normalized = normalizeUrlToTemplate(event.url);
     const method = event.method?.toUpperCase() || 'GET';
-    const item = getOrCreate(host, method, normalized.template);
+    
+    // Check if there's an unresolved endpoint with same method/template that we should merge with
+    let item: EndpointInventoryItem | undefined;
+    const unresolvedKey = `Unresolved base URL::${method}::${normalized.template}`;
+    if (itemsMap.has(unresolvedKey)) {
+      // Found an unresolved endpoint - update its host and reuse it
+      item = itemsMap.get(unresolvedKey)!;
+      itemsMap.delete(unresolvedKey);
+      item.host = host;
+      const newKey = `${host}::${method}::${normalized.template}`;
+      itemsMap.set(newKey, item);
+    } else {
+      item = getOrCreate(host, method, normalized.template);
+    }
 
     // Update status
     const hasChain = childCounts.has(event.requestId || '') && (childCounts.get(event.requestId!) || 0) > 0;

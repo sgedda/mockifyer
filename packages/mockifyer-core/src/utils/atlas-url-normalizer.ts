@@ -61,6 +61,33 @@ export function normalizeUrlToTemplate(url: string): NormalizedUrl {
 }
 
 /**
+ * Normalize template placeholders to a consistent format.
+ * Converts Express-style (:id) and generic ({param}) to specific types ({id}, {uuid}, {slug}).
+ * Examples:
+ *   /users/:id -> /users/{id}
+ *   /posts/{param} -> /posts/{id}
+ *   /repos/:userId/:repoId -> /repos/{id}/{id}
+ */
+export function normalizeTemplatePlaceholders(template: string): string {
+  let normalized = template;
+  
+  // Express-style :param -> {param}
+  normalized = normalized.replace(/:([a-zA-Z_][a-zA-Z0-9_]*)/g, '{$1}');
+  
+  // Infer type from parameter name
+  // UUID-like names
+  normalized = normalized.replace(/\{(?:uuid|guid)\}/gi, '{uuid}');
+  // Hash-like names
+  normalized = normalized.replace(/\{(?:hash|checksum|sha)\}/gi, '{hash}');
+  // Slug-like names
+  normalized = normalized.replace(/\{(?:slug|name|title|key)\}/gi, '{slug}');
+  // Generic {param} or ID-like names -> {id}
+  normalized = normalized.replace(/\{(?:param|id|userId|postId|itemId|[a-z]+Id)\}/gi, '{id}');
+  
+  return normalized;
+}
+
+/**
  * Merge multiple URL observations into a single template.
  * Takes the most general template that covers all observations.
  */
