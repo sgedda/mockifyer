@@ -417,7 +417,17 @@ export function generateEndpointInventoryHTML(
     endpoints.forEach((endpoint, index) => {
       const key = `${host}-${index}`;
       const auth = authByEndpoint?.get(`${host}::${endpoint.method}::${endpoint.urlTemplate}`);
-      const endpointEvents = events.filter(e => e.url && e.url.includes(host) && e.method === endpoint.method);
+      const endpointEvents = events.filter(e => {
+        if (!e.url || !e.url.includes(host) || e.method !== endpoint.method) return false;
+        try {
+          const url = new URL(e.url);
+          const normalizedPath = url.pathname.replace(/\/+$/, '').replace(/^\/+/, '/');
+          const normalizedTemplate = endpoint.urlTemplate.replace(/\/+$/, '').replace(/^\/+/, '/');
+          return normalizedPath === normalizedTemplate || normalizedPath.match(new RegExp(`^${normalizedTemplate.replace(/:[^/]+/g, '[^/]+')}$`));
+        } catch {
+          return false;
+        }
+      });
       
       // Get auth label for detail pane
       const authLabel = auth ? (

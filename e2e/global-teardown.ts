@@ -149,6 +149,10 @@ function scrubObjectSecrets(obj: unknown): unknown {
   if (obj === null || obj === undefined) return obj;
   
   if (typeof obj === 'string') {
+    // Redact Bearer tokens and similar auth scheme values
+    if (/^(Bearer|Basic|OAuth|Digest)\s+/i.test(obj)) {
+      return obj.replace(/^(Bearer|Basic|OAuth|Digest)\s+.+$/i, '$1 <redacted>');
+    }
     // Redact long strings that look like tokens/keys (including JWTs with dots)
     if (obj.length > 30 && /^[A-Za-z0-9+/=_.-]{30,}$/.test(obj)) {
       return '<redacted>';
@@ -169,7 +173,9 @@ function scrubObjectSecrets(obj: unknown): unknown {
           lowerKey.includes('secret') || 
           lowerKey.includes('password') ||
           lowerKey.includes('apikey') ||
-          lowerKey.includes('api_key')) {
+          lowerKey.includes('api_key') ||
+          lowerKey.includes('authorization') ||
+          lowerKey.includes('auth')) {
         result[key] = '<redacted>';
       } else {
         result[key] = scrubObjectSecrets(value);
@@ -211,8 +217,8 @@ async function globalTeardown(config: FullConfig) {
         const data = await response.json();
         networkEvents = data.events || data;
         console.log(`  ✓ Fetched ${networkEvents.length} network events`);
-        if (networkEvents.length === 10000) {
-          console.warn(`  ⚠ Hit limit of 10000 events; some traffic may be missing`);
+        if (networkEvents.length >= 5000) {
+          console.warn(`  ⚠ Hit dashboard limit of 5000 events; some traffic may be missing`);
         }
       } else {
         console.warn(`  ⚠ Dashboard API returned ${response.status}`);
