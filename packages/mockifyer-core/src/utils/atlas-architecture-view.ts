@@ -177,6 +177,9 @@ export function generateSystemDiagramSVG(
     }
   });
   
+  // Distribute downstream nodes vertically with gap to avoid overlap
+  const DOWNSTREAM_GAP = 10;
+  let downstreamY = y;
   downstreamHostPaths.forEach((info, downHost) => {
     const parentPos = hostPositions.get(info.parentHost);
     if (!parentPos) return;
@@ -188,13 +191,15 @@ export function generateSystemDiagramSVG(
       label,
       type: 'downstream',
       x: parentPos.x,
-      y,
+      y: downstreamY,
       width: nodeWidth
     });
+    downstreamY += NODE_HEIGHT + DOWNSTREAM_GAP;
   });
   
   if (downstreamHostPaths.size > 0) {
-    y += ROW_HEIGHT;
+    // Update y to after all downstream nodes
+    y = downstreamY;
   }
   
   const contentWidth = gridWidth + MARGIN * 2;
