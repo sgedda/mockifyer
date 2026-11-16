@@ -10,6 +10,7 @@
  *   mockifyer-atlas
  *   mockifyer-atlas --port 8081
  *   mockifyer-atlas --no-color
+ *   mockifyer-atlas scan [--dir ./src] [--output scan-results.json]
  *   npx @sgedda/mockifyer-core mockifyer-atlas
  *
  * Keys (interactive session):
@@ -56,6 +57,7 @@ import type { AtlasStreamPaint } from "../utils/metro-network-stream-tty";
 import { createEmptyAtlasDocMap } from "../utils/atlas-doc";
 import { writeAtlasDocHtml } from "../utils/atlas-doc-html";
 import { flushNetworkBodySpillsToDir } from "../utils/network-body-spill";
+import { scanCodeForEndpoints } from "../utils/atlas-code-scanner";
 
 interface CliOptions {
   port?: number;
@@ -64,11 +66,31 @@ interface CliOptions {
   help?: boolean;
   color?: boolean;
   expand?: boolean;
+  scan?: boolean;
+  scanDir?: string;
+  scanOutput?: string;
 }
 
 function parseArgs(): CliOptions {
   const args = process.argv.slice(2);
   const options: CliOptions = { backlog: true };
+  
+  // Check for scan command
+  if (args.length > 0 && args[0] === 'scan') {
+    options.scan = true;
+    for (let i = 1; i < args.length; i++) {
+      const arg = args[i];
+      if (arg === "--dir" || arg === "-d") {
+        options.scanDir = args[++i];
+      } else if (arg === "--output" || arg === "-o") {
+        options.scanOutput = args[++i];
+      } else if (arg === "--help" || arg === "-h") {
+        options.help = true;
+      }
+    }
+    return options;
+  }
+  
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === "--help" || arg === "-h") {
@@ -90,12 +112,30 @@ function parseArgs(): CliOptions {
   return options;
 }
 
-function showHelp(theme = createAtlasStreamColorTheme(false)): void {
+function showHelp(theme = createAtlasStreamColorTheme(false), scanMode = false): void {
+  if (scanMode) {
+    console.log(`
+${theme.bold("Mockifyer Atlas Scan")} — static code analysis for endpoint discovery
+
+Usage:
+  mockifyer-atlas scan [--dir ./src] [--output scan-results.json]
+
+Options:
+  --dir, -d      Directory to scan (default: ./src)
+  --output, -o   Output JSON file (default: stdout)
+
+Scans TypeScript/JavaScript files for fetch() and axios calls, resolves URLs,
+and generates a comprehensive endpoint inventory.
+`);
+    return;
+  }
+  
   console.log(`
 ${theme.bold("Mockifyer Atlas")} — interactive Metro hop stream
 
 Usage:
   mockifyer-atlas [--port 8081] [--host localhost] [--no-backlog] [--no-color] [--expand]
+  mockifyer-atlas scan [--dir ./src] [--output scan-results.json]
 
 Streams raw traffic from Metro's in-memory hop buffer (POST /mockifyer-network-events).
 Does not require the dashboard GUI.
@@ -344,7 +384,20 @@ async function renderAtlasHtmlLocally(
   const outDir = path.resolve(process.cwd(), "mock-data", "atlas-html");
   const map = createEmptyAtlasDocMap(events[0]?.scenario?.trim() || "default");
   flushNetworkBodySpillsToDir(outDir);
-  const written = writeAtlasDocHtml(outDir, map, events);
+  
+  // Bug #39: Scan codebase for endpoints to include in HTML export
+  const srcDir = path.resolve(process.cwd(), 'src');
+  let scannedEndpoints: any[] = [];
+  if (fs.existsSync(srcDir)) {
+    try {
+      const scanResult = scanCodeForEndpoints(srcDir);
+      scannedEndpoints = scanResult.endpoints;
+    } catch (err) {
+      // Scan failed, continue without scan results
+    }
+  }
+  
+  const written = writeAtlasDocHtml(outDir, map, events, { scannedEndpoints });
   const indexPath = path.join(outDir, "index.html");
   if (written <= 0 || !fs.existsSync(indexPath)) {
     console.error(
@@ -793,6 +846,93 @@ function startSseStream(
   return req;
 }
 
+async function runScan(options: CliOptions): Promise<void> {
+  const dir = options.scanDir || path.join(process.cwd(), 'src');
+  const theme = createAtlasStreamColorTheme(shouldUseAtlasStreamColor({
+    color: options.color,
+    isTTY: process.stdout.isTTY === true,
+  }));
+
+  console.log(theme.bold('[atlas scan]'), `Scanning ${dir}...`);
+  
+  const result = scanCodeForEndpoints(dir);
+  
+  console.log(theme.bold('[atlas scan]'), `Found ${result.endpoints.length} endpoint(s)`);
+  
+  if (result.errors.length > 0) {
+    console.warn(theme.warn(`\nWarnings: ${result.errors.length} file(s) had errors`));
+    result.errors.slice(0, 5).forEach(err => {
+      console.warn(theme.muted(`  ${err.file}: ${err.message}`));
+    });
+    if (result.errors.length > 5) {
+      console.warn(theme.muted(`  ... and ${result.errors.length - 5} more`));
+    }
+  }
+
+  // Group by host
+  const byHost = new Map<string, typeof result.endpoints>();
+  for (const endpoint of result.endpoints) {
+    let host = 'unresolved';
+    if (endpoint.resolvedUrl) {
+      try {
+        // Only parse if it's a full URL (starts with http:// or https://)
+        if (/^https?:\/\//i.test(endpoint.resolvedUrl)) {
+          host = new URL(endpoint.resolvedUrl).host;
+        } else {
+          // Relative URL or path - use a generic host
+          host = 'relative-paths';
+        }
+      } catch {
+        // Invalid URL, treat as unresolved
+        host = 'unresolved';
+      }
+    }
+    if (!byHost.has(host)) {
+      byHost.set(host, []);
+    }
+    byHost.get(host)!.push(endpoint);
+  }
+
+  console.log(theme.bold('\nEndpoints by host:'));
+  for (const [host, endpoints] of byHost.entries()) {
+    console.log(theme.info(`\n  ${host} (${endpoints.length})`));
+    for (const ep of endpoints.slice(0, 3)) {
+      const loc = `${path.relative(process.cwd(), ep.filePath)}:${ep.line}`;
+      console.log(theme.muted(`    ${ep.method} ${ep.urlTemplate} ${theme.dim(`(${loc})`)}`));
+    }
+    if (endpoints.length > 3) {
+      console.log(theme.muted(`    ... and ${endpoints.length - 3} more`));
+    }
+  }
+
+  const output = {
+    scannedAt: new Date().toISOString(),
+    directory: dir,
+    totalEndpoints: result.endpoints.length,
+    byHost: Object.fromEntries(
+      Array.from(byHost.entries()).map(([host, endpoints]) => [
+        host,
+        endpoints.map(ep => ({
+          method: ep.method,
+          urlTemplate: ep.urlTemplate,
+          resolvedUrl: ep.resolvedUrl,
+          filePath: ep.filePath,
+          line: ep.line,
+          component: ep.componentName
+        }))
+      ])
+    ),
+    errors: result.errors
+  };
+
+  if (options.scanOutput) {
+    fs.writeFileSync(options.scanOutput, JSON.stringify(output, null, 2), 'utf8');
+    console.log(theme.ok(`\nWrote results to ${options.scanOutput}`));
+  } else {
+    console.log('\n' + JSON.stringify(output, null, 2));
+  }
+}
+
 async function main(): Promise<void> {
   const options = parseArgs();
   const color = shouldUseAtlasStreamColor({
@@ -801,7 +941,12 @@ async function main(): Promise<void> {
   });
 
   if (options.help) {
-    showHelp(createAtlasStreamColorTheme(color));
+    showHelp(createAtlasStreamColorTheme(color), options.scan);
+    return;
+  }
+
+  if (options.scan) {
+    await runScan(options);
     return;
   }
 
