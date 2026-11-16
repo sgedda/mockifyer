@@ -125,12 +125,25 @@ describe('Atlas Architecture View', () => {
       return { width, height };
     }
 
-    it('should have host count matching inventory', () => {
+    it('should have host count matching inventory plus event-only hosts', () => {
       const nodes = parseNodes(svg);
       const hostNodes = nodes.filter(n => n.id.startsWith('host-'));
-      const inventoryHostCount = inventory.byHost.size;
+      
+      // Count unique hosts from both inventory and events
+      const allHosts = new Set<string>(inventory.byHost.keys());
+      events.forEach(ev => {
+        if (ev.url) {
+          try {
+            const url = new URL(ev.url);
+            allHosts.add(url.host);
+          } catch {
+            // Ignore invalid URLs
+          }
+        }
+      });
+      const expectedHostCount = allHosts.size;
 
-      expect(hostNodes.length).toBe(inventoryHostCount);
+      expect(hostNodes.length).toBe(expectedHostCount);
       expect(hostNodes.length).toBeGreaterThan(0);
     });
 
