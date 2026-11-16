@@ -41,7 +41,7 @@ var import_path = __toESM(require("path"));
 var SITE_URL = "https://mockifyer.dev";
 var SITE_NAME = "Mockifyer";
 var DEFAULT_TITLE = "Mockifyer \u2014 Record & Replay HTTP API Mocks";
-var DEFAULT_DESCRIPTION = "Record axios and fetch calls as JSON and replay them in Node and React Native. Selective recording by default; mocks stay in your repo.";
+var DEFAULT_DESCRIPTION = "Open-source API mocking for JavaScript and React Native. Record and replay HTTP calls, tweak fields in a dashboard, catch API drift in CI. Mocks stay in your repo.";
 var PAGE_SEO = {
   "/": {
     title: DEFAULT_TITLE,
