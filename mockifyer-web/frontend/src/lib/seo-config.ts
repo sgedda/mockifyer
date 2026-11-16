@@ -100,6 +100,72 @@ export const PAGE_SEO: Record<string, PageSeoConfig> = {
       'Use Mockifyer to record and replay HTTP fetch calls in browser environments, Expo web builds, and Vite projects with the memory provider.',
     path: '/guides/browser-record-replay',
   },
+  '/guides/react-native-expo': {
+    title: 'React Native + Expo Setup Guide',
+    description:
+      'Set up Mockifyer in React Native and Expo projects. Configure providers, handle Metro bundler, and record API calls on iOS and Android.',
+    path: '/guides/react-native-expo',
+  },
+  '/guides/selective-recording': {
+    title: 'Selective Recording - Record Only What You Need',
+    description:
+      'Use recordResponses patterns to record only specific URLs. Save repo space by recording full responses selectively.',
+    path: '/guides/selective-recording',
+  },
+  '/guides/record-replay': {
+    title: 'Record & Replay Workflow',
+    description:
+      'Learn the Mockifyer record-replay workflow: capture real API calls, commit mocks to git, and replay them in tests.',
+    path: '/guides/record-replay',
+  },
+  '/guides/maestro-detox-mocks': {
+    title: 'Maestro & Detox with Mocked APIs',
+    description:
+      'Use Mockifyer with Maestro and Detox for stable React Native E2E tests. Lock scenarios and eliminate backend flakes.',
+    path: '/guides/maestro-detox-mocks',
+  },
+  '/guides/scenarios': {
+    title: 'Scenarios - Switch Between Test States',
+    description:
+      'Use scenarios to switch between test states: happy path, errors, edge cases. Organize mocks and test multiple flows.',
+    path: '/guides/scenarios',
+  },
+  '/guides': {
+    title: 'Mockifyer Guides: Testing Patterns and Best Practices',
+    description:
+      'In-depth guides for testing patterns, React Native E2E, debugging tester bugs, and avoiding mock drift with Mockifyer record-replay.',
+    path: '/guides',
+  },
+  '/comparisons/msw': {
+    title: 'Mockifyer vs MSW (Mock Service Worker)',
+    description:
+      'Compare Mockifyer and MSW for API mocking. MSW uses service workers, Mockifyer records real API calls. See which fits your workflow.',
+    path: '/comparisons/msw',
+  },
+  '/comparisons/pollyjs': {
+    title: 'Mockifyer vs Polly.js',
+    description:
+      'Compare Mockifyer and Polly.js for HTTP recording. Both support record-replay, but differ in setup, adapters, and React Native support.',
+    path: '/comparisons/pollyjs',
+  },
+  '/comparisons/nock': {
+    title: 'Mockifyer vs Nock',
+    description:
+      'Compare Mockifyer and Nock for HTTP mocking in Node.js. Nock intercepts http.request, Mockifyer records axios and fetch.',
+    path: '/comparisons/nock',
+  },
+  '/comparisons/wiremock': {
+    title: 'Mockifyer vs WireMock',
+    description:
+      'Compare Mockifyer and WireMock. WireMock runs as a separate server, Mockifyer replays from in-process JSON files.',
+    path: '/comparisons/wiremock',
+  },
+  '/comparisons/mockoon': {
+    title: 'Mockifyer vs Mockoon',
+    description:
+      'Compare Mockifyer and Mockoon. Mockoon is a local mock API server, Mockifyer records and replays real API calls in your tests.',
+    path: '/comparisons/mockoon',
+  },
   '/features': {
     title: 'Mockifyer Features: Record, Replay, Scenarios',
     description:
