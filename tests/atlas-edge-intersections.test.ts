@@ -329,6 +329,7 @@ describe('Atlas Edge-Node Intersections (Real Data)', () => {
     const edges = extractEdgeLines(svg);
     
     // Check pairwise edge overlaps
+    // Ignore first and last 20px where edges legitimately converge on shared nodes
     const overlaps: Array<{ edge1: number, edge2: number, overlapCount: number }> = [];
     
     for (let i = 0; i < edges.length; i++) {
@@ -336,10 +337,25 @@ describe('Atlas Edge-Node Intersections (Real Data)', () => {
         const points1 = edges[i].points || [];
         const points2 = edges[j].points || [];
         
+        // Filter out points within 20px of edge endpoints
+        const filterPoints = (points: Array<{x: number, y: number}>, edge: typeof edges[0]) => {
+          if (points.length < 2) return points;
+          const first = points[0];
+          const last = points[points.length - 1];
+          return points.filter(p => {
+            const distToStart = Math.sqrt((p.x - first.x)**2 + (p.y - first.y)**2);
+            const distToEnd = Math.sqrt((p.x - last.x)**2 + (p.y - last.y)**2);
+            return distToStart > 20 && distToEnd > 20;
+          });
+        };
+        
+        const filtered1 = filterPoints(points1, edges[i]);
+        const filtered2 = filterPoints(points2, edges[j]);
+        
         // Count overlapping points (within 2px tolerance)
         let overlapCount = 0;
-        for (const p1 of points1) {
-          for (const p2 of points2) {
+        for (const p1 of filtered1) {
+          for (const p2 of filtered2) {
             const dist = Math.sqrt((p1.x - p2.x)**2 + (p1.y - p2.y)**2);
             if (dist < 2) {
               overlapCount++;

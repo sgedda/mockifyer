@@ -8,6 +8,7 @@ import type { NetworkEvent } from './network-event-types';
 import type { EndpointAuthInfo } from './atlas-auth-detection';
 import type { EndpointInventory, EndpointInventoryItem } from './atlas-endpoint-inventory';
 import { generateEndpointSnippets } from './atlas-code-snippets';
+import * as dagre from '@dagrejs/dagre';
 
 interface SystemDiagramNode {
   id: string;
@@ -86,6 +87,17 @@ export function generateSystemDiagramSVG(
   // Get all hosts
   const allHosts = Array.from(inventory.byHost.keys());
   
+  // Use dagre for graph layout
+  const g = new dagre.graphlib.Graph();
+  g.setGraph({ 
+    rankdir: 'TB',
+    ranksep: 80,
+    nodesep: 30,
+    marginx: 40,
+    marginy: 40
+  });
+  g.setDefaultEdgeLabel(() => ({}));
+  
   // Calculate host statuses
   const hostStatuses = new Map<string, 'mocked' | 'live' | 'error' | 'code-only'>();
   allHosts.forEach(host => {
@@ -105,324 +117,104 @@ export function generateSystemDiagramSVG(
     );
   });
   
-  // Sugiyama-style layering: longest-path assignment
-  const hostTier = new Map<string, number>();
-  
-  // Initialize: hosts called by Application start at tier 1
-  appChildren.forEach(host => {
-    hostTier.set(host, 1);
-  });
-  
-  // Iteratively assign tiers: each host goes to 1 + max(parent tiers)
-  let changed = true;
-  let iterations = 0;
-  while (changed && iterations < 100) {
-    changed = false;
-    iterations++;
-    
-    allHosts.forEach(host => {
-      const parents = childParentMap.get(host);
-      if (!parents || parents.size === 0) {
-        // No host parents, but might be called by app
-        if (!hostTier.has(host)) {
-          hostTier.set(host, 1);
-          changed = true;
-        }
-        return;
-      }
-      
-      let maxParentTier = 0;
-      parents.forEach(parentHost => {
-        const parentTier = hostTier.get(parentHost);
-        if (parentTier !== undefined) {
-          maxParentTier = Math.max(maxParentTier, parentTier);
-        }
-      });
-      
-      if (maxParentTier > 0) {
-        const newTier = maxParentTier + 1;
-        const currentTier = hostTier.get(host);
-        if (currentTier === undefined || newTier > currentTier) {
-          hostTier.set(host, newTier);
-          changed = true;
-        }
-      }
-    });
-  }
-  
-  // Group hosts by tier
-  const hostsByTier = new Map<number, string[]>();
-  hostTier.forEach((tier, host) => {
-    if (!hostsByTier.has(tier)) {
-      hostsByTier.set(tier, []);
-    }
-    hostsByTier.get(tier)!.push(host);
-  });
-  
-  const maxTier = Math.max(0, ...Array.from(hostsByTier.keys()));
-  const tiers: string[][] = [];
-  for (let i = 1; i <= maxTier; i++) {
-    tiers.push(hostsByTier.get(i) || []);
-  }
-  
-  // Barycenter ordering within tiers to reduce crossings
-  for (let t = 0; t < tiers.length; t++) {
-    const tierHosts = tiers[t];
-    if (tierHosts.length <= 1) continue;
-    
-    // Calculate barycenter for each host based on parent positions
-    const barycenters = new Map<string, number>();
-    tierHosts.forEach(host => {
-      const parents = childParentMap.get(host) || new Set();
-      if (parents.size === 0 && appChildren.has(host)) {
-        // Parent is Application (centered)
-        barycenters.set(host, 0);
-      } else {
-        let sum = 0;
-        let count = 0;
-        parents.forEach(parentHost => {
-          const parentTierIdx = hostTier.get(parentHost)! - 1;
-          if (parentTierIdx === t - 1) {
-            const parentIdx = tiers[parentTierIdx].indexOf(parentHost);
-            if (parentIdx >= 0) {
-              sum += parentIdx;
-              count++;
-            }
-          }
-        });
-        barycenters.set(host, count > 0 ? sum / count : tierHosts.indexOf(host));
-      }
-    });
-    
-    // Sort by barycenter
-    tierHosts.sort((a, b) => (barycenters.get(a) || 0) - (barycenters.get(b) || 0));
-  }
-  
-  // Layout tiers with wrapping for large tiers
-  let y = MARGIN;
-  const hostNodeWidths = new Map<string, number>();
-  allHosts.forEach(host => {
-    hostNodeWidths.set(host, getNodeWidth(host));
-  });
-  
-  const MAX_NODES_PER_ROW = 5; // Wrap if tier has more than this
-  const ROW_GAP = 80; // Gap between wrapped rows within a tier
-  
-  // Calculate diagram width based on largest row
-  let maxRowWidth = getNodeWidth('Application');
-  tiers.forEach(tierHosts => {
-    for (let i = 0; i < tierHosts.length; i += MAX_NODES_PER_ROW) {
-      const rowHosts = tierHosts.slice(i, i + MAX_NODES_PER_ROW);
-      const rowWidth = rowHosts.reduce((sum, h) => sum + hostNodeWidths.get(h)!, 0) + 
-                      (rowHosts.length - 1) * NODE_GAP;
-      maxRowWidth = Math.max(maxRowWidth, rowWidth);
-    }
-  });
-  const diagramWidth = Math.max(maxRowWidth, 600);
-  
-  // Tier 0: Application (centered)
+  // Add nodes to dagre graph with real dimensions
   const appWidth = getNodeWidth('Application');
-  const appX = MARGIN + (diagramWidth - appWidth) / 2;
-  nodes.push({
-    id: 'app',
+  g.setNode('app', { 
     label: 'Application',
-    type: 'app',
-    x: appX,
-    y,
-    width: appWidth
-  });
-  y += NODE_HEIGHT + TIER_GAP;
-  
-  // Lay out each tier, wrapping if needed
-  tiers.forEach((tierHosts, tierIndex) => {
-    if (tierHosts.length === 0) return;
-    
-    const tierStartY = y;
-    let maxTierY = y;
-    
-    // Split into rows if needed
-    for (let rowStart = 0; rowStart < tierHosts.length; rowStart += MAX_NODES_PER_ROW) {
-      const rowHosts = tierHosts.slice(rowStart, rowStart + MAX_NODES_PER_ROW);
-      const rowWidth = rowHosts.reduce((sum, h) => sum + hostNodeWidths.get(h)!, 0) + 
-                      (rowHosts.length - 1) * NODE_GAP;
-      
-      let x = MARGIN + (diagramWidth - rowWidth) / 2;
-      const rowY = rowStart === 0 ? y : y + ROW_GAP;
-      
-      rowHosts.forEach(host => {
-        const width = hostNodeWidths.get(host)!;
-        nodes.push({
-          id: `host-${host}`,
-          label: host,
-          type: hostStatuses.get(host) === 'mocked' ? 'mocked-backend' : 
-                hostStatuses.get(host) === 'code-only' ? 'code-backend' :
-                hostStatuses.get(host) === 'error' ? 'error-backend' :
-                'backend',
-          x,
-          y: rowY,
-          width
-        });
-        x += width + NODE_GAP;
-      });
-      
-      maxTierY = Math.max(maxTierY, rowY + NODE_HEIGHT);
-      if (rowStart > 0) y += ROW_GAP;
-    }
-    
-    y = maxTierY + TIER_GAP;
+    width: appWidth,
+    height: NODE_HEIGHT
   });
   
-  y += MARGIN;
+  allHosts.forEach(host => {
+    const width = getNodeWidth(host);
+    g.setNode(`host-${host}`, {
+      label: host,
+      width,
+      height: NODE_HEIGHT
+    });
+  });
   
-  const contentWidth = diagramWidth + MARGIN * 2;
-  const diagramHeight = y;
-  
-  // Create edges with dummy waypoints for skip-tier edges (Sugiyama style)
-  
-  // Edge structure: from node ID, to node ID, waypoints (intermediate tier positions)
-  interface EdgeWithWaypoints {
-    from: string;
-    to: string;
-    waypoints: Array<{tier: number, x?: number}>; // tier index, x position computed later
-    label?: string;
-    status: string;
-    count: number;
-  }
-  
-  const edgesWithWaypoints: EdgeWithWaypoints[] = [];
-  
+  // Add edges to dagre graph
   // App -> hosts
   appChildren.forEach(host => {
-    const hostInventory = inventory.byHost.get(host);
-    if (!hostInventory) return;
-    
-    const status = hostStatuses.get(host) || 'live';
-    const childTier = hostTier.get(host) || 1;
-    
-    // Create waypoints for each intermediate tier
-    const waypoints: Array<{tier: number}> = [];
-    for (let t = 1; t < childTier; t++) {
-      waypoints.push({ tier: t });
-    }
-    
-    edgesWithWaypoints.push({
-      from: 'app',
-      to: `host-${host}`,
-      waypoints,
-      label: `${hostInventory.length} ep`,
-      status: status as any,
-      count: hostInventory.length
-    });
+    g.setEdge('app', `host-${host}`);
   });
   
-  // Host -> host relationships
+  // Host -> host
   parentChildMap.forEach((children, parentHost) => {
     children.forEach(childHost => {
-      const status = hostStatuses.get(childHost) || 'live';
-      const hostInventory = inventory.byHost.get(childHost);
-      const count = hostInventory ? hostInventory.length : 0;
-      
-      const parentTier = hostTier.get(parentHost) || 1;
-      const childTier = hostTier.get(childHost) || 1;
-      
-      // Create waypoints for intermediate tiers
-      const waypoints: Array<{tier: number}> = [];
-      for (let t = parentTier + 1; t < childTier; t++) {
-        waypoints.push({ tier: t });
-      }
-      
-      edgesWithWaypoints.push({
-        from: `host-${parentHost}`,
-        to: `host-${childHost}`,
-        waypoints,
-        label: `${count} ep`,
-        status: status as any,
-        count
-      });
+      g.setEdge(`host-${parentHost}`, `host-${childHost}`);
     });
   });
   
-  // Compute waypoint x positions with per-edge offsets
-  // Group edges by waypoint tier to spread them out
-  const edgesByWaypointTier = new Map<number, typeof edgesWithWaypoints>();
-  edgesWithWaypoints.forEach((edge, idx) => {
-    edge.waypoints.forEach(wp => {
-      if (!edgesByWaypointTier.has(wp.tier)) {
-        edgesByWaypointTier.set(wp.tier, []);
-      }
-      if (!edgesByWaypointTier.get(wp.tier)!.includes(edge)) {
-        edgesByWaypointTier.get(wp.tier)!.push(edge);
-      }
+  // Run dagre layout
+  dagre.layout(g);
+  
+  // Extract node positions from dagre
+  g.nodes().forEach(nodeId => {
+    const node = g.node(nodeId);
+    const host = nodeId === 'app' ? null : nodeId.replace('host-', '');
+    
+    nodes.push({
+      id: nodeId,
+      label: node.label,
+      type: nodeId === 'app' ? 'app' :
+            hostStatuses.get(host!) === 'mocked' ? 'mocked-backend' :
+            hostStatuses.get(host!) === 'code-only' ? 'code-backend' :
+            hostStatuses.get(host!) === 'error' ? 'error-backend' :
+            'backend',
+      x: node.x - node.width / 2, // dagre uses center, we use top-left
+      y: node.y - node.height / 2,
+      width: node.width
     });
   });
   
-  edgesWithWaypoints.forEach((edge, edgeIdx) => {
-    edge.waypoints.forEach(wp => {
-      const tierIdx = wp.tier - 1;
-      if (tierIdx < 0 || tierIdx >= tiers.length) return;
-      
-      // Find nodes at this tier
-      const tierNodes = tiers[tierIdx].map(h => nodes.find(n => n.id === `host-${h}`)).filter(n => n);
-      
-      // Base x position (center of gap or diagram)
-      let baseX: number;
-      if (tierNodes.length === 0) {
-        baseX = MARGIN + diagramWidth / 2;
-      } else if (tierNodes.length === 1) {
-        const node = tierNodes[0]!;
-        baseX = node.x + (node.width || 160) + 20;
-      } else {
-        const node0 = tierNodes[0]!;
-        const node1 = tierNodes[1]!;
-        const w0 = node0.width || 160;
-        baseX = node0.x + w0 + (node1.x - (node0.x + w0)) / 2;
-      }
-      
-      // Add small horizontal offset per edge to avoid overlaps
-      const edgesAtThisTier = edgesByWaypointTier.get(wp.tier) || [];
-      const edgeIndexAtTier = edgesAtThisTier.indexOf(edge);
-      const offsetRange = 40; // Total spread range
-      const offset = edgeIndexAtTier * (offsetRange / Math.max(1, edgesAtThisTier.length - 1)) - offsetRange / 2;
-      
-      wp.x = baseX + offset;
-    });
-  });
+  // Calculate diagram bounds
+  const graphBounds = g.graph();
+  const contentWidth = (graphBounds.width || 800) + MARGIN * 2;
+  const diagramHeight = (graphBounds.height || 600) + MARGIN * 2;
   
-  // Convert to old edge format with computed waypoints
-  const edges: Array<{from: string, to: string, label: string | undefined, status: 'live' | 'error' | 'code-only' | 'mocked' | 'unexercised', count: number, waypoints?: Array<{x: number, y: number}>}> = [];
+  // Create edges with dagre waypoints
+  const edges: Array<{
+    from: string;
+    to: string;
+    label: string | undefined;
+    status: 'live' | 'error' | 'code-only' | 'mocked' | 'unexercised';
+    count: number;
+    points?: Array<{x: number, y: number}>;
+  }> = [];
   
-  edgesWithWaypoints.forEach(edge => {
-    // Compute Y positions for waypoints in gaps BETWEEN tiers (not at node level)
-    const waypointsWithXY = edge.waypoints.map(wp => {
-      const tierIdx = wp.tier - 1;
-      
-      // Place waypoint in the vertical gap BETWEEN this tier and the next
-      // This ensures it doesn't overlap with nodes
-      let tierY: number;
-      
-      if (tierIdx >= 0 && tierIdx < tiers.length && tiers[tierIdx].length > 0) {
-        const firstNode = nodes.find(n => n.id === `host-${tiers[tierIdx][0]}`);
-        if (firstNode) {
-          // Place waypoint halfway through the gap AFTER this tier
-          tierY = firstNode.y + NODE_HEIGHT + TIER_GAP / 2;
-        } else {
-          tierY = MARGIN + NODE_HEIGHT + tierIdx * (NODE_HEIGHT + TIER_GAP) + NODE_HEIGHT + TIER_GAP / 2;
-        }
-      } else {
-        // Default calculation
-        tierY = MARGIN + NODE_HEIGHT + tierIdx * (NODE_HEIGHT + TIER_GAP) + NODE_HEIGHT + TIER_GAP / 2;
+  // Extract edges from dagre with points
+  g.edges().forEach(e => {
+    const edge = g.edge(e);
+    const fromNodeId = e.v;
+    const toNodeId = e.w;
+    
+    // Determine label and status
+    let label: string | undefined;
+    let status: 'live' | 'error' | 'code-only' | 'mocked' | 'unexercised' = 'live';
+    let count = 0;
+    
+    if (toNodeId.startsWith('host-')) {
+      const host = toNodeId.replace('host-', '');
+      const hostInventory = inventory.byHost.get(host);
+      if (hostInventory) {
+        count = hostInventory.length;
+        label = `${count} ep`;
       }
-      
-      return { x: wp.x || MARGIN + diagramWidth / 2, y: tierY };
-    });
+      const hostStatus = hostStatuses.get(host);
+      if (hostStatus === 'mocked') status = 'mocked';
+      else if (hostStatus === 'error') status = 'error';
+      else if (hostStatus === 'code-only') status = 'code-only';
+    }
     
     edges.push({
-      from: edge.from,
-      to: edge.to,
-      label: edge.label,
-      status: edge.status as 'live' | 'error' | 'code-only' | 'mocked' | 'unexercised',
-      count: edge.count,
-      waypoints: waypointsWithXY
+      from: fromNodeId,
+      to: toNodeId,
+      label,
+      status,
+      count,
+      points: edge.points || []
     });
   });
   
@@ -463,19 +255,13 @@ export function generateSystemDiagramSVG(
     const strokeDasharray = (edge.status === 'code-only' || edge.status === 'unexercised') ? '5,5' : 'none';
     const marker = `arrow-${edge.status === 'error' ? 'error' : edge.status === 'mocked' ? 'mocked' : edge.status === 'code-only' ? 'code-only' : 'live'}`;
     
-    // Start and end points (center bottom of source, center top of target)
-    const x1 = fromNode.x + (fromNode.width || 160) / 2;
-    const y1 = fromNode.y + NODE_HEIGHT;
-    const x2 = toNode.x + (toNode.width || 160) / 2;
-    const y2 = toNode.y;
+    // Use dagre's edge points for smooth path
+    const points = edge.points || [];
+    let pathData: string;
     
-    // Build path through waypoints (Sugiyama-style routing)
-    let pathData = `M ${x1} ${y1}`;
-    
-    const edgeWithWaypoints = edge as any;
-    if (edgeWithWaypoints.waypoints && edgeWithWaypoints.waypoints.length > 0) {
-      // Path through waypoints using cubic Bezier segments
-      const points = [{ x: x1, y: y1 }, ...edgeWithWaypoints.waypoints, { x: x2, y: y2 }];
+    if (points.length >= 2) {
+      // Draw smooth monotone curve through dagre points
+      pathData = `M ${points[0].x} ${points[0].y}`;
       
       for (let i = 0; i < points.length - 1; i++) {
         const p0 = points[i];
@@ -486,7 +272,7 @@ export function generateSystemDiagramSVG(
         const dist = Math.sqrt(dx * dx + dy * dy);
         const offset = Math.min(dist * 0.4, 40);
         
-        // Control points for smooth S-curve between waypoints
+        // Control points for smooth curve
         const cx1 = p0.x;
         const cy1 = p0.y + offset;
         const cx2 = p1.x;
@@ -495,16 +281,16 @@ export function generateSystemDiagramSVG(
         pathData += ` C ${cx1} ${cy1}, ${cx2} ${cy2}, ${p1.x} ${p1.y}`;
       }
     } else {
-      // Direct edge with simple cubic Bezier
+      // Fallback: direct line from node centers
+      const x1 = fromNode.x + (fromNode.width || 160) / 2;
+      const y1 = fromNode.y + NODE_HEIGHT;
+      const x2 = toNode.x + (toNode.width || 160) / 2;
+      const y2 = toNode.y;
+      
       const verticalDistance = y2 - y1;
       const controlPointOffset = verticalDistance * 0.4;
       
-      const cx1 = x1;
-      const cy1 = y1 + controlPointOffset;
-      const cx2 = x2;
-      const cy2 = y2 - controlPointOffset;
-      
-      pathData += ` C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`;
+      pathData = `M ${x1} ${y1} C ${x1} ${y1 + controlPointOffset}, ${x2} ${y2 - controlPointOffset}, ${x2} ${y2}`;
     }
     
     svg += `<path d="${pathData}" 
@@ -512,9 +298,10 @@ export function generateSystemDiagramSVG(
       fill="none" marker-end="url(#${marker})" />`;
     
     // Label at midpoint
-    if (edge.label) {
-      const labelX = (x1 + x2) / 2;
-      const labelY = (y1 + y2) / 2;
+    if (edge.label && points.length >= 2) {
+      const midIdx = Math.floor(points.length / 2);
+      const labelX = points[midIdx].x;
+      const labelY = points[midIdx].y;
       const labelWidth = edge.label.length * 7 + 8;
       const labelHeight = 18;
       
