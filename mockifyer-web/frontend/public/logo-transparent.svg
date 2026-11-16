@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Mockifyer">
+  <defs>
+    <linearGradient id="borderGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4a7bff;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#7b3fe4;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="arrowGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4a7bff;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#7b3fe4;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Gradient border (no background) -->
+  <rect x="64" y="64" width="896" height="896" rx="120" fill="none" stroke="url(#borderGradient)" stroke-width="32"/>
+  
+  <!-- White M letter -->
+  <path d="M 280 680 L 280 340 L 380 520 L 512 340 L 644 520 L 744 340 L 744 680 L 664 680 L 664 480 L 564 620 L 512 540 L 460 620 L 360 480 L 360 680 Z" fill="#f8fafc"/>
+  
+  <!-- Gradient circular replay arrow (bottom right) -->
+  <g transform="translate(680, 680)">
+    <!-- Circular arc -->
+    <path d="M 40 -60 A 60 60 0 1 1 -20 -80" fill="none" stroke="url(#arrowGradient)" stroke-width="24" stroke-linecap="round"/>
+    <!-- Arrow head -->
+    <path d="M -20 -80 L -40 -100 L -5 -100 Z" fill="url(#arrowGradient)"/>
+  </g>
+</svg>

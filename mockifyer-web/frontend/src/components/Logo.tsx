@@ -10,9 +10,9 @@ interface LogoProps {
 
 export default function Logo({ className, showIcon = true, size = 'md', as = 'link' }: LogoProps) {
   const sizeClasses = {
-    sm: { text: 'text-lg', icon: 'text-2xl', padding: 'p-1.5' },
-    md: { text: 'text-xl', icon: 'text-3xl', padding: 'p-2' },
-    lg: { text: 'text-3xl md:text-4xl', icon: 'text-5xl md:text-6xl', padding: 'p-2.5 md:p-3' },
+    sm: { text: 'text-lg', icon: 'w-8 h-8' },
+    md: { text: 'text-xl', icon: 'w-10 h-10' },
+    lg: { text: 'text-3xl md:text-4xl', icon: 'w-14 h-14 md:w-16 md:h-16' },
   }
 
   const content = (
@@ -25,18 +25,33 @@ export default function Logo({ className, showIcon = true, size = 'md', as = 'li
     >
       {showIcon && (
         <div className="relative flex-shrink-0 group">
-          {/* Icon container */}
-          <div className={cn(
-            'relative rounded-lg transition-all duration-300',
-            sizeClasses[size].padding
-          )}>
-            <span className={cn(
-              'text-foreground transition-transform duration-300 group-hover:scale-110 inline-block',
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 1024 1024"
+            role="img"
+            aria-label="Mockifyer"
+            className={cn(
+              'transition-transform duration-300 group-hover:scale-110',
               sizeClasses[size].icon
-            )}>
-              🎭
-            </span>
-          </div>
+            )}
+          >
+            <defs>
+              <linearGradient id="borderGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style={{ stopColor: '#4a7bff', stopOpacity: 1 }} />
+                <stop offset="100%" style={{ stopColor: '#7b3fe4', stopOpacity: 1 }} />
+              </linearGradient>
+              <linearGradient id="arrowGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style={{ stopColor: '#4a7bff', stopOpacity: 1 }} />
+                <stop offset="100%" style={{ stopColor: '#7b3fe4', stopOpacity: 1 }} />
+              </linearGradient>
+            </defs>
+            <rect x="64" y="64" width="896" height="896" rx="120" fill="none" stroke="url(#borderGradient)" strokeWidth="32"/>
+            <path d="M 280 680 L 280 340 L 380 520 L 512 340 L 644 520 L 744 340 L 744 680 L 664 680 L 664 480 L 564 620 L 512 540 L 460 620 L 360 480 L 360 680 Z" className="fill-foreground"/>
+            <g transform="translate(680, 680)">
+              <path d="M 40 -60 A 60 60 0 1 1 -20 -80" fill="none" stroke="url(#arrowGradient)" strokeWidth="24" strokeLinecap="round"/>
+              <path d="M -20 -80 L -40 -100 L -5 -100 Z" fill="url(#arrowGradient)"/>
+            </g>
+          </svg>
         </div>
       )}
       <span className="text-foreground font-extrabold tracking-tight">

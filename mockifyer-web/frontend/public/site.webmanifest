@@ -1,0 +1,22 @@
+{
+  "name": "Mockifyer",
+  "short_name": "Mockifyer",
+  "description": "Open-source API mocking for JavaScript and React Native. Record and replay HTTP calls, tweak fields in a dashboard, catch API drift in CI.",
+  "icons": [
+    {
+      "src": "/android-chrome-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/android-chrome-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "theme_color": "#0f172a",
+  "background_color": "#0f172a",
+  "display": "standalone",
+  "start_url": "/",
+  "scope": "/"
+}
