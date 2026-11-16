@@ -235,6 +235,7 @@ jobs:
       
       - name: Prepare Pages directory structure
         if: steps.check_artifacts.outputs.skip != 'true'
+        id: prepare_pages
         run: |
           mkdir -p pages-root
           
@@ -256,6 +257,9 @@ jobs:
           HAS_ATLAS=""
           if [ -d "pages-root/atlas" ] && [ -n "$(ls -A pages-root/atlas 2>/dev/null)" ]; then
             HAS_ATLAS="yes"
+            echo "has_atlas=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_atlas=false" >> $GITHUB_OUTPUT
           fi
           echo "HAS_ATLAS=$HAS_ATLAS" >> $GITHUB_ENV
           
@@ -376,7 +380,7 @@ jobs:
           echo "**Site URL:** ${{ steps.deployment.outputs.page_url }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- 🎭 [Drift Check Showcase](${{ steps.deployment.outputs.page_url }}drift/)" >> $GITHUB_STEP_SUMMARY
-          if [ -n "$HAS_ATLAS" ]; then
+          if [ "${{ steps.prepare_pages.outputs.has_atlas }}" = "true" ]; then
             echo "- 🗺️ [Atlas Architecture](${{ steps.deployment.outputs.page_url }}atlas/)" >> $GITHUB_STEP_SUMMARY
           fi
           echo "" >> $GITHUB_STEP_SUMMARY
