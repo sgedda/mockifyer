@@ -255,7 +255,7 @@ export function generateSystemDiagramSVG(
     </marker>
   </defs>`;
   
-  // Draw edges
+  // Draw edges with orthogonal routing to avoid node intersections
   edges.forEach(edge => {
     const fromNode = nodes.find(n => n.id === edge.from);
     const toNode = nodes.find(n => n.id === edge.to);
@@ -275,19 +275,40 @@ export function generateSystemDiagramSVG(
     const x2 = toNode.x + (toNode.width || 160) / 2;
     const y2 = toNode.y;
     
-    svg += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" 
-      stroke="${color}" stroke-width="2" stroke-dasharray="${strokeDasharray}" marker-end="url(#${marker})" />`;
+    // Use orthogonal routing via a routing lane to the left of all nodes
+    // Keep vertical segments at the routing lane to avoid passing through nodes
+    const routingLaneX = 20; // Fixed x-coordinate to the left of all nodes
+    const verticalGap = 20;
+    const horizontalOffset = 5; // Small offset for horizontal segments
     
-    // Label at midpoint with background rect
-    if (edge.label) {
-      const midX = (x1 + x2) / 2;
+    // Calculate routing Y levels
+    const routingY1 = y1 + verticalGap; // Below source
+    const routingY2 = y2 > y1 ? y2 - horizontalOffset : y2 + horizontalOffset; // Slightly offset from target
+    
+    // 5-segment path: down from source, left to lane, vertical along lane, right to target, final vertical to target edge
+    let pathData;
+    if (Math.abs(y2 - y1) > 2 * verticalGap) {
+      // Use routing lane for vertical movement to avoid node intersections
+      pathData = `M ${x1} ${y1} L ${x1} ${routingY1} L ${routingLaneX} ${routingY1} L ${routingLaneX} ${routingY2} L ${x2} ${routingY2} L ${x2} ${y2}`;
+    } else {
+      // For short vertical distances, use direct 3-segment routing
       const midY = (y1 + y2) / 2;
+      pathData = `M ${x1} ${y1} L ${x1} ${midY} L ${x2} ${midY} L ${x2} ${y2}`;
+    }
+    
+    svg += `<path d="${pathData}" 
+      stroke="${color}" stroke-width="2" stroke-dasharray="${strokeDasharray}" 
+      fill="none" marker-end="url(#${marker})" />`;
+    
+    // Label at midpoint
+    if (edge.label) {
+      const labelX = (x1 + x2) / 2;
+      const labelY = (y1 + y2) / 2;
       const labelWidth = edge.label.length * 7 + 8;
       const labelHeight = 18;
       
-      // Background rect for label
-      svg += `<rect x="${midX - labelWidth/2}" y="${midY - labelHeight/2}" width="${labelWidth}" height="${labelHeight}" rx="3" fill="white" stroke="${color}" stroke-width="1" />`;
-      svg += `<text x="${midX}" y="${midY + 4}" font-size="12" fill="${color}" text-anchor="middle" font-weight="600">${escapeHtml(edge.label)}</text>`;
+      svg += `<rect x="${labelX - labelWidth/2}" y="${labelY - labelHeight/2}" width="${labelWidth}" height="${labelHeight}" rx="3" fill="white" stroke="${color}" stroke-width="1" />`;
+      svg += `<text x="${labelX}" y="${labelY + 4}" font-size="12" fill="${color}" text-anchor="middle" font-weight="600">${escapeHtml(edge.label)}</text>`;
     }
   });
   

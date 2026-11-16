@@ -215,15 +215,15 @@ describe('Atlas Architecture View', () => {
   });
 
   describe('Edges', () => {
-    it('should have edge lines connecting nodes', () => {
-      const lineCount = (svg.match(/<line/g) || []).length;
-      expect(lineCount).toBeGreaterThan(0);
+    it('should have edge paths connecting nodes', () => {
+      const pathCount = (svg.match(/<path/g) || []).length;
+      expect(pathCount).toBeGreaterThan(0);
     });
 
-    it('should have properly structured line elements', () => {
-      const lineRegex = /<line[^>]*x1="[^"]*"[^>]*y1="[^"]*"[^>]*x2="[^"]*"[^>]*y2="[^"]*"[^>]*>/g;
-      const lines = svg.match(lineRegex) || [];
-      expect(lines.length).toBeGreaterThan(0);
+    it('should have properly structured path elements with marker-end', () => {
+      const pathRegex = /<path[^>]*d="[^"]*"[^>]*marker-end="[^"]*"[^>]*>/g;
+      const paths = svg.match(pathRegex) || [];
+      expect(paths.length).toBeGreaterThan(0);
     });
   });
 
