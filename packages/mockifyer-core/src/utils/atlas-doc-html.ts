@@ -19,7 +19,7 @@ import type { NetworkEvent } from './network-event-types';
 import { computeUsedResponsePaths } from './response-field-usage';
 import { getAtlasUsageAnnotations, mergeUsageOntoNetworkEvents } from './atlas-usage-annotations';
 import { prettyPrintJsonText } from './json-pretty';
-import { buildEndpointInventory } from './atlas-endpoint-inventory';
+import { buildEndpointInventory, generateOpenApiSpec } from './atlas-endpoint-inventory';
 import { generateArchitectureDoc, type ArchitectureDoc } from './atlas-architecture-doc';
 import {
   generateSystemDiagramSVG,
@@ -4502,8 +4502,8 @@ function renderErrorPanelHtml(analysis, escFn) {
             });
           }
         } else if (exportType === 'openapi') {
-          // Generate OpenAPI spec from events
-          var openapi = generateOpenApiFromEvents(events);
+          // Use pregenerated OpenAPI spec from inventory if available, otherwise generate from events
+          var openapi = payload.openapi || generateOpenApiFromEvents(events);
           var blob = new Blob([JSON.stringify(openapi, null, 2)], { type: 'application/json' });
           var url = URL.createObjectURL(blob);
           var a = document.createElement('a');
@@ -6252,6 +6252,7 @@ function buildArchitecturePrerenderedSections(
   keyFlows: string;
   issues: string;
   archDoc: ArchitectureDoc;
+  openapi: Record<string, unknown>;
 } {
   // Build inventory
   const inventory = buildEndpointInventory(events, scannedEndpoints || []);
@@ -6296,13 +6297,21 @@ function buildArchitecturePrerenderedSections(
   // Generate issues
   const issues = generateIssuesHTML(inventory, events);
   
+  // Generate OpenAPI spec from inventory
+  const openapi = generateOpenApiSpec(inventory, {
+    title: 'Atlas API',
+    version: '1.0.0',
+    description: 'Generated from captured network events and code analysis'
+  });
+  
   return {
     toc,
     diagram,
     inventory: inventoryHtml,
     keyFlows,
     issues,
-    archDoc
+    archDoc,
+    openapi
   };
 }
 
@@ -6328,6 +6337,7 @@ function buildInteractiveAtlasBody(
       issues: string;
       overview: any;
     };
+    openapi?: Record<string, unknown>;
   } = {
     doc: map,
     events: merged.map((ev) => slimNetworkEvent(ev, guiLinkedRequestIds, map)),
@@ -6345,6 +6355,7 @@ function buildInteractiveAtlasBody(
       issues: archSections.issues,
       overview: archSections.archDoc.overview
     };
+    payload.openapi = archSections.openapi;
   }
   if (options?.mode === 'crash') {
     payload.mode = 'crash';
