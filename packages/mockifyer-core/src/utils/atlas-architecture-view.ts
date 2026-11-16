@@ -101,8 +101,18 @@ export function generateSystemDiagramSVG(
     }
   });
   
-  // Get all hosts
-  const allHosts = Array.from(inventory.byHost.keys());
+  // Get all hosts from inventory
+  const inventoryHosts = Array.from(inventory.byHost.keys());
+  
+  // Collect all unique hosts from both inventory and events
+  const allHostsSet = new Set<string>(inventoryHosts);
+  appChildren.forEach(host => allHostsSet.add(host));
+  appChildrenInferred.forEach(host => allHostsSet.add(host));
+  parentChildMap.forEach((children, parent) => {
+    allHostsSet.add(parent);
+    children.forEach(child => allHostsSet.add(child));
+  });
+  const allHosts = Array.from(allHostsSet);
   
   // Use dagre for graph layout
   const g = new dagre.graphlib.Graph();
@@ -115,11 +125,15 @@ export function generateSystemDiagramSVG(
   });
   g.setDefaultEdgeLabel(() => ({}));
   
-  // Calculate host statuses
+  // Calculate host statuses (inventory hosts have detailed status, event-only hosts default to 'live')
   const hostStatuses = new Map<string, 'mocked' | 'live' | 'error' | 'code-only'>();
   allHosts.forEach(host => {
     const hostInventory = inventory.byHost.get(host);
-    if (!hostInventory) return;
+    if (!hostInventory) {
+      // Host from events only (not in inventory) - default to 'live'
+      hostStatuses.set(host, 'live');
+      return;
+    }
     
     const hasErrors = hostInventory.some(e => e.errorRate && e.errorRate > 0);
     const allMocked = hostInventory.every(e => e.status === 'mocked-only');
@@ -178,7 +192,7 @@ export function generateSystemDiagramSVG(
   // Give parentless inventory hosts an Application edge (inferred)
   // These are hosts that exist only in the inventory (code-only, mocked-only, URL-only)
   // with no captured event
-  allHosts.forEach(host => {
+  inventoryHosts.forEach(host => {
     if (!appChildren.has(host) && !appChildrenInferred.has(host) && !childParentMap.has(host)) {
       g.setEdge('app', `host-${host}`);
       inferredEdges.add(`app→host-${host}`);
