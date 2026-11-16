@@ -6,7 +6,9 @@
 const UUID_PATTERN = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
 const HASH_PATTERN = /\b[0-9a-f]{32,64}\b/gi;
 const NUMERIC_ID_PATTERN = /\/\d+(?=\/|$)/g;
-const SLUG_PATTERN = /\/[a-z0-9]+-[a-z0-9-]+(?=\/|$)/gi;
+// Slug pattern: hyphenated segment with BOTH letters and digits within the segment
+// Lookaheads are scoped to stop at next / or end, not scan entire remaining path
+const SLUG_PATTERN = /\/(?=[^\/]*\d)(?=[^\/]*[a-z])[a-z0-9]+-[a-z0-9-]+(?=\/|$)/gi;
 
 export interface NormalizedUrl {
   template: string;
