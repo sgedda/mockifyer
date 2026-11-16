@@ -4,8 +4,8 @@
  * Generate a Chrome/Proxyman-compatible HAR 1.2 file from Atlas hops.
  *
  * Usage:
- *   npx @sgedda/mockifyer-core mockifyer-atlas-har --dir ./mock-data/atlas-html
- *   npx @sgedda/mockifyer-core mockifyer-atlas-har --events ./hops.json -o ./out.har
+ *   npx -p @sgedda/mockifyer-core mockifyer-atlas-har --dir ./mock-data/atlas-html
+ *   npx -p @sgedda/mockifyer-core mockifyer-atlas-har --events ./hops.json -o ./out.har
  *
  * Prefer `--dir` after "Render Atlas docs" (reads `atlas-events.json` written next to HTML).
  */

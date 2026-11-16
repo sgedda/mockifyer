@@ -11,7 +11,7 @@
  *   mockifyer-atlas --port 8081
  *   mockifyer-atlas --no-color
  *   mockifyer-atlas scan [--dir ./src] [--output scan-results.json]
- *   npx @sgedda/mockifyer-core mockifyer-atlas
+ *   npx -p @sgedda/mockifyer-core mockifyer-atlas
  *
  * Keys (interactive session):
  *   click  expand/collapse a ▸ nested row (mouse reporting)

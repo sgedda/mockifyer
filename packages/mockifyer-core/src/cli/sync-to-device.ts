@@ -7,8 +7,8 @@
  * the device/simulator so they can be used by the app.
  * 
  * Usage:
- *   mockifyer sync-to-device [options]
- *   or: npx @sgedda/mockifyer-core sync-to-device [options]
+ *   mockifyer-sync-to-device [options]
+ *   or: npx -p @sgedda/mockifyer-core mockifyer-sync-to-device [options]
  * 
  * Options:
  *   --path <path>    Path to mock data directory (default: ./mock-data)
