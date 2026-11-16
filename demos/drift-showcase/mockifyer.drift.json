@@ -1,6 +1,5 @@
 {
   "scenario": "drift-watch",
-  "baseUrl": "http://localhost:4290",
   "ignorePaths": [
     "timestamp",
     "current.time",

@@ -320,11 +320,8 @@ async function main() {
       driftOptions,
     });
 
-    if (args.json) {
-      // JSON output mode
-      console.log(JSON.stringify(report, null, 2));
-    } else if (args.html) {
-      // HTML output mode
+    // Generate HTML if requested
+    if (args.html) {
       const htmlDir = path.resolve(args.html);
       if (!fs.existsSync(htmlDir)) {
         fs.mkdirSync(htmlDir, { recursive: true });
@@ -337,10 +334,17 @@ async function main() {
       const htmlPath = path.join(htmlDir, 'index.html');
       fs.writeFileSync(htmlPath, html, 'utf8');
       
-      console.log('');
-      console.log(green('✓') + ` HTML report generated: ${htmlPath}`);
-      console.log('');
-      printReport(report);
+      if (!args.json) {
+        console.log('');
+        console.log(green('✓') + ` HTML report generated: ${htmlPath}`);
+        console.log('');
+      }
+    }
+
+    // Output report
+    if (args.json) {
+      // JSON output mode
+      console.log(JSON.stringify(report, null, 2));
     } else {
       // Human-friendly output
       printReport(report);
