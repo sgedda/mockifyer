@@ -41,11 +41,20 @@ describe('Bugbot remaining issues verification', () => {
         events
       );
       
-      // Host with observed traffic should be drawn as 'backend' (live), not 'code-backend' (unused)
-      // The SVG should contain the host node with type 'backend'
+      // Host with observed traffic should be drawn as 'backend' (live): blue fill, no dashes
+      // Backend nodes have fill="#dbeafe" and stroke="#3b82f6" with NO stroke-dasharray
       expect(svg).toContain('api.service.com');
-      // Should NOT be drawn as code-backend (gray dashed)
-      expect(svg).not.toMatch(/api\.service\.com.*code-backend/);
+      
+      // Extract the rect element for this host to verify its attributes
+      const hostRectMatch = svg.match(/<rect[^>]*data-node-id="host-api\.service\.com"[^>]*>/);
+      expect(hostRectMatch).toBeTruthy();
+      
+      const hostRect = hostRectMatch![0];
+      // Should have live backend colors (blue)
+      expect(hostRect).toMatch(/fill="#dbeafe"/);
+      expect(hostRect).toMatch(/stroke="#3b82f6"/);
+      // Should NOT have dash array (which indicates code-only)
+      expect(hostRect).not.toMatch(/stroke-dasharray/);
     });
 
     it('should prioritize observed status over code-only when host has both', () => {
@@ -63,7 +72,7 @@ describe('Bugbot remaining issues verification', () => {
         line: 10,
         column: 5,
         method: 'GET',
-        url: 'https://api.service.com/unused',
+        resolvedUrl: 'https://api.service.com/unused',
         urlTemplate: '/unused',
         callType: 'axios' as const
       }];
@@ -74,7 +83,14 @@ describe('Bugbot remaining issues verification', () => {
       // Host has both observed and code-only endpoints
       // Should be drawn as live (backend), not code-only (code-backend)
       expect(svg).toContain('api.service.com');
-      // The fix ensures hasObserved is checked correctly
+      
+      // Verify it's drawn as live backend (blue, no dashes)
+      const hostRectMatch = svg.match(/<rect[^>]*data-node-id="host-api\.service\.com"[^>]*>/);
+      expect(hostRectMatch).toBeTruthy();
+      
+      const hostRect = hostRectMatch![0];
+      expect(hostRect).toMatch(/fill="#dbeafe"/); // Blue fill for live
+      expect(hostRect).not.toMatch(/stroke-dasharray/); // No dashes (not code-only)
     });
   });
 
@@ -103,9 +119,18 @@ describe('Bugbot remaining issues verification', () => {
       const inventory = buildEndpointInventory(events, []);
       const svg = generateSystemDiagramSVG(inventory, events);
       
-      // Error host should be drawn with error-backend type, not as healthy backend
+      // Error host should be drawn with error-backend type: red fill, red stroke, NO dashes
       expect(svg).toContain('failing-api.com');
-      // The node should have error styling (red)
+      
+      const hostRectMatch = svg.match(/<rect[^>]*data-node-id="host-failing-api\.com"[^>]*>/);
+      expect(hostRectMatch).toBeTruthy();
+      
+      const hostRect = hostRectMatch![0];
+      // Error backend has red fill and stroke
+      expect(hostRect).toMatch(/fill="#fee2e2"/); // Red fill
+      expect(hostRect).toMatch(/stroke="#ef4444"/); // Red stroke
+      // Should NOT have dashes (not code-only)
+      expect(hostRect).not.toMatch(/stroke-dasharray/);
     });
   });
 

@@ -33,7 +33,7 @@ describe('Scan results in HTML export (4577961926)', () => {
         line: 10,
         column: 5,
         method: 'GET',
-        url: 'https://api.service.com/admin/settings',
+        resolvedUrl: 'https://api.service.com/admin/settings',
         urlTemplate: '/admin/settings',
         callType: 'axios' as const
       },
@@ -42,7 +42,7 @@ describe('Scan results in HTML export (4577961926)', () => {
         line: 20,
         column: 5,
         method: 'POST',
-        url: 'https://api.service.com/admin/update',
+        resolvedUrl: 'https://api.service.com/admin/update',
         urlTemplate: '/admin/update',
         callType: 'fetch' as const
       }
@@ -80,7 +80,7 @@ describe('Scan results in HTML export (4577961926)', () => {
         line: 10,
         column: 5,
         method: 'GET',
-        url: 'https://api.service.com/users/:id',
+        resolvedUrl: 'https://api.service.com/users/:id',
         urlTemplate: '/users/{id}',
         callType: 'axios' as const
       },
@@ -89,7 +89,7 @@ describe('Scan results in HTML export (4577961926)', () => {
         line: 20,
         column: 5,
         method: 'DELETE',
-        url: 'https://api.service.com/users/:id',
+        resolvedUrl: 'https://api.service.com/users/:id',
         urlTemplate: '/users/{id}',
         callType: 'axios' as const
       }
