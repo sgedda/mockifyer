@@ -458,9 +458,15 @@ jobs:
           fi
           
           # Create root index.html with links to both (or redirect to Atlas if drift unavailable)
+          # Check which reports are available
+          HAS_ATLAS=""
+          if [ -d "pages-root/atlas" ] && [ -n "$(ls -A pages-root/atlas 2>/dev/null)" ]; then
+            HAS_ATLAS="yes"
+          fi
+          
           if [ -d "drift-report" ] && [ -n "$(ls -A drift-report 2>/dev/null)" ]; then
-            # Both available: show landing page with links
-            cat > pages-root/index.html << 'EOF'
+            # Drift available: show landing page with conditional Atlas link
+            cat > pages-root/index.html << EOF
           <!DOCTYPE html>
           <html lang="en">
           <head>
@@ -532,11 +538,11 @@ jobs:
               <h1>📚 Mockifyer</h1>
               <p class="subtitle">API mock record/replay with drift detection</p>
               
-              <div class="links">
+              <div class="links">$([ -n "$HAS_ATLAS" ] && echo '
                 <a href="atlas/">
                   🗺️ Atlas Architecture
                   <div class="description">Auto-generated API architecture documentation</div>
-                </a>
+                </a>')
                 <a href="drift/">
                   🎭 Drift Check Showcase
                   <div class="description">Live drift detection against simulated & real APIs</div>
