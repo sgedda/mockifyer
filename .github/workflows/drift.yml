@@ -375,6 +375,8 @@ jobs:
           echo "**Site URL:** ${{ steps.deployment.outputs.page_url }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- 🎭 [Drift Check Showcase](${{ steps.deployment.outputs.page_url }}drift/)" >> $GITHUB_STEP_SUMMARY
-          echo "- 🗺️ [Atlas Architecture](${{ steps.deployment.outputs.page_url }}atlas/)" >> $GITHUB_STEP_SUMMARY
+          if [ -n "$HAS_ATLAS" ]; then
+            echo "- 🗺️ [Atlas Architecture](${{ steps.deployment.outputs.page_url }}atlas/)" >> $GITHUB_STEP_SUMMARY
+          fi
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "_Updated from \`main\` branch_" >> $GITHUB_STEP_SUMMARY
