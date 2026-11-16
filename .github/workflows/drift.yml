@@ -257,6 +257,7 @@ jobs:
           if [ -d "pages-root/atlas" ] && [ -n "$(ls -A pages-root/atlas 2>/dev/null)" ]; then
             HAS_ATLAS="yes"
           fi
+          echo "HAS_ATLAS=$HAS_ATLAS" >> $GITHUB_ENV
           
           cat > pages-root/index.html << EOF
           <!DOCTYPE html>
