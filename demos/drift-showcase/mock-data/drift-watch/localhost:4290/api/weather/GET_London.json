@@ -11,9 +11,8 @@
     },
     "data": {
       "city": "London",
-      "country": "Demo",
-      "temperature": 22,
-      "conditions": "Sunny",
+      "temperature": 12.3,
+      "conditions": "Partly cloudy",
       "timestamp": "2026-11-16T00:00:00.000Z"
     }
   },

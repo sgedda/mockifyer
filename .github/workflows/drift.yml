@@ -60,10 +60,8 @@ jobs:
         continue-on-error: true
         working-directory: demos/drift-showcase
         run: |
-          set +e  # Don't exit on error
+          set +e
           mkdir -p drift-report
-          
-          # Use the local built CLI
           node ../../packages/mockifyer-core/dist/cli/drift-check.js \
             --mock-data-path ./mock-data \
             --scenario drift-watch \
@@ -72,6 +70,7 @@ jobs:
           
           # Capture exit code (0 = clean, 1 = drift, 2 = error)
           EXIT_CODE=$?
+          set -e
           echo "exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
           
           # Parse report summary
@@ -92,6 +91,9 @@ jobs:
               echo "summary=✅ All $total endpoints in sync" >> $GITHUB_OUTPUT
             fi
           else
+            echo "breaking=0" >> $GITHUB_OUTPUT
+            echo "warnings=0" >> $GITHUB_OUTPUT
+            echo "total=0" >> $GITHUB_OUTPUT
             echo "summary=❌ Drift check failed" >> $GITHUB_OUTPUT
           fi
       
@@ -250,12 +252,13 @@ jobs:
             echo "✓ Atlas report copied to /atlas/"
           fi
           
-          # Create root index.html
-          # If both reports exist, create landing page with links
-          # If only drift exists, create a simpler page
-          if [ -d "atlas-report" ] && [ -n "$(ls -A atlas-report 2>/dev/null)" ]; then
-            # Both available: landing page with links
-            cat > pages-root/index.html << 'EOF'
+          # Create root index.html with links to available reports
+          HAS_ATLAS=""
+          if [ -d "pages-root/atlas" ]; then
+            HAS_ATLAS="yes"
+          fi
+          
+          cat > pages-root/index.html << EOF
           <!DOCTYPE html>
           <html lang="en">
           <head>
@@ -331,11 +334,11 @@ jobs:
                 <a href="drift/">
                   🎭 Drift Check Showcase
                   <div class="description">Live drift detection against simulated & real APIs</div>
-                </a>
+                </a>$([ -n "$HAS_ATLAS" ] && echo '
                 <a href="atlas/">
                   🗺️ Atlas Architecture
                   <div class="description">Auto-generated API architecture documentation</div>
-                </a>
+                </a>')
               </div>
               
               <div class="footer">
@@ -346,90 +349,6 @@ jobs:
           </body>
           </html>
           EOF
-          else
-            # Only drift available: simpler page
-            cat > pages-root/index.html << 'EOF'
-          <!DOCTYPE html>
-          <html lang="en">
-          <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Mockifyer Drift Check Showcase</title>
-            <style>
-              * { margin: 0; padding: 0; box-sizing: border-box; }
-              body {
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                min-height: 100vh;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                padding: 2rem;
-              }
-              .container {
-                background: white;
-                border-radius: 1rem;
-                padding: 3rem;
-                max-width: 600px;
-                box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-              }
-              h1 {
-                font-size: 2.5rem;
-                margin-bottom: 0.5rem;
-                color: #667eea;
-              }
-              .subtitle {
-                color: #666;
-                margin-bottom: 2rem;
-              }
-              a {
-                display: block;
-                padding: 1.5rem;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                color: white;
-                text-decoration: none;
-                border-radius: 0.5rem;
-                font-size: 1.25rem;
-                font-weight: 600;
-                transition: transform 0.2s, box-shadow 0.2s;
-                text-align: center;
-              }
-              a:hover {
-                transform: translateY(-2px);
-                box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
-              }
-              .description {
-                font-size: 0.875rem;
-                opacity: 0.9;
-                margin-top: 0.5rem;
-              }
-              .footer {
-                margin-top: 2rem;
-                text-align: center;
-                color: #999;
-                font-size: 0.875rem;
-              }
-            </style>
-          </head>
-          <body>
-            <div class="container">
-              <h1>🎭 Mockifyer</h1>
-              <p class="subtitle">API mock record/replay with drift detection</p>
-              
-              <a href="drift/">
-                Drift Check Showcase
-                <div class="description">Live drift detection against simulated & real APIs</div>
-              </a>
-              
-              <div class="footer">
-                <p>Generated from nightly CI runs</p>
-                <p><a href="https://github.com/sgedda/mockifyer" style="all: unset; color: #667eea; cursor: pointer;">View on GitHub</a></p>
-              </div>
-            </div>
-          </body>
-          </html>
-          EOF
-          fi
           
           echo "Pages directory structure:"
           ls -la pages-root/
