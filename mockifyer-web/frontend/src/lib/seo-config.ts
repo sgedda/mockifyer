@@ -100,6 +100,12 @@ export const PAGE_SEO: Record<string, PageSeoConfig> = {
       'Use Mockifyer to record and replay HTTP fetch calls in browser environments, Expo web builds, and Vite projects with the memory provider.',
     path: '/guides/browser-record-replay',
   },
+  '/guides/mockifyer-atlas': {
+    title: 'Visualize Architecture with Mockifyer Atlas',
+    description:
+      'Generate interactive traffic maps from recorded HTTP hops. See hosts, request chains, search payloads, and trace multi-service flows.',
+    path: '/guides/mockifyer-atlas',
+  },
   '/features': {
     title: 'Mockifyer Features: Record, Replay, Scenarios',
     description:
