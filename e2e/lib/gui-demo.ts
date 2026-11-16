@@ -10,6 +10,8 @@ import {
   EXPECTED_TEMP,
   LANE,
   SCRATCH_DASHBOARD,
+  SCRATCH_WEATHER_ENDPOINT_PREFIX,
+  SCRATCH_WEATHER_DOMAIN,
 } from './env';
 
 // What the dashboard GUI tests share across platforms: the app under test behind one interface (the
@@ -300,7 +302,7 @@ export function fromScratchSteps(openApp: Array<[Actor, string]>): Array<[Actor,
     [APP, 'Refetch Discover: the forecast is captured once and then served from the mock; the tile shows that value'],
     [UI, 'Sidebar Hops, expand GET /api/discover and GET /discover again: GET /v1/forecast now shows "Replay"; GET /discover and the other hops stay "Pending" placeholders'],
     [UI, `Sidebar Network (lane ${LANE}): GET /v1/forecast is served as "Mock", while GET /discover and the other APIs (countries, advice) are still "Upstream" (live)`],
-    [UI, 'Sidebar Mocks: Domains tree shows api.open-meteo.com with "1 mocked" and every other host with "0 mocked"'],
+    [UI, 'Sidebar Mocks: Domains tree shows the weather stub (127.0.0.1:9100) with "1 mocked" and every other host with "0 mocked"'],
     [API, 'Only the Open-Meteo forecast mock has a stored response body; every other entry is a request-only placeholder; the tile shows the stored temperature'],
     [UI, `Settings > Create New Scenario: derive from default, name ${SCENARIO_A}, Create & Switch; Client lanes: lane scenario = ${SCENARIO_A}`],
     [UI, `Sidebar Mocks -> search -> Expand all -> forecast card -> mock editor; Request tab "Use saved mock" (derived scenarios start on live API); Response tab: current.temperature_2m = ${TEMP_A}, Save Changes`],
@@ -354,13 +356,13 @@ export const FROM_SCRATCH_TEST = {
     await expect(forecastHop).toBeVisible();
     await expect(forecastHop.getByText('Pending', { exact: true })).toBeVisible();
     await dash.openHop(forecastHop);
-    await dash.useSavedMock(CAPTURE_NEXT_TOAST, ATHENS_ENDPOINT_PREFIX);
+    await dash.useSavedMock(CAPTURE_NEXT_TOAST, SCRATCH_WEATHER_ENDPOINT_PREFIX);
 
     // 4. One refetch captures the forecast; from then on it is served from the mock, the rest stays live.
     await app.showsSomeTemperature();
     await expect.poll(async () => (await storedMocks('default')).withBody.length, { timeout: 20_000 }).toBe(1);
     const { withBody, count } = await storedMocks('default');
-    expect(withBody[0].endpoint.startsWith(ATHENS_ENDPOINT_PREFIX)).toBe(true);
+    expect(withBody[0].endpoint.startsWith(SCRATCH_WEATHER_ENDPOINT_PREFIX)).toBe(true);
     expect(count).toBeGreaterThan(1);
     await app.shows(withBody[0].mock.response.data.current.temperature_2m);
     await dash.openFromSidebar('Hops');
@@ -373,7 +375,7 @@ export const FROM_SCRATCH_TEST = {
     await expect(dash.networkHop('Upstream', 'GET /discover').first()).toBeVisible();
     await expect(dash.networkHop('Upstream', 'GET /countries/name/greece').first()).toBeVisible();
     await dash.openFromSidebar('Mocks');
-    await expect(dash.domainFolder('api.open-meteo.com')).toContainText('1 mocked');
+    await expect(dash.domainFolder(SCRATCH_WEATHER_DOMAIN)).toContainText('1 mocked');
     await expect(dash.domainFolder('www.apicountries.com')).toContainText('0 mocked');
     await expect(dash.domainFolder('api.adviceslip.com')).toContainText('0 mocked');
 

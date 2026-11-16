@@ -12,6 +12,9 @@ export const ATHENS_ENDPOINT =
   'https://api.open-meteo.com/v1/forecast?latitude=37.9838' +
   '&longitude=23.7275&current=temperature_2m%2Cweather_code%2Cwind_speed_10m' +
   '&daily=temperature_2m_max%2Ctemperature_2m_min%2Cprecipitation_probability_max&timezone=auto&forecast_days=3';
+/** Scratch stack weather endpoint (local Open-Meteo stub at http://127.0.0.1:9100). */
+export const SCRATCH_WEATHER_ENDPOINT_PREFIX = 'http://127.0.0.1:9100/v1/forecast?latitude=37.9838';
+export const SCRATCH_WEATHER_DOMAIN = '127.0.0.1:9100';
 /** The gateway -> wander-api hop behind the Atlantis Discover card, as the network log stores it. */
 export const WANDER_DISCOVER_URL = 'http://127.0.0.1:4203/discover';
 /** wander-api's improvised weather when the Open-Meteo hop fails (`source: 'fallback'`). */
