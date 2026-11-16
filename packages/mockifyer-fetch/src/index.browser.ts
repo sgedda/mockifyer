@@ -161,7 +161,7 @@ export function setupMockifyer(config: BrowserMockifyerConfig): MockifyerInstanc
     const dashboardClient = new BrowserDashboardClient({
       dashboardBaseUrl: config.dashboard.dashboardBaseUrl,
       auth: config.dashboard.auth,
-      clientId: config.dashboard.clientId ?? mockifyer.getClientId(),
+      clientId: config.dashboard.clientId ?? (() => mockifyer.getClientId()),
     });
 
     const enableScenarioSync = config.dashboard.enableScenarioSync !== false;

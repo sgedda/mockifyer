@@ -6,7 +6,7 @@
 export interface DashboardClientConfig {
   dashboardBaseUrl: string;
   auth?: { user: string; password: string };
-  clientId?: string;
+  clientId?: string | (() => string | undefined);
 }
 
 export interface ScenarioConfigResponse {
@@ -84,7 +84,8 @@ export class BrowserDashboardClient {
   }
 
   get clientId(): string | undefined {
-    return this.config.clientId;
+    const clientId = this.config.clientId;
+    return typeof clientId === 'function' ? clientId() : clientId;
   }
 
   private authHeader(): string | undefined {
