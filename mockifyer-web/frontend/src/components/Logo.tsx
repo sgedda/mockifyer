@@ -10,9 +10,9 @@ interface LogoProps {
 
 export default function Logo({ className, showIcon = true, size = 'md', as = 'link' }: LogoProps) {
   const sizeClasses = {
-    sm: { text: 'text-lg', icon: 'text-2xl', padding: 'p-1.5' },
-    md: { text: 'text-xl', icon: 'text-3xl', padding: 'p-2' },
-    lg: { text: 'text-3xl md:text-4xl', icon: 'text-5xl md:text-6xl', padding: 'p-2.5 md:p-3' },
+    sm: { text: 'text-lg', icon: 'w-8 h-8' },
+    md: { text: 'text-xl', icon: 'w-10 h-10' },
+    lg: { text: 'text-3xl md:text-4xl', icon: 'w-14 h-14 md:w-16 md:h-16' },
   }
 
   const content = (
@@ -25,18 +25,14 @@ export default function Logo({ className, showIcon = true, size = 'md', as = 'li
     >
       {showIcon && (
         <div className="relative flex-shrink-0 group">
-          {/* Icon container */}
-          <div className={cn(
-            'relative rounded-lg transition-all duration-300',
-            sizeClasses[size].padding
-          )}>
-            <span className={cn(
-              'text-foreground transition-transform duration-300 group-hover:scale-110 inline-block',
+          <img
+            src="/logo-transparent.svg"
+            alt="Mockifyer logo"
+            className={cn(
+              'transition-transform duration-300 group-hover:scale-110',
               sizeClasses[size].icon
-            )}>
-              🎭
-            </span>
-          </div>
+            )}
+          />
         </div>
       )}
       <span className="text-foreground font-extrabold tracking-tight">
