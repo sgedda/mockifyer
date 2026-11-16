@@ -569,6 +569,7 @@ const HTML_ROUTES = [
   '/guides/reproduce-tester-bugs',
   '/guides/stable-react-native-e2e',
   '/guides/mock-drift',
+  '/guides/mockifyer-atlas',
   '/guides/react-native-without-msw',
   '/guides/browser-record-replay',
 ];

@@ -98,6 +98,12 @@ var PAGE_SEO = {
     description: "Hand-written mocks drift from real APIs. Record real responses, re-record when APIs change, and git diff to catch breaking changes.",
     path: "/guides/mock-drift"
   },
+  "/guides/mockifyer-atlas": {
+    title: "Visualize Architecture with Mockifyer Atlas | Mockifyer",
+    description:
+      "Generate interactive traffic maps from recorded HTTP hops. See hosts, request chains, search payloads, and trace multi-service flows.",
+    path: "/guides/mockifyer-atlas"
+  },
   "/guides/react-native-without-msw": {
     title: "MSW vs Recording in React Native",
     description: "Compare MSW and Mockifyer for React Native. Recording works on device with no service worker, supports Expo and bare React Native.",
