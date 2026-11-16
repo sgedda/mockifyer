@@ -317,7 +317,8 @@ export function generateAxiosSnippet(options: SnippetOptions): string {
   let code = '';
   
   if (body && (method === 'POST' || method === 'PUT' || method === 'PATCH')) {
-    const bodyStr = typeof body === 'string' ? body : JSON.stringify(body, null, 2);
+    // Quote string bodies to avoid invalid JavaScript
+    const bodyStr = typeof body === 'string' ? JSON.stringify(body) : JSON.stringify(body, null, 2);
     if (configParts.length > 0) {
       code = `const response = await axios.${methodLower}('${url}', ${bodyStr}, {\n${configParts.join(',\n')}\n});`;
     } else {
