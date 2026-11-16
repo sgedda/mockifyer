@@ -346,6 +346,7 @@ jobs:
           tail -100 /tmp/metro.log || echo "No metro log"
 
   # Publish Atlas documentation to GitHub Pages at /atlas/
+  # Also merges with Drift report if available
   # Only on main branch (scheduled runs or pushes, not PRs or manual dispatch)
   deploy-pages:
     needs: e2e
@@ -356,6 +357,7 @@ jobs:
     permissions:
       pages: write
       id-token: write
+      actions: read
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -372,25 +374,186 @@ jobs:
           name: atlas-architecture
           path: atlas-report
 
-      - name: Check Atlas artifact exists
-        id: check_atlas
+      - name: Download latest Drift artifact
+        id: download_drift
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          if [ ! -d "atlas-report" ] || [ -z "$(ls -A atlas-report 2>/dev/null)" ]; then
+          # Find the most recent successful drift run on main that has drift-report artifact
+          echo "Searching for latest Drift artifact..."
+          RUN_ID=$(gh api \
+            "/repos/${{ github.repository }}/actions/workflows/drift.yml/runs?branch=main&status=success&per_page=10" \
+            --jq '.workflow_runs[] | select(.conclusion == "success") | .id' | head -1)
+          
+          if [ -z "$RUN_ID" ]; then
+            echo "No successful drift run found with drift-report artifact"
             echo "skip=true" >> $GITHUB_OUTPUT
-            echo "⚠️ Atlas report artifact is missing or empty, skipping deployment"
+            exit 0
+          fi
+          
+          echo "Found drift run: $RUN_ID"
+          
+          # Download the drift-report artifact from that run
+          mkdir -p drift-report
+          gh api "/repos/${{ github.repository }}/actions/runs/$RUN_ID/artifacts" \
+            --jq '.artifacts[] | select(.name == "drift-report") | .id' | head -1 | \
+            xargs -I {} gh api "/repos/${{ github.repository }}/actions/artifacts/{}/zip" > drift.zip || {
+              echo "Failed to download Drift artifact"
+              echo "skip=true" >> $GITHUB_OUTPUT
+              exit 0
+            }
+          
+          unzip -q drift.zip -d drift-report
+          rm drift.zip
+          
+          if [ ! -d "drift-report" ] || [ -z "$(ls -A drift-report 2>/dev/null)" ]; then
+            echo "Drift artifact is empty"
+            echo "skip=true" >> $GITHUB_OUTPUT
           else
             echo "skip=false" >> $GITHUB_OUTPUT
+            echo "✓ Downloaded Drift artifact from run $RUN_ID"
+          fi
+
+      - name: Check artifacts exist
+        id: check_artifacts
+        run: |
+          has_atlas=false
+          has_drift=false
+          
+          if [ -d "atlas-report" ] && [ -n "$(ls -A atlas-report 2>/dev/null)" ]; then
             echo "✓ Atlas report found: $(du -sh atlas-report | cut -f1)"
+            has_atlas=true
+          fi
+          
+          if [ "${{ steps.download_drift.outputs.skip }}" != "true" ] && [ -d "drift-report" ] && [ -n "$(ls -A drift-report 2>/dev/null)" ]; then
+            echo "✓ Drift report found: $(du -sh drift-report | cut -f1)"
+            has_drift=true
+          fi
+          
+          if [ "$has_atlas" = false ] && [ "$has_drift" = false ]; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "⚠️ No artifacts to deploy"
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
           fi
       
       - name: Prepare Pages directory structure
-        if: steps.check_atlas.outputs.skip != 'true'
+        if: steps.check_artifacts.outputs.skip != 'true'
         run: |
-          mkdir -p pages-root/atlas
-          cp -r atlas-report/* pages-root/atlas/
+          mkdir -p pages-root
           
-          # Create root index.html that redirects to atlas/ (relative)
-          cat > pages-root/index.html << 'EOF'
+          # Copy Atlas report to /atlas/
+          if [ -d "atlas-report" ] && [ -n "$(ls -A atlas-report 2>/dev/null)" ]; then
+            mkdir -p pages-root/atlas
+            cp -r atlas-report/* pages-root/atlas/
+            echo "✓ Atlas report copied to /atlas/"
+          fi
+          
+          # Copy Drift report to /drift/
+          if [ -d "drift-report" ] && [ -n "$(ls -A drift-report 2>/dev/null)" ]; then
+            mkdir -p pages-root/drift
+            cp -r drift-report/* pages-root/drift/
+            echo "✓ Drift report copied to /drift/"
+          fi
+          
+          # Create root index.html with links to both (or redirect to Atlas if drift unavailable)
+          if [ -d "drift-report" ] && [ -n "$(ls -A drift-report 2>/dev/null)" ]; then
+            # Both available: show landing page with links
+            cat > pages-root/index.html << 'EOF'
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Mockifyer Documentation</title>
+            <style>
+              * { margin: 0; padding: 0; box-sizing: border-box; }
+              body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                min-height: 100vh;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 2rem;
+              }
+              .container {
+                background: white;
+                border-radius: 1rem;
+                padding: 3rem;
+                max-width: 600px;
+                box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+              }
+              h1 {
+                font-size: 2.5rem;
+                margin-bottom: 0.5rem;
+                color: #667eea;
+              }
+              .subtitle {
+                color: #666;
+                margin-bottom: 2rem;
+              }
+              .links {
+                display: flex;
+                flex-direction: column;
+                gap: 1rem;
+              }
+              a {
+                display: block;
+                padding: 1.5rem;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                text-decoration: none;
+                border-radius: 0.5rem;
+                font-size: 1.25rem;
+                font-weight: 600;
+                transition: transform 0.2s, box-shadow 0.2s;
+              }
+              a:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+              }
+              .description {
+                font-size: 0.875rem;
+                opacity: 0.9;
+                margin-top: 0.5rem;
+              }
+              .footer {
+                margin-top: 2rem;
+                text-align: center;
+                color: #999;
+                font-size: 0.875rem;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <h1>📚 Mockifyer</h1>
+              <p class="subtitle">API mock record/replay with drift detection</p>
+              
+              <div class="links">
+                <a href="atlas/">
+                  🗺️ Atlas Architecture
+                  <div class="description">Auto-generated API architecture documentation</div>
+                </a>
+                <a href="drift/">
+                  🎭 Drift Check Showcase
+                  <div class="description">Live drift detection against simulated & real APIs</div>
+                </a>
+              </div>
+              
+              <div class="footer">
+                <p>Generated from nightly CI runs</p>
+                <p><a href="https://github.com/sgedda/mockifyer" style="all: unset; color: #667eea; cursor: pointer;">View on GitHub</a></p>
+              </div>
+            </div>
+          </body>
+          </html>
+          EOF
+          else
+            # Atlas only: redirect to /atlas/
+            cat > pages-root/index.html << 'EOF'
           <!DOCTYPE html>
           <html lang="en">
           <head>
@@ -404,28 +567,34 @@ jobs:
           </body>
           </html>
           EOF
+          fi
           
           echo "Pages directory structure:"
           ls -la pages-root/
-          ls -la pages-root/atlas/ | head -20
+          [ -d pages-root/atlas ] && echo "  /atlas/:" && ls -la pages-root/atlas/ | head -5
+          [ -d pages-root/drift ] && echo "  /drift/:" && ls -la pages-root/drift/ | head -5
 
       - name: Upload Pages artifact
-        if: steps.check_atlas.outputs.skip != 'true'
+        if: steps.check_artifacts.outputs.skip != 'true'
         uses: actions/upload-pages-artifact@v3
         with:
           path: pages-root
 
       - name: Deploy to GitHub Pages
-        if: steps.check_atlas.outputs.skip != 'true'
+        if: steps.check_artifacts.outputs.skip != 'true'
         id: deployment
         uses: actions/deploy-pages@v4
 
       - name: Add Pages link to job summary
-        if: steps.check_atlas.outputs.skip != 'true' && steps.deployment.outcome == 'success'
+        if: steps.check_artifacts.outputs.skip != 'true' && steps.deployment.outcome == 'success'
         run: |
-          echo "## 📚 Atlas Documentation Published" >> $GITHUB_STEP_SUMMARY
+          echo "## 📚 Documentation Published" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Atlas Architecture view is live at:**" >> $GITHUB_STEP_SUMMARY
-          echo "🔗 ${{ steps.deployment.outputs.page_url }}atlas/" >> $GITHUB_STEP_SUMMARY
+          echo "**Site URL:** ${{ steps.deployment.outputs.page_url }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "_Generated from E2E run on \`main\` branch_" >> $GITHUB_STEP_SUMMARY
+          echo "- 🗺️ [Atlas Architecture](${{ steps.deployment.outputs.page_url }}atlas/)" >> $GITHUB_STEP_SUMMARY
+          if [ -d "drift-report" ] && [ -n "$(ls -A drift-report 2>/dev/null)" ]; then
+            echo "- 🎭 [Drift Check Showcase](${{ steps.deployment.outputs.page_url }}drift/)" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "_Updated from \`main\` branch_" >> $GITHUB_STEP_SUMMARY

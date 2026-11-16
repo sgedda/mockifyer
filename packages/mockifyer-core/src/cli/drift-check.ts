@@ -19,6 +19,9 @@ import {
   snoozeEndpoint,
   addIgnoreField,
 } from '../utils/drift/drift-management';
+import { generateDriftHtml } from '../utils/drift/drift-html';
+import * as fs from 'fs';
+import * as path from 'path';
 
 interface ParsedArgs {
   scenario?: string;
@@ -38,6 +41,7 @@ interface ParsedArgs {
   snooze?: string;
   days?: number;
   json: boolean;
+  html?: string;
   help: boolean;
 }
 
@@ -95,6 +99,8 @@ function parseArgs(): ParsedArgs {
       parsed.days = parseInt(args[++i], 10);
     } else if (arg === '--json') {
       parsed.json = true;
+    } else if (arg === '--html') {
+      parsed.html = args[++i];
     }
   }
 
@@ -126,6 +132,7 @@ OPTIONS
       --delay <ms>               Delay between request batches (default: 100)
       --no-history               Skip writing history (for ad-hoc checks)
       --json                     Output report as JSON
+      --html <dir>               Generate HTML report to directory
   -h, --help                     Show this help
 
 MANAGEMENT COMMANDS
@@ -148,6 +155,9 @@ EXAMPLES
 
   # CI mode: fail on any drift, output JSON report
   mockifyer-drift-check --fail-on-warnings --json > drift-report.json
+
+  # Generate HTML report
+  mockifyer-drift-check --html ./drift-report
 
   # Accept one endpoint's drift (re-record from live)
   mockifyer-drift-check --accept "GET /api/users/123"
@@ -313,6 +323,24 @@ async function main() {
     if (args.json) {
       // JSON output mode
       console.log(JSON.stringify(report, null, 2));
+    } else if (args.html) {
+      // HTML output mode
+      const htmlDir = path.resolve(args.html);
+      if (!fs.existsSync(htmlDir)) {
+        fs.mkdirSync(htmlDir, { recursive: true });
+      }
+      
+      const html = generateDriftHtml(report, {
+        title: `Drift Check: ${args.scenario || 'default'}`,
+      });
+      
+      const htmlPath = path.join(htmlDir, 'index.html');
+      fs.writeFileSync(htmlPath, html, 'utf8');
+      
+      console.log('');
+      console.log(green('✓') + ` HTML report generated: ${htmlPath}`);
+      console.log('');
+      printReport(report);
     } else {
       // Human-friendly output
       printReport(report);

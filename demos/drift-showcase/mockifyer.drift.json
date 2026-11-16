@@ -1,0 +1,27 @@
+{
+  "scenario": "drift-watch",
+  "ignorePaths": [
+    "timestamp",
+    "current.time",
+    "daily.time",
+    "date",
+    "rates"
+  ],
+  "concurrency": 3,
+  "timeoutMs": 15000,
+  "delayMs": 200,
+  "endpointConfig": {
+    "GET /api/weather/*": {
+      "severity": "critical",
+      "ignorePaths": ["timestamp"]
+    },
+    "GET /v1/forecast": {
+      "severity": "normal",
+      "ignorePaths": ["current.time", "daily.time"]
+    },
+    "GET /latest": {
+      "severity": "normal",
+      "ignorePaths": ["date", "rates"]
+    }
+  }
+}

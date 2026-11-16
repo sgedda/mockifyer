@@ -1,0 +1,26 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "https://api.frankfurter.app/latest?from=USD&to=EUR,GBP",
+    "headers": {}
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "data": {
+      "amount": 1.0,
+      "base": "USD",
+      "date": "2026-11-15",
+      "rates": {
+        "EUR": 0.92,
+        "GBP": 0.79
+      }
+    }
+  },
+  "metadata": {
+    "recordedAt": "2026-11-16T00:00:00.000Z",
+    "scenario": "drift-watch"
+  }
+}

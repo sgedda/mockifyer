@@ -1,0 +1,13 @@
+{
+  "name": "drift-showcase",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Drift detection showcase with simulated API drift",
+  "scripts": {
+    "start": "node drift-simulator.js",
+    "start:v2": "DRIFT_MODE=v2 node drift-simulator.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}
