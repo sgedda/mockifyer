@@ -496,6 +496,11 @@ export function generateOpenApiSpec(
         paths[pathKey][methodKey] = {
           summary: `${methodKey.toUpperCase()} ${pathKey}`,
           description: `Multiple hosts serve this endpoint. Use x-host to identify the server.`,
+          responses: {
+            '200': {
+              description: 'Success (see x-oneOf variants for host-specific responses)'
+            }
+          },
           'x-oneOf': variants
         };
       }

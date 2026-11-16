@@ -88,14 +88,20 @@ describe('OpenAPI paths should not collide across hosts', () => {
     expect(getOp['x-oneOf']).toBeDefined();
     expect(getOp['x-oneOf']).toHaveLength(2);
     
+    // OpenAPI 3.0 requires responses on every operation (Bug 4582036201)
+    expect(getOp.responses).toBeDefined();
+    expect(getOp.responses['200']).toBeDefined();
+    
     // Each variant should have x-host to identify which server it belongs to
     const hostA = getOp['x-oneOf'].find((v: any) => v['x-host'] === 'api.service-a.com');
     const hostB = getOp['x-oneOf'].find((v: any) => v['x-host'] === 'api.service-b.com');
     
     expect(hostA).toBeDefined();
     expect(hostA.description).toContain('100ms');
+    expect(hostA.responses).toBeDefined(); // Each variant should also have responses
     
     expect(hostB).toBeDefined();
     expect(hostB.description).toContain('200ms');
+    expect(hostB.responses).toBeDefined();
   });
 });
