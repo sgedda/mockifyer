@@ -51,3 +51,5 @@ example-projects/capp-react-native/
 .atlas-html-preview/
 .local-private/
 **/.drift/
+**/drift-report/
+**/drift-report.json
