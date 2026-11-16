@@ -185,16 +185,33 @@ export function buildEndpointInventory(
       component: scanned.componentName
     });
 
-    if (item.status === 'unresolved' || item.status === 'mocked-only') {
+    // Only update status if currently unresolved
+    // Preserve mocked-only and observed statuses even when code is found
+    if (item.status === 'unresolved') {
       item.status = scanned.callType === 'unresolved' ? 'unresolved' : 'code-only';
+    } else if (item.status === 'code-only' && scanned.callType === 'unresolved') {
+      item.status = 'unresolved';
     }
   }
 
   // Build parent-child map for chain detection
+  // Map both id and requestId to the same event so parentRequestId can point to either
   const childCounts = new Map<string, number>();
+  const eventIdToRequestId = new Map<string, string>();
+  for (const event of networkEvents) {
+    if (event.id && event.requestId) {
+      eventIdToRequestId.set(event.id, event.requestId);
+    }
+  }
   for (const event of networkEvents) {
     if (event.parentRequestId) {
+      // Increment count for the parentRequestId
       childCounts.set(event.parentRequestId, (childCounts.get(event.parentRequestId) || 0) + 1);
+      // Also increment for the corresponding requestId if parentRequestId is an event id
+      const correspondingRequestId = eventIdToRequestId.get(event.parentRequestId);
+      if (correspondingRequestId && correspondingRequestId !== event.parentRequestId) {
+        childCounts.set(correspondingRequestId, (childCounts.get(correspondingRequestId) || 0) + 1);
+      }
     }
   }
 
