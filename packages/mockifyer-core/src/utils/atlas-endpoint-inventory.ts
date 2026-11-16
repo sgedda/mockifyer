@@ -158,9 +158,9 @@ export function buildEndpointInventory(
       const match = scanned.resolvedUrl!.match(/^(https?:\/\/[^\/\{]+)(\{param\})(.*)/);
       if (match) {
         // Split: http://host:port{param} -> host:port and /{param}
-        // Keep {param} as-is since it's a literal template in the malformed URL
+        // Normalize {param} to {id} for consistent merging with traffic templates
         host = extractHost(match[1], fallbackHost);
-        pathTemplate = '/' + match[2] + match[3];
+        pathTemplate = normalizeTemplatePlaceholders('/' + match[2] + match[3]);
       } else {
         host = extractHost(scanned.resolvedUrl!, fallbackHost);
         const normalized = normalizeUrlToTemplate(scanned.resolvedUrl!);
