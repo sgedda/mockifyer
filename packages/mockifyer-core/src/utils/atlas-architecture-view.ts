@@ -362,12 +362,19 @@ function truncate(str: string, maxLen: number): string {
  * Generate sticky table of contents for Architecture view.
  */
 export function generateArchitectureTOC(sections: string[]): string {
+  // Map section titles to their actual IDs (some have simplified IDs)
+  const sectionIds: Record<string, string> = {
+    'Services & Endpoints': 'endpoints',
+    'Issues & Gaps': 'issues'
+  };
+  
   let html = '<nav class="atlas-toc">';
   html += '<div class="atlas-toc-title">Contents</div>';
   html += '<ul>';
   sections.forEach(section => {
-    const id = section.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-    html += `<li><a href="#arch-${id}">${escapeHtml(section)}</a></li>`;
+    // Use mapped ID if available, otherwise generate from title
+    const baseId = sectionIds[section] || section.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+    html += `<li><a href="#arch-${baseId}">${escapeHtml(section)}</a></li>`;
   });
   html += '</ul>';
   html += '</nav>';

@@ -35,7 +35,7 @@ function scrubNetworkEvent(event: any): any {
       const lowerName = name.toLowerCase();
       if (lowerName === 'set-cookie' || lowerName === 'cookie') {
         headers[name] = '<redacted>';
-      } else if (lowerName.includes('token') || lowerName.includes('api-key')) {
+      } else if (lowerName.includes('token') || lowerName.includes('api-key') || lowerName.includes('apikey')) {
         headers[name] = '<redacted>';
       } else {
         headers[name] = value;
@@ -52,7 +52,8 @@ function scrubNetworkEvent(event: any): any {
         : scrubbed.requestBodyPreview;
       scrubbed.requestBodyPreview = JSON.stringify(scrubObjectSecrets(body));
     } catch {
-      // Not JSON, leave as-is
+      // Not JSON - scrub potential secrets in raw text
+      scrubbed.requestBodyPreview = scrubTextSecrets(scrubbed.requestBodyPreview as string);
     }
   }
   
@@ -64,7 +65,8 @@ function scrubNetworkEvent(event: any): any {
         : scrubbed.responseBodyPreview;
       scrubbed.responseBodyPreview = JSON.stringify(scrubObjectSecrets(body));
     } catch {
-      // Not JSON, leave as-is
+      // Not JSON - scrub potential secrets in raw text
+      scrubbed.responseBodyPreview = scrubTextSecrets(scrubbed.responseBodyPreview as string);
     }
   }
   
@@ -93,7 +95,7 @@ function scrubUrlSecrets(url: string): string {
   
   // Redact common secret parameter patterns in query strings
   scrubbed = scrubbed.replace(
-    /([?&])(token|apikey|api_key|password|secret|auth|authorization|key)=[^&#]*/gi,
+    /([?&])(token|apikey|api_key|password|secret|auth|authorization|access_token|key)=[^&#]*/gi,
     '$1$2=<redacted>'
   );
   
@@ -131,14 +133,24 @@ function scrubUrlSecrets(url: string): string {
 }
 
 /**
+ * Redact potential secrets from plain text (non-JSON bodies, etc.).
+ */
+function scrubTextSecrets(text: string): string {
+  if (typeof text !== 'string') return text;
+  
+  // Redact token-like strings (including JWTs)
+  return text.replace(/\b[A-Za-z0-9+/=_.-]{30,}\b/g, '<redacted>');
+}
+
+/**
  * Redact potential secrets from an object recursively.
  */
 function scrubObjectSecrets(obj: unknown): unknown {
   if (obj === null || obj === undefined) return obj;
   
   if (typeof obj === 'string') {
-    // Redact long strings that look like tokens/keys
-    if (obj.length > 30 && /^[A-Za-z0-9+/=_-]{30,}$/.test(obj)) {
+    // Redact long strings that look like tokens/keys (including JWTs with dots)
+    if (obj.length > 30 && /^[A-Za-z0-9+/=_.-]{30,}$/.test(obj)) {
       return '<redacted>';
     }
     return obj;

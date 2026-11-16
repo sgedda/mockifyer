@@ -3224,7 +3224,7 @@ function renderErrorPanelHtml(analysis, escFn) {
     // Map internal status to human-readable label
     function formatStatus(s) {
       if (s === 'observed-no-chain') return 'Live';
-      if (s === 'observed-chain') return 'Live (nested)';
+      if (s === 'observed-with-chain') return 'Live (nested)';
       if (s === 'mocked-only') return 'Mocked';
       if (s === 'code-only') return 'Code only';
       return s;
@@ -4373,7 +4373,7 @@ function renderErrorPanelHtml(analysis, escFn) {
   function renderArchitecture(el) {
     var prerendered = payload.arch;
     if (!prerendered) {
-      el.innerHTML = '<p class="empty">No architecture data available.</p>';
+      el.innerHTML = '<p class="empty">Architecture view is generated on demand. Use the CLI <code>atlas</code> command, Dev Menu → Render Atlas, or E2E teardown to generate the full report with architecture diagrams, endpoint inventory, and code snippets.</p>';
       return;
     }
 

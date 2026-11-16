@@ -159,6 +159,22 @@ export function detectAuthFromTraffic(events: NetworkEvent[]): Map<string, Endpo
         }
       }
       
+      // Check query parameters for API keys
+      if (event.url || event.query) {
+        try {
+          const urlStr = event.url || '';
+          const searchParams = new URLSearchParams(event.query || (urlStr.includes('?') ? urlStr.split('?')[1] : ''));
+          for (const [paramName] of searchParams) {
+            if (API_KEY_QUERY_PARAMS.test(paramName)) {
+              schemes.add('api-key');
+              break;
+            }
+          }
+        } catch {
+          // Ignore URL parsing errors
+        }
+      }
+      
       // Check for auth failures
       if (event.status === 401 || event.status === 403) {
         authFailures++;

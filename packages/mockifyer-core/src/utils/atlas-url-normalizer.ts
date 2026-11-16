@@ -6,7 +6,8 @@
 const UUID_PATTERN = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
 const HASH_PATTERN = /\b[0-9a-f]{32,64}\b/gi;
 const NUMERIC_ID_PATTERN = /\/\d+(?=\/|$)/g;
-const SLUG_PATTERN = /\/[a-z0-9]+-[a-z0-9-]+(?=\/|$)/gi;
+// Only match slugs with mixed alphanumeric (e.g., "post-123-abc"), not static kebab-case routes
+const SLUG_PATTERN = /\/(?=.*[a-z])(?=.*\d)[a-z0-9]+-[a-z0-9-]+(?=\/|$)/gi;
 
 export interface NormalizedUrl {
   template: string;
