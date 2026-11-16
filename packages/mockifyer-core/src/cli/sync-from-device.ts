@@ -1,4 +1,4 @@
-#!/usr/bin/env ts-node
+#!/usr/bin/env node
 
 /**
  * Sync mock files from React Native device/simulator to project folder
@@ -7,8 +7,8 @@
  * mock-data folder so they can be version controlled and viewed in the dashboard.
  * 
  * Usage:
- *   mockifyer sync-from-device [options]
- *   or: npx @sgedda/mockifyer-core sync-from-device [options]
+ *   mockifyer-sync-from-device [options]
+ *   or: npx -p @sgedda/mockifyer-core mockifyer-sync-from-device [options]
  * 
  * Options:
  *   --path <path>    Path to mock data directory (default: ./mock-data)

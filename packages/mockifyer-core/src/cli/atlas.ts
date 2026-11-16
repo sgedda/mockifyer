@@ -1,4 +1,4 @@
-#!/usr/bin/env ts-node
+#!/usr/bin/env node
 
 /**
  * Interactive Atlas hop stream against Metro (no dashboard GUI).
@@ -11,7 +11,7 @@
  *   mockifyer-atlas --port 8081
  *   mockifyer-atlas --no-color
  *   mockifyer-atlas scan [--dir ./src] [--output scan-results.json]
- *   npx @sgedda/mockifyer-core mockifyer-atlas
+ *   npx -p @sgedda/mockifyer-core mockifyer-atlas
  *
  * Keys (interactive session):
  *   click  expand/collapse a ▸ nested row (mouse reporting)
@@ -57,7 +57,6 @@ import type { AtlasStreamPaint } from "../utils/metro-network-stream-tty";
 import { createEmptyAtlasDocMap } from "../utils/atlas-doc";
 import { writeAtlasDocHtml } from "../utils/atlas-doc-html";
 import { flushNetworkBodySpillsToDir } from "../utils/network-body-spill";
-import { scanCodeForEndpoints } from "../utils/atlas-code-scanner";
 
 interface CliOptions {
   port?: number;
@@ -390,6 +389,7 @@ async function renderAtlasHtmlLocally(
   let scannedEndpoints: any[] = [];
   if (fs.existsSync(srcDir)) {
     try {
+      const { scanCodeForEndpoints } = await import("../utils/atlas-code-scanner");
       const scanResult = scanCodeForEndpoints(srcDir);
       scannedEndpoints = scanResult.endpoints;
     } catch (err) {
@@ -854,6 +854,21 @@ async function runScan(options: CliOptions): Promise<void> {
   }));
 
   console.log(theme.bold('[atlas scan]'), `Scanning ${dir}...`);
+  
+  let scanCodeForEndpoints: (dir: string) => { endpoints: any[]; errors: any[] };
+  try {
+    const scanner = await import("../utils/atlas-code-scanner");
+    scanCodeForEndpoints = scanner.scanCodeForEndpoints;
+  } catch (err) {
+    const message = (err as Error).message;
+    if (message.includes("Cannot find module 'typescript'")) {
+      console.error(theme.err('\n[atlas scan] TypeScript is required for code scanning.'));
+      console.error(theme.muted('Install it with: npm install --save-dev typescript'));
+      console.error(theme.muted('Or use: npx -p typescript -p @sgedda/mockifyer-core mockifyer-atlas scan'));
+      process.exit(1);
+    }
+    throw err;
+  }
   
   const result = scanCodeForEndpoints(dir);
   

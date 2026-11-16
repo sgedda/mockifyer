@@ -16,7 +16,7 @@ npm install @sgedda/mockifyer-core
 
 ```bash
 # Auto-detect device (iOS on macOS, Android on Linux/Windows)
-npx mockifyer-sync-to-device
+npx -p @sgedda/mockifyer-core mockifyer-sync-to-device
 
 # Or if installed locally
 mockifyer-sync-to-device
