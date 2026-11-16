@@ -228,6 +228,62 @@ describe('Client/Server URL normalizer parity', () => {
       expect(clientResult.template).toBe('/profiles/{id}');
       expect(clientResult.template).toBe(serverResult.template);
     });
+
+    it('should preserve {uuid} and NOT convert to {id}', () => {
+      const url = 'https://api.example.com/resources/{uuid}';
+      
+      const serverResult = serverNormalizer(url);
+      const clientResult = clientNormalizer(url);
+
+      // Critical: {uuid} must stay {uuid}, not become {id}
+      expect(serverResult.template).toBe('/resources/{uuid}');
+      expect(clientResult.template).toBe('/resources/{uuid}');
+      expect(clientResult.template).toBe(serverResult.template);
+    });
+
+    it('should preserve {guid} as {uuid}', () => {
+      const url = 'https://api.example.com/items/{guid}';
+      
+      const serverResult = serverNormalizer(url);
+      const clientResult = clientNormalizer(url);
+
+      expect(serverResult.template).toBe('/items/{uuid}');
+      expect(clientResult.template).toBe('/items/{uuid}');
+      expect(clientResult.template).toBe(serverResult.template);
+    });
+
+    it('should handle mixed {uuid} and {userId} correctly', () => {
+      const url = 'https://api.example.com/users/{userId}/resources/{uuid}';
+      
+      const serverResult = serverNormalizer(url);
+      const clientResult = clientNormalizer(url);
+
+      expect(serverResult.template).toBe('/users/{id}/resources/{uuid}');
+      expect(clientResult.template).toBe('/users/{id}/resources/{uuid}');
+      expect(clientResult.template).toBe(serverResult.template);
+    });
+
+    it('should normalize {postId} to {id}', () => {
+      const url = 'https://api.example.com/posts/{postId}';
+      
+      const serverResult = serverNormalizer(url);
+      const clientResult = clientNormalizer(url);
+
+      expect(serverResult.template).toBe('/posts/{id}');
+      expect(clientResult.template).toBe('/posts/{id}');
+      expect(clientResult.template).toBe(serverResult.template);
+    });
+
+    it('should handle :userId Express-style', () => {
+      const url = 'https://api.example.com/profiles/:userId';
+      
+      const serverResult = serverNormalizer(url);
+      const clientResult = clientNormalizer(url);
+
+      expect(serverResult.template).toBe('/profiles/{id}');
+      expect(clientResult.template).toBe('/profiles/{id}');
+      expect(clientResult.template).toBe(serverResult.template);
+    });
   });
 
   describe('Slug pattern scoping', () => {

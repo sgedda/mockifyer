@@ -81,14 +81,16 @@ export function normalizeTemplatePlaceholders(template: string): string {
   normalized = normalized.replace(/:([a-zA-Z_][a-zA-Z0-9_]*)/g, '{$1}');
   
   // Infer type from parameter name (for code scanner templates)
-  // UUID-like names
+  // UUID-like names (case-insensitive)
   normalized = normalized.replace(/\{(?:uuid|guid)\}/gi, '{uuid}');
-  // Hash-like names
+  // Hash-like names (case-insensitive)
   normalized = normalized.replace(/\{(?:hash|checksum|sha)\}/gi, '{hash}');
-  // Slug-like names
+  // Slug-like names (case-insensitive)
   normalized = normalized.replace(/\{(?:slug|name|title|key)\}/gi, '{slug}');
-  // Generic {param} or ID-like names -> {id}
-  normalized = normalized.replace(/\{(?:param|id|userId|postId|itemId|[a-z]+Id)\}/gi, '{id}');
+  // Generic {param} or plain {id} (case-insensitive)
+  normalized = normalized.replace(/\{(?:param|id)\}/gi, '{id}');
+  // CamelCase *Id suffixes like {userId}, {postId} (case-sensitive to not match {uuid})
+  normalized = normalized.replace(/\{[a-z][a-zA-Z0-9]*Id\}/g, '{id}');
   
   return normalized;
 }
