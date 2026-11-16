@@ -1516,11 +1516,26 @@ function extractHost(url) {
     return 'Same-origin API';
   }
 }
+function normalizeTemplatePlaceholders(template) {
+  var normalized = template;
+  // Express-style :param -> {param}
+  normalized = normalized.replace(/:([a-zA-Z_][a-zA-Z0-9_]*)/g, '{$1}');
+  // Infer type from parameter name
+  normalized = normalized.replace(/\\{(?:uuid|guid)\\}/gi, '{uuid}');
+  normalized = normalized.replace(/\\{(?:hash|checksum|sha)\\}/gi, '{hash}');
+  normalized = normalized.replace(/\\{(?:slug|name|title|key)\\}/gi, '{slug}');
+  normalized = normalized.replace(/\\{(?:param|id|userId|postId|itemId|[a-z]+Id)\\}/gi, '{id}');
+  return normalized;
+}
+
 function normalizeUrlToTemplate(url) {
   try {
     var urlObj = new URL(url, 'http://dummy');
     var path = decodeURIComponent(urlObj.pathname);
     var parameters = [];
+    
+    // First normalize any template syntax (:id, {userId}) that might be in the URL
+    path = normalizeTemplatePlaceholders(path);
     
     // UUIDs
     path = path.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, function() {
@@ -1534,8 +1549,9 @@ function normalizeUrlToTemplate(url) {
       return '{hash}';
     });
     
-    // Slugs (hyphenated identifiers like 'my-post-title')
-    path = path.replace(/\\/[a-z0-9]+-[a-z0-9-]+(?=\\/|$)/gi, function(match) {
+    // Slugs: hyphenated segment with BOTH letters and digits within the segment
+    // Lookaheads are scoped to stop at next / or end, not scan entire remaining path
+    path = path.replace(/\\/(?=[^\\/]*\\d)(?=[^\\/]*[a-z])[a-z0-9]+-[a-z0-9-]+(?=\\/|$)/gi, function(match) {
       parameters.push('slug');
       return '/{slug}';
     });

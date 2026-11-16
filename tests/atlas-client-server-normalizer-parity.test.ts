@@ -19,20 +19,25 @@ function getClientNormalizer(): (url: string) => { template: string; parameters:
   const htmlFilePath = path.join(__dirname, '../packages/mockifyer-core/src/utils/atlas-doc-html.ts');
   const content = fs.readFileSync(htmlFilePath, 'utf-8');
   
-  // Extract the client function from the interactiveClientScript
-  const functionMatch = content.match(/function normalizeUrlToTemplate\(url\) \{[\s\S]*?\n\}/m);
-  if (!functionMatch) {
+  // Extract both normalizeTemplatePlaceholders and normalizeUrlToTemplate
+  const placeholderFunctionMatch = content.match(/function normalizeTemplatePlaceholders\(template\) \{[\s\S]*?\n\}/m);
+  const urlFunctionMatch = content.match(/function normalizeUrlToTemplate\(url\) \{[\s\S]*?\n\}/m);
+  
+  if (!urlFunctionMatch) {
     throw new Error('Could not find client normalizeUrlToTemplate function');
   }
   
-  let clientFunction = functionMatch[0];
+  let placeholderFunction = placeholderFunctionMatch ? placeholderFunctionMatch[0] : '';
+  let urlFunction = urlFunctionMatch[0];
   
   // Replace escaped backslashes for actual execution
-  clientFunction = clientFunction.replace(/\\\\/g, '\\');
+  placeholderFunction = placeholderFunction.replace(/\\\\/g, '\\');
+  urlFunction = urlFunction.replace(/\\\\/g, '\\');
   
-  // Create a function that can be executed
+  // Create functions that can be executed
   const wrapped = `
-    ${clientFunction}
+    ${placeholderFunction}
+    ${urlFunction}
     return normalizeUrlToTemplate;
   `;
   
@@ -59,13 +64,13 @@ describe('Client/Server URL normalizer parity', () => {
       expectedTemplate: '/users/{id}/'
     },
     {
-      description: 'Slug normalization (hyphenated)',
-      url: 'https://blog.example.com/posts/my-first-post',
+      description: 'Slug normalization (hyphenated with numbers)',
+      url: 'https://blog.example.com/posts/my-first-post-123',
       expectedTemplate: '/posts/{slug}'
     },
     {
-      description: 'Slug with multiple hyphens',
-      url: 'https://blog.example.com/posts/this-is-a-long-slug',
+      description: 'Slug with multiple hyphens and digits',
+      url: 'https://blog.example.com/posts/this-is-a-long-slug-42',
       expectedTemplate: '/posts/{slug}'
     },
     {
@@ -100,7 +105,7 @@ describe('Client/Server URL normalizer parity', () => {
     },
     {
       description: 'Slug followed by ID',
-      url: 'https://api.example.com/repos/my-repo/issues/123',
+      url: 'https://api.example.com/repos/my-repo-v2/issues/123',
       expectedTemplate: '/repos/{slug}/issues/{id}'
     }
   ];
@@ -190,6 +195,98 @@ describe('Client/Server URL normalizer parity', () => {
     });
   });
 
+  describe('Template placeholder normalization', () => {
+    it('should normalize Express-style :id syntax', () => {
+      const url = 'https://api.example.com/users/:id';
+      
+      const serverResult = serverNormalizer(url);
+      const clientResult = clientNormalizer(url);
+
+      expect(serverResult.template).toBe('/users/{id}');
+      expect(clientResult.template).toBe('/users/{id}');
+      expect(clientResult.template).toBe(serverResult.template);
+    });
+
+    it('should normalize generic {param} to {id}', () => {
+      const url = 'https://api.example.com/items/{param}';
+      
+      const serverResult = serverNormalizer(url);
+      const clientResult = clientNormalizer(url);
+
+      expect(serverResult.template).toBe('/items/{id}');
+      expect(clientResult.template).toBe('/items/{id}');
+      expect(clientResult.template).toBe(serverResult.template);
+    });
+
+    it('should normalize {userId} to {id}', () => {
+      const url = 'https://api.example.com/profiles/{userId}';
+      
+      const serverResult = serverNormalizer(url);
+      const clientResult = clientNormalizer(url);
+
+      expect(serverResult.template).toBe('/profiles/{id}');
+      expect(clientResult.template).toBe('/profiles/{id}');
+      expect(clientResult.template).toBe(serverResult.template);
+    });
+  });
+
+  describe('Slug pattern scoping', () => {
+    it('should NOT collapse static route when later segment has numbers', () => {
+      const url = 'https://api.example.com/health-check/items/123';
+      
+      const serverResult = serverNormalizer(url);
+      const clientResult = clientNormalizer(url);
+
+      expect(serverResult.template).toBe('/health-check/items/{id}');
+      expect(clientResult.template).toBe('/health-check/items/{id}');
+      expect(clientResult.template).toBe(serverResult.template);
+    });
+
+    it('should handle multiple static kebab-case segments', () => {
+      const url = 'https://api.example.com/api/health-check/status-info/current';
+      
+      const serverResult = serverNormalizer(url);
+      const clientResult = clientNormalizer(url);
+
+      expect(serverResult.template).toBe('/api/health-check/status-info/current');
+      expect(clientResult.template).toBe('/api/health-check/status-info/current');
+      expect(clientResult.template).toBe(serverResult.template);
+    });
+
+    it('should match actual slugs with mixed content', () => {
+      const url = 'https://api.example.com/posts/my-post-123-abc';
+      
+      const serverResult = serverNormalizer(url);
+      const clientResult = clientNormalizer(url);
+
+      expect(serverResult.template).toBe('/posts/{slug}');
+      expect(clientResult.template).toBe('/posts/{slug}');
+      expect(clientResult.template).toBe(serverResult.template);
+    });
+
+    it('should distinguish adjacent segments correctly', () => {
+      const url = 'https://api.example.com/user-profile/item-456';
+      
+      const serverResult = serverNormalizer(url);
+      const clientResult = clientNormalizer(url);
+
+      expect(serverResult.template).toBe('/user-profile/{slug}');
+      expect(clientResult.template).toBe('/user-profile/{slug}');
+      expect(clientResult.template).toBe(serverResult.template);
+    });
+
+    it('should handle static route followed by UUID', () => {
+      const url = 'https://api.example.com/health-check/550e8400-e29b-41d4-a716-446655440000';
+      
+      const serverResult = serverNormalizer(url);
+      const clientResult = clientNormalizer(url);
+
+      expect(serverResult.template).toBe('/health-check/{uuid}');
+      expect(clientResult.template).toBe('/health-check/{uuid}');
+      expect(clientResult.template).toBe(serverResult.template);
+    });
+  });
+
   describe('Real-world examples', () => {
     it('should match GitHub-style repo URLs', () => {
       const url = 'https://api.github.com/repos/owner/repo-name/issues/123';
@@ -211,7 +308,7 @@ describe('Client/Server URL normalizer parity', () => {
     });
 
     it('should match blog post URLs with slugs', () => {
-      const url = 'https://blog.example.com/posts/how-to-build-a-great-api';
+      const url = 'https://blog.example.com/posts/how-to-build-a-great-api-v2';
       
       const serverResult = serverNormalizer(url);
       const clientResult = clientNormalizer(url);
