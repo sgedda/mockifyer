@@ -92,6 +92,22 @@ app.use((req, res, next) => {
   next();
 });
 
+// WWW to apex redirect (301) - Railway proxies, so check X-Forwarded-Host first
+app.use((req, res, next) => {
+  const forwardedHost = req.headers['x-forwarded-host'];
+  const hostHeader = req.headers.host;
+  const host = (
+    (typeof forwardedHost === 'string' ? forwardedHost : forwardedHost?.[0]) ||
+    (typeof hostHeader === 'string' ? hostHeader : hostHeader?.[0]) ||
+    ''
+  ).toLowerCase();
+  if (host === 'www.mockifyer.dev') {
+    const redirectUrl = `https://mockifyer.dev${req.url}`;
+    return res.redirect(301, redirectUrl);
+  }
+  next();
+});
+
 // Middleware
 app.use(cors({
   origin: true,
