@@ -53,22 +53,23 @@ export function generateSystemDiagramSVG(
   };
   
   // Build parent-child relationships from events
-  // Treat unresolved parentRequestId as Application (parent not in captured events)
+  // Track proven edges (no parentRequestId) vs inferred edges (parentRequestId set but parent not found)
   const parentChildMap = new Map<string, Set<string>>(); // parent host -> Set<child hosts>
   const childParentMap = new Map<string, Set<string>>(); // child host -> Set<parent hosts>
-  const appChildren = new Set<string>(); // Hosts called directly by Application
+  const appChildren = new Set<string>(); // Hosts called directly by Application (proven: no parentRequestId)
+  const appChildrenInferred = new Set<string>(); // Hosts with inferred Application call (parentRequestId set but not found)
   
   events.forEach(ev => {
     if (!ev.host) return;
     
     if (!ev.parentRequestId) {
-      // No parent = Application
+      // No parent = proven Application call
       appChildren.add(ev.host);
     } else {
       const parentEvent = events.find(e => e.requestId === ev.parentRequestId || e.id === ev.parentRequestId);
       if (!parentEvent) {
-        // Unresolved parent = Application
-        appChildren.add(ev.host);
+        // Unresolved parent = inferred Application call
+        appChildrenInferred.add(ev.host);
       } else if (parentEvent.host && parentEvent.host !== ev.host) {
         // Host → host
         if (!parentChildMap.has(parentEvent.host)) {
@@ -92,7 +93,7 @@ export function generateSystemDiagramSVG(
   g.setGraph({ 
     rankdir: 'TB',
     ranksep: 80,
-    nodesep: 30,
+    nodesep: 60,  // Increased from 30 to reduce edge overlaps
     marginx: 40,
     marginy: 40
   });
@@ -134,10 +135,21 @@ export function generateSystemDiagramSVG(
     });
   });
   
+  // Track which edges are inferred
+  const inferredEdges = new Set<string>(); // Set of "from→to" keys for inferred edges
+  
   // Add edges to dagre graph
-  // App -> hosts
+  // App -> hosts (proven)
   appChildren.forEach(host => {
     g.setEdge('app', `host-${host}`);
+  });
+  
+  // App -> hosts (inferred) - only if not already proven
+  appChildrenInferred.forEach(host => {
+    if (!appChildren.has(host)) {
+      g.setEdge('app', `host-${host}`);
+      inferredEdges.add(`app→host-${host}`);
+    }
   });
   
   // Host -> host
@@ -169,10 +181,18 @@ export function generateSystemDiagramSVG(
     });
   });
   
-  // Calculate diagram bounds
-  const graphBounds = g.graph();
-  const contentWidth = (graphBounds.width || 800) + MARGIN * 2;
-  const diagramHeight = (graphBounds.height || 600) + MARGIN * 2;
+  // Calculate actual diagram bounds from nodes (crop empty space)
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  nodes.forEach(node => {
+    const nodeWidth = node.width || 160;
+    minX = Math.min(minX, node.x);
+    minY = Math.min(minY, node.y);
+    maxX = Math.max(maxX, node.x + nodeWidth);
+    maxY = Math.max(maxY, node.y + NODE_HEIGHT);
+  });
+  
+  const contentWidth = maxX - minX + MARGIN * 2;
+  const diagramHeight = maxY - minY + MARGIN * 2;
   
   // Create edges with dagre waypoints
   const edges: Array<{
@@ -182,6 +202,7 @@ export function generateSystemDiagramSVG(
     status: 'live' | 'error' | 'code-only' | 'mocked' | 'unexercised';
     count: number;
     points?: Array<{x: number, y: number}>;
+    inferred?: boolean;
   }> = [];
   
   // Extract edges from dagre with points
@@ -189,6 +210,10 @@ export function generateSystemDiagramSVG(
     const edge = g.edge(e);
     const fromNodeId = e.v;
     const toNodeId = e.w;
+    
+    // Check if this edge is inferred
+    const edgeKey = `${fromNodeId}→${toNodeId}`;
+    const isInferred = inferredEdges.has(edgeKey);
     
     // Determine label and status
     let label: string | undefined;
@@ -200,7 +225,7 @@ export function generateSystemDiagramSVG(
       const hostInventory = inventory.byHost.get(host);
       if (hostInventory) {
         count = hostInventory.length;
-        label = `${count} ep`;
+        label = isInferred ? 'caller not recorded' : `${count} ep`;
       }
       const hostStatus = hostStatuses.get(host);
       if (hostStatus === 'mocked') status = 'mocked';
@@ -214,7 +239,8 @@ export function generateSystemDiagramSVG(
       label,
       status,
       count,
-      points: edge.points || []
+      points: edge.points || [],
+      inferred: isInferred
     });
   });
   
@@ -224,7 +250,7 @@ export function generateSystemDiagramSVG(
   
   let svg = `<svg viewBox="0 0 ${contentWidth} ${totalHeight}" xmlns="http://www.w3.org/2000/svg" class="atlas-system-diagram" style="width: 100%; height: auto; min-height: 400px;" preserveAspectRatio="xMidYMid meet">`;
   
-  // Define arrow markers (Mock=green, Live=blue, Error=red, Code-only=grey)
+  // Define arrow markers (Mock=green, Live=blue, Error=red, Code-only=grey, Inferred=grey)
   svg += `<defs>
     <marker id="arrow-live" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
       <path d="M0,0 L0,6 L9,3 z" fill="#3b82f6" />
@@ -238,6 +264,9 @@ export function generateSystemDiagramSVG(
     <marker id="arrow-code-only" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
       <path d="M0,0 L0,6 L9,3 z" fill="#9ca3af" />
     </marker>
+    <marker id="arrow-inferred" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#9ca3af" />
+    </marker>
   </defs>`;
   
   // Draw edges with smooth curves - each edge gets its own curve to avoid long shared segments
@@ -246,39 +275,28 @@ export function generateSystemDiagramSVG(
     const toNode = nodes.find(n => n.id === edge.to);
     if (!fromNode || !toNode) return;
     
-    const color = 
+    // Inferred edges: thin dashed grey
+    const color = edge.inferred ? '#9ca3af' :
       edge.status === 'error' ? '#ef4444' :
       edge.status === 'mocked' ? '#22c55e' :
       edge.status === 'code-only' ? '#9ca3af' :
       '#3b82f6';
     
-    const strokeDasharray = (edge.status === 'code-only' || edge.status === 'unexercised') ? '5,5' : 'none';
-    const marker = `arrow-${edge.status === 'error' ? 'error' : edge.status === 'mocked' ? 'mocked' : edge.status === 'code-only' ? 'code-only' : 'live'}`;
+    const strokeWidth = edge.inferred ? '1' : '2';
+    const strokeDasharray = (edge.inferred || edge.status === 'code-only' || edge.status === 'unexercised') ? '5,5' : 'none';
+    const marker = edge.inferred ? 'arrow-inferred' :
+      `arrow-${edge.status === 'error' ? 'error' : edge.status === 'mocked' ? 'mocked' : edge.status === 'code-only' ? 'code-only' : 'live'}`;
     
-    // Use dagre's edge points for smooth path
+    // Use dagre's edge points - draw straight polyline segments (no curves) to avoid overlaps
     const points = edge.points || [];
     let pathData: string;
     
     if (points.length >= 2) {
-      // Draw smooth monotone curve through dagre points
+      // Draw straight polyline through dagre points
       pathData = `M ${points[0].x} ${points[0].y}`;
       
-      for (let i = 0; i < points.length - 1; i++) {
-        const p0 = points[i];
-        const p1 = points[i + 1];
-        
-        const dx = p1.x - p0.x;
-        const dy = p1.y - p0.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        const offset = Math.min(dist * 0.4, 40);
-        
-        // Control points for smooth curve
-        const cx1 = p0.x;
-        const cy1 = p0.y + offset;
-        const cx2 = p1.x;
-        const cy2 = p1.y - offset;
-        
-        pathData += ` C ${cx1} ${cy1}, ${cx2} ${cy2}, ${p1.x} ${p1.y}`;
+      for (let i = 1; i < points.length; i++) {
+        pathData += ` L ${points[i].x} ${points[i].y}`;
       }
     } else {
       // Fallback: direct line from node centers
@@ -287,16 +305,13 @@ export function generateSystemDiagramSVG(
       const x2 = toNode.x + (toNode.width || 160) / 2;
       const y2 = toNode.y;
       
-      const verticalDistance = y2 - y1;
-      const controlPointOffset = verticalDistance * 0.4;
-      
-      pathData = `M ${x1} ${y1} C ${x1} ${y1 + controlPointOffset}, ${x2} ${y2 - controlPointOffset}, ${x2} ${y2}`;
+      pathData = `M ${x1} ${y1} L ${x2} ${y2}`;
     }
     
     svg += `<path d="${pathData}" 
-      stroke="${color}" stroke-width="2" stroke-dasharray="${strokeDasharray}" 
+      stroke="${color}" stroke-width="${strokeWidth}" stroke-dasharray="${strokeDasharray}" 
       fill="none" marker-end="url(#${marker})" 
-      data-from="${edge.from}" data-to="${edge.to}" />`;
+      data-from="${edge.from}" data-to="${edge.to}"${edge.inferred ? ' data-inferred="true"' : ''} />`;
     
     // Label at midpoint
     if (edge.label && points.length >= 2) {
@@ -362,6 +377,10 @@ export function generateSystemDiagramSVG(
   // Code-only (gray dashed)
   svg += `<rect x="${legendX + 250}" y="${legendY + 12}" width="85" height="24" rx="4" fill="#f3f4f6" stroke="#9ca3af" stroke-width="2" stroke-dasharray="5,5" />`;
   svg += `<text x="${legendX + 292}" y="${legendY + 28}" font-size="11" text-anchor="middle" fill="#1f2937" font-weight="500">Code-only</text>`;
+  
+  // Caller not recorded (thin gray dashed)
+  svg += `<line x1="${legendX + 355}" y1="${legendY + 24}" x2="${legendX + 405}" y2="${legendY + 24}" stroke="#9ca3af" stroke-width="1" stroke-dasharray="5,5" />`;
+  svg += `<text x="${legendX + 410}" y="${legendY + 28}" font-size="11" fill="#1f2937" font-weight="500">Caller not recorded</text>`;
   
   svg += `</g>`;
   svg += '</svg>';
