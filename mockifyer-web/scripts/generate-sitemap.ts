@@ -16,6 +16,7 @@ const ROUTE_CONFIG: Record<string, { priority: string; changefreq: string }> = {
   '/date-config': { priority: '0.7', changefreq: 'monthly' },
   '/guides/mock-at-the-network-edge': { priority: '0.7', changefreq: 'monthly' },
   '/guides/mock-drift': { priority: '0.7', changefreq: 'monthly' },
+  '/guides/mockifyer-atlas': { priority: '0.7', changefreq: 'monthly' },
   '/guides/react-native-without-msw': { priority: '0.7', changefreq: 'monthly' },
   '/guides/reproduce-tester-bugs': { priority: '0.7', changefreq: 'monthly' },
   '/guides/stable-react-native-e2e': { priority: '0.7', changefreq: 'monthly' },

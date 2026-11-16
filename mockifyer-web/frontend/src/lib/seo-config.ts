@@ -15,7 +15,7 @@ export const SITE_NAME = 'Mockifyer'
 
 export const DEFAULT_TITLE = 'Mockifyer — Record & Replay HTTP API Mocks'
 export const DEFAULT_DESCRIPTION =
-  'Record axios and fetch calls as JSON and replay them in Node and React Native. Selective recording by default; mocks stay in your repo.'
+  'Open-source API mocking for JavaScript and React Native. Record and replay HTTP calls, tweak fields in a dashboard, catch API drift in CI. Mocks stay in your repo.'
 
 /**
  * SEO configuration for all routes.
@@ -99,6 +99,12 @@ export const PAGE_SEO: Record<string, PageSeoConfig> = {
     description:
       'Use Mockifyer to record and replay HTTP fetch calls in browser environments, Expo web builds, and Vite projects with the memory provider.',
     path: '/guides/browser-record-replay',
+  },
+  '/guides/mockifyer-atlas': {
+    title: 'Visualize Architecture with Mockifyer Atlas',
+    description:
+      'Generate interactive traffic maps from recorded HTTP hops. See hosts, request chains, search payloads, and trace multi-service flows.',
+    path: '/guides/mockifyer-atlas',
   },
   '/features': {
     title: 'Mockifyer Features: Record, Replay, Scenarios',

@@ -13,7 +13,7 @@ const DELETED_PAGE_SEO_BLOCK_FOR_REFERENCE = {
   '/': {
     title: 'Mockifyer — Record & Replay HTTP API Mocks',
     description:
-      'Record axios and fetch calls as JSON and replay them in Node and React Native. Selective recording by default; mocks stay in your repo.',
+      'Open-source API mocking for JavaScript and React Native. Record and replay HTTP calls, tweak fields in a dashboard, catch API drift in CI. Mocks stay in your repo.',
     path: '/',
   },
   '/getting-started': {

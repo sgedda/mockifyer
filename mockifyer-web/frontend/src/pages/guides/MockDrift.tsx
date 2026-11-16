@@ -46,7 +46,7 @@ export default function MockDrift() {
       <div className="p-4 border border-blue-500/50 bg-blue-500/10 rounded-md">
         <p className="text-blue-900 dark:text-blue-200 text-sm">
           <strong>New:</strong> The <code className="bg-muted px-1 py-0.5 rounded">mockifyer-drift-check</code> CLI 
-          (requires <code className="bg-muted px-1 py-0.5 rounded">@sgedda/mockifyer-core</code> ≥1.10.194) 
+          ships in <code className="bg-muted px-1 py-0.5 rounded">@sgedda/mockifyer-core</code> 1.10.196+ and 
           compares recorded mocks with live APIs. Run it nightly in GitHub Actions to catch breaking changes before they ship.
         </p>
       </div>
@@ -333,6 +333,147 @@ Drifted mocks:
         </Card>
       </section>
 
+      <section id="drift-showcase">
+        <h2 className="text-3xl font-semibold tracking-tight mb-4">Try the Simulated Drift Demo</h2>
+        
+        <p className="text-muted-foreground mb-4">
+          The <a 
+            href="https://github.com/sgedda/mockifyer/tree/main/demos/drift-showcase" 
+            className="text-primary hover:underline"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <code className="bg-muted px-1 rounded">demos/drift-showcase</code>
+          </a> folder demonstrates drift detection with a controllable simulator 
+          that shows exactly what breaking changes and warnings look like.
+        </p>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>What It Simulates</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              The drift simulator (<code className="bg-muted px-1 rounded">drift-simulator.js</code>) runs on 
+              localhost:4290 with two modes:
+            </p>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="border-b">
+                  <tr>
+                    <th className="text-left p-2">Change</th>
+                    <th className="text-left p-2">v1 (Stable)</th>
+                    <th className="text-left p-2">v2 (Drift)</th>
+                    <th className="text-left p-2">Severity</th>
+                  </tr>
+                </thead>
+                <tbody className="text-muted-foreground">
+                  <tr className="border-b">
+                    <td className="p-2">Field renamed</td>
+                    <td className="p-2"><code className="bg-muted px-1 rounded">temperature: 22</code></td>
+                    <td className="p-2"><code className="bg-muted px-1 rounded">temp_celsius: 22</code></td>
+                    <td className="p-2"><span className="text-red-600 dark:text-red-400">Breaking</span></td>
+                  </tr>
+                  <tr className="border-b">
+                    <td className="p-2">Field removed</td>
+                    <td className="p-2"><code className="bg-muted px-1 rounded">temperature</code> exists</td>
+                    <td className="p-2"><code className="bg-muted px-1 rounded">temperature</code> removed</td>
+                    <td className="p-2"><span className="text-red-600 dark:text-red-400">Breaking</span></td>
+                  </tr>
+                  <tr className="border-b">
+                    <td className="p-2">Type changed</td>
+                    <td className="p-2"><code className="bg-muted px-1 rounded">conditions: "Sunny"</code></td>
+                    <td className="p-2"><code className="bg-muted px-1 rounded">conditions: ["Sunny", "Clear"]</code></td>
+                    <td className="p-2"><span className="text-red-600 dark:text-red-400">Breaking</span></td>
+                  </tr>
+                  <tr>
+                    <td className="p-2">New field</td>
+                    <td className="p-2 text-muted-foreground/60"><em>(none)</em></td>
+                    <td className="p-2"><code className="bg-muted px-1 rounded">humidity: 65</code></td>
+                    <td className="p-2"><span className="text-amber-600 dark:text-amber-400">Warning</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <p className="text-sm text-muted-foreground">
+              The demo also checks two real live APIs:
+            </p>
+
+            <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
+              <li>
+                <strong>Open-Meteo:</strong> <code className="bg-muted px-1 rounded">api.open-meteo.com/v1/forecast</code> — 
+                Weather forecast API (fields ignored: <code className="bg-muted px-1 rounded">current.time</code>, <code className="bg-muted px-1 rounded">daily.time</code>)
+              </li>
+              <li>
+                <strong>Frankfurter:</strong> <code className="bg-muted px-1 rounded">api.frankfurter.app/latest</code> — 
+                Currency exchange rates (fields ignored: <code className="bg-muted px-1 rounded">date</code>, <code className="bg-muted px-1 rounded">rates</code>)
+              </li>
+            </ul>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Run It Locally</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Clone the repository and run the drift showcase:
+            </p>
+
+            <CodeBlock language="bash" code={`# Install dependencies
+cd demos/drift-showcase
+npm install
+
+# Terminal 1: Start simulator in v1 mode (stable)
+npm start
+
+# Terminal 2: Run drift check (should pass)
+cd ../..
+npx mockifyer-drift-check \\
+  --mock-data-path demos/drift-showcase/mock-data \\
+  --scenario drift-watch
+
+# Terminal 1: Stop and restart in v2 mode (with drift)
+# Ctrl+C
+npm run start:v2
+
+# Terminal 2: Run drift check again (should detect drift)
+npx mockifyer-drift-check \\
+  --mock-data-path demos/drift-showcase/mock-data \\
+  --scenario drift-watch \\
+  --html /tmp/drift-report
+
+# View the HTML report
+open /tmp/drift-report/index.html  # macOS
+xdg-open /tmp/drift-report/index.html  # Linux`} />
+
+            <p className="text-sm text-muted-foreground">
+              The simulator demonstrates exactly what breaking drift looks like in the HTML report: 
+              fields missing, types changed, and new fields added.
+            </p>
+          </CardContent>
+        </Card>
+
+        <div className="p-4 border border-blue-500/50 bg-blue-500/10 rounded-md">
+          <p className="text-blue-900 dark:text-blue-200 text-sm">
+            <strong>Configuration:</strong> The demo's <code className="bg-muted px-1 rounded">mockifyer.drift.json</code> uses 
+            <code className="bg-muted px-1 rounded">domain-path-rules.json</code> to route localhost:4290, 
+            api.open-meteo.com, and api.frankfurter.app requests. See the{' '}
+            <a 
+              href="https://github.com/sgedda/mockifyer/tree/main/demos/drift-showcase" 
+              className="text-primary hover:underline"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              drift-showcase folder
+            </a> for the full setup.
+          </p>
+        </div>
+      </section>
+
       <section id="nightly-ci">
         <h2 className="text-3xl font-semibold tracking-tight mb-4">
           <Clock className="inline-block h-7 w-7 mr-2 mb-1" />
@@ -394,6 +535,77 @@ jobs:
                 <li>Provides copy-paste commands to accept or ignore drift</li>
                 <li>Closes the issue when drift is resolved</li>
                 <li>Fails the workflow on breaking drift</li>
+              </ul>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-blue-500/50 bg-blue-500/5 mt-4">
+          <CardHeader>
+            <CardTitle>Live Drift Report on GitHub Pages</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              The Mockifyer repository runs a nightly drift check (
+              <a 
+                href="https://github.com/sgedda/mockifyer/blob/main/.github/workflows/drift.yml" 
+                className="text-primary hover:underline"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <code className="bg-muted px-1 rounded">.github/workflows/drift.yml</code>
+              </a>, merged in <a 
+                href="https://github.com/sgedda/mockifyer/pull/540" 
+                className="text-primary hover:underline"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                PR #540
+              </a>) that publishes an interactive HTML drift report to GitHub Pages.
+            </p>
+
+            <div className="space-y-2 text-sm">
+              <p className="font-semibold">Published Reports:</p>
+              <ul className="text-muted-foreground space-y-2 list-disc list-inside">
+                <li>
+                  <strong>Drift Check Showcase:</strong>{' '}
+                  <a 
+                    href="https://sgedda.github.io/mockifyer/drift/" 
+                    className="text-primary hover:underline"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    https://sgedda.github.io/mockifyer/drift/
+                  </a>
+                  <div className="ml-6 mt-1 text-xs text-muted-foreground">
+                    Live drift detection against simulated and real APIs (Open-Meteo, Frankfurter)
+                  </div>
+                </li>
+                <li>
+                  <strong>Atlas Architecture:</strong>{' '}
+                  <a 
+                    href="https://sgedda.github.io/mockifyer/atlas/" 
+                    className="text-primary hover:underline"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    https://sgedda.github.io/mockifyer/atlas/
+                  </a>
+                  <div className="ml-6 mt-1 text-xs text-muted-foreground">
+                    Auto-generated API architecture documentation from mocks
+                  </div>
+                </li>
+              </ul>
+            </div>
+
+            <div className="space-y-2 text-sm">
+              <p className="font-semibold">Workflow highlights:</p>
+              <ul className="text-muted-foreground space-y-1 list-disc list-inside">
+                <li>Runs nightly at 3:00 AM UTC</li>
+                <li>Checks simulated endpoints (localhost:4290) and live APIs (open-meteo.com, frankfurter.app)</li>
+                <li>Generates HTML report with <code className="bg-muted px-1 rounded">--html ./drift-report</code></li>
+                <li>Publishes to <code className="bg-muted px-1 rounded">/drift/</code> on GitHub Pages alongside <code className="bg-muted px-1 rounded">/atlas/</code></li>
+                <li>Uploads JSON artifact for 30 days</li>
               </ul>
             </div>
           </CardContent>
@@ -559,8 +771,9 @@ diff -u mock-data/drift-watch/staging.wanderweird.dev/trips/GET_123.json \\
         <Card>
           <CardContent className="pt-6">
             <p className="mb-3">
-              The <code className="bg-muted px-1 rounded">mockifyer-drift-check</code> CLI is available in 
-              <code className="bg-muted px-1 rounded">@sgedda/mockifyer-core</code> ≥1.10.194.
+              The <code className="bg-muted px-1 rounded">mockifyer-drift-check</code> CLI ships in 
+              <code className="bg-muted px-1 rounded">@sgedda/mockifyer-core</code> 1.10.196+ as 
+              <code className="bg-muted px-1 rounded">dist/cli/drift-check.js</code>.
             </p>
 
             <p className="text-sm text-muted-foreground mb-3">
