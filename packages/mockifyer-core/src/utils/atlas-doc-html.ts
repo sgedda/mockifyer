@@ -19,7 +19,16 @@ import type { NetworkEvent } from './network-event-types';
 import { computeUsedResponsePaths } from './response-field-usage';
 import { getAtlasUsageAnnotations, mergeUsageOntoNetworkEvents } from './atlas-usage-annotations';
 import { prettyPrintJsonText } from './json-pretty';
-import type { ArchitectureDoc } from './atlas-architecture-doc';
+import { buildEndpointInventory } from './atlas-endpoint-inventory';
+import { generateArchitectureDoc, type ArchitectureDoc } from './atlas-architecture-doc';
+import {
+  generateSystemDiagramSVG,
+  generateArchitectureTOC,
+  generateEndpointInventoryHTML,
+  generateKeyFlowsHTML,
+  generateIssuesHTML
+} from './atlas-architecture-view';
+import { detectAuthFromTraffic } from './atlas-auth-detection';
 
 let fs: typeof import('fs') | undefined;
 let pathMod: typeof import('path') | undefined;
@@ -6146,8 +6155,8 @@ function renderErrorPanelHtml(analysis, escFn) {
 `.trim();
 }
 
-function buildInteractiveIndex(map: AtlasDocMap, events: NetworkEvent[], scannedEndpoints?: any[]): string {
-  const body = buildInteractiveAtlasBody(map, events, { scannedEndpoints });
+function buildInteractiveIndex(map: AtlasDocMap, events: NetworkEvent[], options?: { scannedEndpoints?: any[]; skipArchitecture?: boolean }): string {
+  const body = buildInteractiveAtlasBody(map, events, options);
   // Pass scenario only, not "Atlas —" prefix (header template handles branding)
   return shell(map.scenario || 'Interactive Session', body);
 }
@@ -6225,6 +6234,8 @@ interface InteractiveAtlasBodyOptions {
   mode?: 'crash';
   crash?: CrashHtmlPayload;
   scannedEndpoints?: any[];
+  /** Skip expensive architecture pre-rendering (for auto-regeneration on network events) */
+  skipArchitecture?: boolean;
 }
 
 /**
@@ -6242,18 +6253,6 @@ function buildArchitecturePrerenderedSections(
   issues: string;
   archDoc: ArchitectureDoc;
 } {
-  // Lazy-load heavy architecture modules to avoid pulling them into runtime import graph
-  const { buildEndpointInventory } = require('./atlas-endpoint-inventory');
-  const { generateArchitectureDoc } = require('./atlas-architecture-doc');
-  const { detectAuthFromTraffic } = require('./atlas-auth-detection');
-  const {
-    generateSystemDiagramSVG,
-    generateArchitectureTOC,
-    generateEndpointInventoryHTML,
-    generateKeyFlowsHTML,
-    generateIssuesHTML
-  } = require('./atlas-architecture-view');
-  
   // Build inventory
   const inventory = buildEndpointInventory(events, scannedEndpoints || []);
   
@@ -6316,9 +6315,6 @@ function buildInteractiveAtlasBody(
   const merged = mergeUsageOntoNetworkEvents(events, annotations);
   const guiLinkedRequestIds = buildGuiLinkedRequestIdSet(map);
   
-  // Generate prerendered architecture sections
-  const archSections = buildArchitecturePrerenderedSections(merged, options?.scannedEndpoints);
-  
   const payload: {
     doc: AtlasDocMap;
     events: ReturnType<typeof slimNetworkEvent>[];
@@ -6335,15 +6331,21 @@ function buildInteractiveAtlasBody(
   } = {
     doc: map,
     events: merged.map((ev) => slimNetworkEvent(ev, guiLinkedRequestIds, map)),
-    arch: {
+  };
+  
+  // Generate prerendered architecture sections only when explicitly requested
+  // (CLI, teardown, manual export), not on auto-regeneration per network event
+  if (!options?.skipArchitecture) {
+    const archSections = buildArchitecturePrerenderedSections(merged, options?.scannedEndpoints);
+    payload.arch = {
       toc: archSections.toc,
       diagram: archSections.diagram,
       inventory: archSections.inventory,
       keyFlows: archSections.keyFlows,
       issues: archSections.issues,
       overview: archSections.archDoc.overview
-    }
-  };
+    };
+  }
   if (options?.mode === 'crash') {
     payload.mode = 'crash';
   }
@@ -6419,6 +6421,8 @@ export function buildAtlasDocHtmlFiles(
     bodiesRoot?: string;
     /** Scanned endpoints from static code analysis */
     scannedEndpoints?: any[];
+    /** Skip expensive architecture pre-rendering (for auto-regeneration on network events) */
+    skipArchitecture?: boolean;
   }
 ): Record<string, string> {
   const pages = Object.values(map.pages).sort((a, b) => a.pageId.localeCompare(b.pageId));
@@ -6443,7 +6447,7 @@ export function buildAtlasDocHtmlFiles(
   });
 
   const files: Record<string, string> = {
-    'index.html': buildInteractiveIndex(map, events, options?.scannedEndpoints),
+    'index.html': buildInteractiveIndex(map, events, options),
     'atlas.har': buildAtlasHarJson(events, {
       scenario: map.scenario,
       creatorVersion: creatorVersion || undefined,
@@ -6473,7 +6477,7 @@ export function writeAtlasDocHtml(
   dir: string,
   map: AtlasDocMap,
   networkEvents?: readonly NetworkEvent[],
-  options?: { scannedEndpoints?: any[] }
+  options?: { scannedEndpoints?: any[]; skipArchitecture?: boolean }
 ): number {
   if (!fs || !pathMod) return 0;
   const root = dir.trim();
@@ -6483,7 +6487,8 @@ export function writeAtlasDocHtml(
     const events = networkEvents ?? htmlNetworkEvents;
     const files = buildAtlasDocHtmlFiles(map, events, { 
       bodiesRoot: root,
-      scannedEndpoints: options?.scannedEndpoints
+      scannedEndpoints: options?.scannedEndpoints,
+      skipArchitecture: options?.skipArchitecture
     });
     const pagesDir = pathMod.join(root, 'pages');
     fs.mkdirSync(pagesDir, { recursive: true });
@@ -6519,7 +6524,7 @@ export function scheduleAtlasDocHtmlRewrite(map: AtlasDocMap): void {
     const snapshot = pendingMap;
     pendingMap = null;
     if (snapshot && htmlOutputPath?.trim()) {
-      writeAtlasDocHtml(htmlOutputPath.trim(), snapshot, htmlNetworkEvents);
+      writeAtlasDocHtml(htmlOutputPath.trim(), snapshot, htmlNetworkEvents, { skipArchitecture: true });
     }
   }, HTML_WRITE_DEBOUNCE_MS);
 
@@ -6538,6 +6543,6 @@ export function flushAtlasDocHtmlRewrite(): void {
   pendingMap = null;
   const dir = htmlOutputPath?.trim();
   if (snapshot && dir && fs) {
-    writeAtlasDocHtml(dir, snapshot, htmlNetworkEvents);
+    writeAtlasDocHtml(dir, snapshot, htmlNetworkEvents, { skipArchitecture: true });
   }
 }
