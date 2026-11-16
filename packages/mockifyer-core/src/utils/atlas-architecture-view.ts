@@ -423,7 +423,10 @@ export function generateEndpointInventoryHTML(
           const url = new URL(e.url);
           const normalizedPath = url.pathname.replace(/\/+$/, '').replace(/^\/+/, '/');
           const normalizedTemplate = endpoint.urlTemplate.replace(/\/+$/, '').replace(/^\/+/, '/');
-          return normalizedPath === normalizedTemplate || normalizedPath.match(new RegExp(`^${normalizedTemplate.replace(/:[^/]+/g, '[^/]+')}$`));
+          if (normalizedPath === normalizedTemplate) return true;
+          const escapedTemplate = normalizedTemplate.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const pattern = escapedTemplate.replace(/\\{[^}]+\\}/g, '[^/]+');
+          return normalizedPath.match(new RegExp(`^${pattern}$`));
         } catch {
           return false;
         }

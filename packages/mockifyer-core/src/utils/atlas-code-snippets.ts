@@ -170,8 +170,7 @@ function redactObjectSecrets(obj: unknown): unknown {
           lowerKey.includes('password') ||
           lowerKey.includes('apikey') ||
           lowerKey.includes('api_key') ||
-          lowerKey.includes('authorization') ||
-          lowerKey.includes('auth')) {
+          lowerKey.includes('authorization')) {
         result[key] = '<redacted>';
       } else {
         result[key] = redactObjectSecrets(value);
