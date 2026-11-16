@@ -254,7 +254,7 @@ jobs:
           
           # Create root index.html with links to available reports
           HAS_ATLAS=""
-          if [ -d "pages-root/atlas" ]; then
+          if [ -d "pages-root/atlas" ] && [ -n "$(ls -A pages-root/atlas 2>/dev/null)" ]; then
             HAS_ATLAS="yes"
           fi
           
