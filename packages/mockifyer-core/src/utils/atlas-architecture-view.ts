@@ -39,48 +39,46 @@ export function generateSystemDiagramSVG(
   const nodes: SystemDiagramNode[] = [];
   const edges: SystemDiagramEdge[] = [];
   
-  // Node positioning (larger for readability)
-  const LAYER_GAP = 120;
-  const NODE_GAP = 200;
+  // Node positioning constants
   const NODE_HEIGHT = 45;
   const CHAR_WIDTH = 7; // ~7px per character
   const NODE_PADDING = 20; // padding on each side
+  const TIER_GAP = 120; // Vertical gap between tiers
+  const NODE_GAP = 40;  // Horizontal gap between nodes in same tier
+  const MARGIN = 50;
   
   // Helper to calculate node width based on text
   const getNodeWidth = (text: string): number => {
     return Math.max(160, text.length * CHAR_WIDTH + NODE_PADDING * 2);
   };
   
-  // **GRID LAYOUT ALGORITHM**
-  // Row 0: Application (centered)
-  // Rows 1..n: All hosts in grid (up to 4 columns), sorted by call count
-  // Downstream: Separate band below, under parent host column
+  // Build parent-child relationships from events
+  const parentChildMap = new Map<string, Set<string>>(); // parent host -> Set<child hosts>
+  const childParentMap = new Map<string, Set<string>>(); // child host -> Set<parent hosts>
   
-  const GRID_COLS = 4;
-  const ROW_HEIGHT = 80;
-  const COL_GAP = 20;
-  const ROW_GAP = 100;
-  const MARGIN = 50;
-  
-  // Get all hosts with call counts
-  const allHosts = Array.from(inventory.byHost.keys());
-  const hostCallCounts = new Map<string, number>();
-  allHosts.forEach(host => {
-    const hostInventory = inventory.byHost.get(host);
-    if (hostInventory) {
-      const totalCalls = hostInventory.reduce((sum, e) => sum + (e.callCount || 0), 0);
-      hostCallCounts.set(host, totalCalls);
+  events.forEach(ev => {
+    if (ev.parentRequestId && ev.host) {
+      const parentEvent = events.find(e => e.requestId === ev.parentRequestId || e.id === ev.parentRequestId);
+      if (parentEvent && parentEvent.host && parentEvent.host !== ev.host) {
+        if (!parentChildMap.has(parentEvent.host)) {
+          parentChildMap.set(parentEvent.host, new Set());
+        }
+        parentChildMap.get(parentEvent.host)!.add(ev.host);
+        
+        if (!childParentMap.has(ev.host)) {
+          childParentMap.set(ev.host, new Set());
+        }
+        childParentMap.get(ev.host)!.add(parentEvent.host);
+      }
     }
   });
   
-  // Sort hosts by call count descending
-  const sortedHosts = allHosts.sort((a, b) => 
-    (hostCallCounts.get(b) || 0) - (hostCallCounts.get(a) || 0)
-  );
+  // Get all hosts
+  const allHosts = Array.from(inventory.byHost.keys());
   
   // Calculate host statuses
   const hostStatuses = new Map<string, 'mocked' | 'live' | 'error' | 'code-only'>();
-  sortedHosts.forEach(host => {
+  allHosts.forEach(host => {
     const hostInventory = inventory.byHost.get(host);
     if (!hostInventory) return;
     
@@ -89,7 +87,6 @@ export function generateSystemDiagramSVG(
     const hasCodeOnly = hostInventory.some(e => e.status === 'code-only');
     const hasObserved = hostInventory.some(e => e.status.startsWith('observed'));
     
-    // Bug #40: Fix priority - hasCodeOnly was checked but never used due to hasObserved returning 'live' first
     hostStatuses.set(host, 
       hasErrors ? 'error' :
       allMocked ? 'mocked' :
@@ -98,116 +95,93 @@ export function generateSystemDiagramSVG(
     );
   });
   
-  // Calculate cell width (widest label + padding)
-  const maxHostWidth = Math.max(
-    160,
-    ...sortedHosts.map(h => getNodeWidth(h))
-  );
-  const cellWidth = maxHostWidth;
+  // Classify hosts into tiers
+  const tier1Hosts: string[] = []; // Local gateways and hosts with no parents
+  const tier2Hosts: string[] = []; // External hosts called by tier 1
   
-  // Calculate grid dimensions (handle empty inventory)
-  const cols = sortedHosts.length === 0 ? 1 : Math.min(sortedHosts.length, GRID_COLS);
-  const rows = sortedHosts.length === 0 ? 0 : Math.ceil(sortedHosts.length / cols);
-  const gridWidth = sortedHosts.length === 0 ? cellWidth : (cols * cellWidth + (cols - 1) * COL_GAP);
+  allHosts.forEach(host => {
+    const isLocalGateway = host.startsWith('127.0.0.1:') || host.startsWith('localhost:');
+    const hasNoParent = !childParentMap.has(host) || childParentMap.get(host)!.size === 0;
+    
+    if (isLocalGateway || hasNoParent) {
+      tier1Hosts.push(host);
+    } else {
+      tier2Hosts.push(host);
+    }
+  });
   
-  // Row 0: Application (centered in grid)
+  // Layout tiers as horizontal rows
   let y = MARGIN;
-  const appX = MARGIN + gridWidth / 2 - cellWidth / 2;
+  const hostNodeWidths = new Map<string, number>();
+  allHosts.forEach(host => {
+    hostNodeWidths.set(host, getNodeWidth(host));
+  });
+  
+  // Tier 0: Application (centered)
+  const appWidth = getNodeWidth('Application');
+  const tier1Width = tier1Hosts.length > 0 
+    ? tier1Hosts.reduce((sum, h) => sum + hostNodeWidths.get(h)!, 0) + (tier1Hosts.length - 1) * NODE_GAP
+    : 0;
+  const tier2Width = tier2Hosts.length > 0
+    ? tier2Hosts.reduce((sum, h) => sum + hostNodeWidths.get(h)!, 0) + (tier2Hosts.length - 1) * NODE_GAP
+    : 0;
+  const diagramWidth = Math.max(appWidth, tier1Width, tier2Width, 600);
+  
+  const appX = MARGIN + (diagramWidth - appWidth) / 2;
   nodes.push({
     id: 'app',
     label: 'Application',
     type: 'app',
     x: appX,
     y,
-    width: cellWidth
+    width: appWidth
   });
-  y += ROW_GAP;
+  y += NODE_HEIGHT + TIER_GAP;
   
-  // Rows 1..n: Host grid
-  const hostPositions = new Map<string, { x: number; y: number; col: number }>();
-  sortedHosts.forEach((host, i) => {
-    const row = Math.floor(i / cols);
-    const col = i % cols;
-    
-    // Center each row
-    const rowCols = Math.min(cols, sortedHosts.length - row * cols);
-    const rowWidth = rowCols * cellWidth + (rowCols - 1) * COL_GAP;
-    const rowStartX = MARGIN + (gridWidth - rowWidth) / 2;
-    
-    const x = rowStartX + col * (cellWidth + COL_GAP);
-    const nodeY = y + row * ROW_HEIGHT;
-    
-    hostPositions.set(host, { x, y: nodeY, col });
-    
+  // Tier 1: Local gateways and direct-called hosts
+  let x = tier1Width > 0 ? MARGIN + (diagramWidth - tier1Width) / 2 : MARGIN;
+  tier1Hosts.forEach(host => {
+    const width = hostNodeWidths.get(host)!;
     nodes.push({
       id: `host-${host}`,
       label: host,
       type: hostStatuses.get(host) === 'mocked' ? 'mocked-backend' : 
             hostStatuses.get(host) === 'code-only' ? 'code-backend' :
-            hostStatuses.get(host) === 'error' ? 'error-backend' : // Bug #41: map error status to error node type
+            hostStatuses.get(host) === 'error' ? 'error-backend' :
             'backend',
       x,
-      y: nodeY,
-      width: cellWidth
+      y,
+      width
     });
+    x += width + NODE_GAP;
   });
+  y += NODE_HEIGHT + TIER_GAP;
   
-  y += rows * ROW_HEIGHT + ROW_GAP;
-  
-  // Downstream: Map each to parent host, position under parent column
-  const downstreamHostPaths = new Map<string, { path: string; parentHost: string }>();
-  events.forEach(ev => {
-    if (ev.parentRequestId && ev.url) {
-      try {
-        const url = new URL(ev.url);
-        const downHost = url.host; // Include port (bug #49)
-        const path = decodeURIComponent(url.pathname);
-        
-        // Find parent host from the parent request (bug #50: try both requestId and id)
-        const parentEvent = events.find(e => e.requestId === ev.parentRequestId || e.id === ev.parentRequestId);
-        if (parentEvent && parentEvent.url) {
-          const parentUrl = new URL(parentEvent.url);
-          const parentHost = parentUrl.host; // Include port (bug #49)
-          
-          if (!downstreamHostPaths.has(downHost) && sortedHosts.includes(parentHost)) {
-            downstreamHostPaths.set(downHost, { path, parentHost });
-          }
-        }
-      } catch {}
-    }
-  });
-  
-  // Distribute downstream nodes vertically with gap to avoid overlap
-  const DOWNSTREAM_GAP = 10;
-  let downstreamY = y;
-  downstreamHostPaths.forEach((info, downHost) => {
-    const parentPos = hostPositions.get(info.parentHost);
-    if (!parentPos) return;
-    
-    const label = `${downHost} · ${info.path}`;
-    const nodeWidth = getNodeWidth(label); // Calculate width based on label
+  // Tier 2: External hosts called by tier 1
+  x = tier2Width > 0 ? MARGIN + (diagramWidth - tier2Width) / 2 : MARGIN;
+  tier2Hosts.forEach(host => {
+    const width = hostNodeWidths.get(host)!;
     nodes.push({
-      id: `downstream-${downHost}`, // Bug #51: uses full host with port now
-      label,
-      type: 'downstream',
-      x: parentPos.x,
-      y: downstreamY,
-      width: nodeWidth
+      id: `host-${host}`,
+      label: host,
+      type: hostStatuses.get(host) === 'mocked' ? 'mocked-backend' : 
+            hostStatuses.get(host) === 'code-only' ? 'code-backend' :
+            hostStatuses.get(host) === 'error' ? 'error-backend' :
+            'backend',
+      x,
+      y,
+      width
     });
-    downstreamY += NODE_HEIGHT + DOWNSTREAM_GAP;
+    x += width + NODE_GAP;
   });
+  y += NODE_HEIGHT + MARGIN;
   
-  if (downstreamHostPaths.size > 0) {
-    // Update y to after all downstream nodes
-    y = downstreamY;
-  }
+  const contentWidth = diagramWidth + MARGIN * 2;
+  const diagramHeight = y;
   
-  const contentWidth = gridWidth + MARGIN * 2;
-  const maxX = contentWidth;
-  
-  // Create edges
-  // App -> Hosts
-  sortedHosts.forEach(host => {
+  // Create edges based on actual parent-child relationships
+  // App -> Tier 1 hosts
+  tier1Hosts.forEach(host => {
     const hostInventory = inventory.byHost.get(host);
     if (!hostInventory) return;
     
@@ -222,18 +196,29 @@ export function generateSystemDiagramSVG(
     });
   });
   
-  // Hosts -> Downstream (each to its parent only)
-  downstreamHostPaths.forEach((info, downHost) => {
-    edges.push({
-      from: `host-${info.parentHost}`,
-      to: `downstream-${downHost}`,
-      label: 'nested',
-      status: 'live'
+  // Tier 1 -> Tier 2 (based on parent-child relationships)
+  tier2Hosts.forEach(childHost => {
+    const parents = childParentMap.get(childHost);
+    if (!parents) return;
+    
+    parents.forEach(parentHost => {
+      if (tier1Hosts.includes(parentHost)) {
+        const status = hostStatuses.get(childHost) || 'live';
+        const hostInventory = inventory.byHost.get(childHost);
+        const count = hostInventory ? hostInventory.length : 0;
+        
+        edges.push({
+          from: `host-${parentHost}`,
+          to: `host-${childHost}`,
+          label: `${count} ep`,
+          status: status as any,
+          count
+        });
+      }
     });
   });
   
   // Generate SVG with legend below
-  const diagramHeight = y + 40;
   const legendHeight = 60;
   const totalHeight = diagramHeight + legendHeight;
   
@@ -255,7 +240,7 @@ export function generateSystemDiagramSVG(
     </marker>
   </defs>`;
   
-  // Draw edges with orthogonal routing to avoid node intersections
+  // Draw edges with smooth curves - each edge gets its own curve to avoid long shared segments
   edges.forEach(edge => {
     const fromNode = nodes.find(n => n.id === edge.from);
     const toNode = nodes.find(n => n.id === edge.to);
@@ -270,37 +255,30 @@ export function generateSystemDiagramSVG(
     const strokeDasharray = (edge.status === 'code-only' || edge.status === 'unexercised') ? '5,5' : 'none';
     const marker = `arrow-${edge.status === 'error' ? 'error' : edge.status === 'mocked' ? 'mocked' : edge.status === 'code-only' ? 'code-only' : 'live'}`;
     
+    // Start and end points (center bottom of source, center top of target)
     const x1 = fromNode.x + (fromNode.width || 160) / 2;
     const y1 = fromNode.y + NODE_HEIGHT;
     const x2 = toNode.x + (toNode.width || 160) / 2;
     const y2 = toNode.y;
     
-    // Use orthogonal routing via a routing lane to the left of all nodes
-    // Keep vertical segments at the routing lane to avoid passing through nodes
-    const routingLaneX = 20; // Fixed x-coordinate to the left of all nodes
-    const verticalGap = 20;
-    const horizontalOffset = 5; // Small offset for horizontal segments
+    // Use cubic Bezier curve for smooth path between tiers
+    // Control points create vertical S-curve that avoids intermediate nodes
+    const verticalDistance = y2 - y1;
+    const controlPointOffset = verticalDistance * 0.4; // 40% of vertical distance
     
-    // Calculate routing Y levels
-    const routingY1 = y1 + verticalGap; // Below source
-    const routingY2 = y2 > y1 ? y2 - horizontalOffset : y2 + horizontalOffset; // Slightly offset from target
+    const cx1 = x1; // Control point 1: directly below source
+    const cy1 = y1 + controlPointOffset;
+    const cx2 = x2; // Control point 2: directly above target
+    const cy2 = y2 - controlPointOffset;
     
-    // 5-segment path: down from source, left to lane, vertical along lane, right to target, final vertical to target edge
-    let pathData;
-    if (Math.abs(y2 - y1) > 2 * verticalGap) {
-      // Use routing lane for vertical movement to avoid node intersections
-      pathData = `M ${x1} ${y1} L ${x1} ${routingY1} L ${routingLaneX} ${routingY1} L ${routingLaneX} ${routingY2} L ${x2} ${routingY2} L ${x2} ${y2}`;
-    } else {
-      // For short vertical distances, use direct 3-segment routing
-      const midY = (y1 + y2) / 2;
-      pathData = `M ${x1} ${y1} L ${x1} ${midY} L ${x2} ${midY} L ${x2} ${y2}`;
-    }
+    // Cubic Bezier path: M start C cp1 cp2 end
+    const pathData = `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`;
     
     svg += `<path d="${pathData}" 
       stroke="${color}" stroke-width="2" stroke-dasharray="${strokeDasharray}" 
       fill="none" marker-end="url(#${marker})" />`;
     
-    // Label at midpoint
+    // Label at midpoint of curve (approximate)
     if (edge.label) {
       const labelX = (x1 + x2) / 2;
       const labelY = (y1 + y2) / 2;

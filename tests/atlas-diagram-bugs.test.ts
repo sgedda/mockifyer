@@ -143,8 +143,8 @@ describe('Atlas Diagram Bugs', () => {
       const inventory = buildEndpointInventory(events, []);
       const svg = generateSystemDiagramSVG(inventory, events);
       
-      // Node ID should include port
-      expect(svg).toContain('data-node-id="downstream-backend.example.com:9090"');
+      // Node ID should include port (in tiered layout, all hosts are "host-" nodes)
+      expect(svg).toContain('data-node-id="host-backend.example.com:9090"');
     });
   });
 
