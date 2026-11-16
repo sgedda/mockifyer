@@ -295,7 +295,8 @@ export function generateSystemDiagramSVG(
     
     svg += `<path d="${pathData}" 
       stroke="${color}" stroke-width="2" stroke-dasharray="${strokeDasharray}" 
-      fill="none" marker-end="url(#${marker})" />`;
+      fill="none" marker-end="url(#${marker})" 
+      data-from="${edge.from}" data-to="${edge.to}" />`;
     
     // Label at midpoint
     if (edge.label && points.length >= 2) {

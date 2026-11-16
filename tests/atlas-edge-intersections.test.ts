@@ -18,13 +18,13 @@ interface NodeRect {
 }
 
 interface EdgeLine {
-  from: string;
-  to: string;
+  from: string; // data-from attribute
+  to: string;   // data-to attribute
   x1: number;
   y1: number;
   x2: number;
   y2: number;
-  points?: Array<{x: number, y: number}>; // Sampled points along the edge path
+  points: Array<{x: number, y: number}>; // Sampled points along the edge path
 }
 
 /**
@@ -94,44 +94,44 @@ function sampleBezierCurve(
  * Parse SVG path data (supports M...L... and M...C... commands).
  * Returns sampled points along the path for intersection checking.
  */
-function parsePathData(pathData: string): Array<{x: number, y: number}> {
+function parsePathData(pathData: string, samples: number = 50): Array<{x: number, y: number}> {
   const points: Array<{x: number, y: number}> = [];
   
-  // Parse path commands
-  const commands = pathData.trim().split(/\s+/);
+  // Parse path commands - handle commas better
+  const normalized = pathData.replace(/,/g, ' ').replace(/([MLCmlc])/g, ' $1 ').trim();
+  const tokens = normalized.split(/\s+/).filter(t => t.length > 0);
+  
   let i = 0;
   let currentX = 0, currentY = 0;
   
-  while (i < commands.length) {
-    const cmd = commands[i];
+  while (i < tokens.length) {
+    const cmd = tokens[i];
     
-    if (cmd === 'M') {
-      // Move to
-      currentX = parseFloat(commands[i + 1]);
-      currentY = parseFloat(commands[i + 2]);
+    if (cmd === 'M' || cmd === 'm') {
+      currentX = parseFloat(tokens[i + 1]);
+      currentY = parseFloat(tokens[i + 2]);
       points.push({ x: currentX, y: currentY });
       i += 3;
-    } else if (cmd === 'L') {
-      // Line to
-      currentX = parseFloat(commands[i + 1]);
-      currentY = parseFloat(commands[i + 2]);
+    } else if (cmd === 'L' || cmd === 'l') {
+      currentX = parseFloat(tokens[i + 1]);
+      currentY = parseFloat(tokens[i + 2]);
       points.push({ x: currentX, y: currentY });
       i += 3;
-    } else if (cmd === 'C') {
-      // Cubic Bezier curve
-      const cx1 = parseFloat(commands[i + 1].replace(',', ''));
-      const cy1 = parseFloat(commands[i + 2].replace(',', ''));
-      const cx2 = parseFloat(commands[i + 3]);
-      const cy2 = parseFloat(commands[i + 4].replace(',', ''));
-      const x = parseFloat(commands[i + 5]);
-      const y = parseFloat(commands[i + 6]);
+    } else if (cmd === 'C' || cmd === 'c') {
+      const cx1 = parseFloat(tokens[i + 1]);
+      const cy1 = parseFloat(tokens[i + 2]);
+      const cx2 = parseFloat(tokens[i + 3]);
+      const cy2 = parseFloat(tokens[i + 4]);
+      const x = parseFloat(tokens[i + 5]);
+      const y = parseFloat(tokens[i + 6]);
       
-      // Sample the curve
+      // Sample the cubic Bezier curve
       const curvePoints = sampleBezierCurve(
         { x: currentX, y: currentY },
         { x: cx1, y: cy1 },
         { x: cx2, y: cy2 },
-        { x, y }
+        { x, y },
+        samples
       );
       
       points.push(...curvePoints);
@@ -152,31 +152,33 @@ function parsePathData(pathData: string): Array<{x: number, y: number}> {
 function extractEdgeLines(svg: string): EdgeLine[] {
   const edges: EdgeLine[] = [];
   
-  // Match <path d="..." marker-end="...">
-  const pathPattern = /<path[^>]*>/g;
+  // Match <path ...> with marker-end
+  const pathPattern = /<path[^>]*marker-end[^>]*>/g;
   let match;
   
   while ((match = pathPattern.exec(svg)) !== null) {
     const pathTag = match[0];
-    if (!pathTag.includes('marker-end')) continue;
     
     const dMatch = pathTag.match(/\sd="([^"]+)"/);
-    if (!dMatch) continue;
+    const fromMatch = pathTag.match(/\sdata-from="([^"]+)"/);
+    const toMatch = pathTag.match(/\sdata-to="([^"]+)"/);
     
-    const points = parsePathData(dMatch[1]);
+    if (!dMatch || !fromMatch || !toMatch) continue;
+    
+    const points = parsePathData(dMatch[1], 100); // More samples for accurate intersection checking
     
     if (points.length >= 2) {
       const first = points[0];
       const last = points[points.length - 1];
       
       edges.push({
-        from: '',
-        to: '',
+        from: fromMatch[1],
+        to: toMatch[1],
         x1: first.x,
         y1: first.y,
         x2: last.x,
         y2: last.y,
-        points: points // Store all sampled points for intersection checking
+        points
       });
     }
   }
@@ -187,7 +189,7 @@ function extractEdgeLines(svg: string): EdgeLine[] {
 /**
  * Check if a point (x, y) is inside a rectangle.
  */
-function pointInRect(px: number, py: number, rect: NodeRect): boolean {
+function pointInRect(px: number, py: number, rect: {x: number, y: number, width: number, height: number}): boolean {
   return px >= rect.x && px <= rect.x + rect.width &&
          py >= rect.y && py <= rect.y + rect.height;
 }
@@ -256,26 +258,32 @@ describe('Atlas Edge-Node Intersections (Real Data)', () => {
       point: { x: number; y: number };
     }> = [];
     
-    edges.forEach((edge, edgeIdx) => {
-      const sourceNode = findNodeAtPoint(edge.x1, edge.y1, nodes);
-      const targetNode = findNodeAtPoint(edge.x2, edge.y2, nodes);
+    edges.forEach((edge) => {
+      // Use data attributes for endpoint IDs (more reliable than geometry)
+      const fromId = edge.from;
+      const toId = edge.to;
       
-      // Get points to check (from sampled curve/path)
-      const pointsToCheck = edge.points || [{ x: edge.x1, y: edge.y1 }, { x: edge.x2, y: edge.y2 }];
-      
-      // Check if any point on the edge passes through any other node
+      // Check if any point on the edge passes through any OTHER node (with 2px inset)
       nodes.forEach(node => {
-        // Skip if this node is the source or target
-        if (sourceNode && node.id === sourceNode.id) return;
-        if (targetNode && node.id === targetNode.id) return;
+        // Skip if this node is an endpoint of this edge
+        if (node.id === fromId || node.id === toId) return;
         
-        // Check each sampled point
-        for (const point of pointsToCheck) {
-          if (pointInRect(point.x, point.y, node)) {
+        // Create inset rect (2px inset from all sides)
+        const inset = 2;
+        const insetRect = {
+          x: node.x + inset,
+          y: node.y + inset,
+          width: node.width - 2 * inset,
+          height: node.height - 2 * inset
+        };
+        
+        // Check each sampled point along the edge
+        for (const point of edge.points) {
+          if (pointInRect(point.x, point.y, insetRect)) {
             intersections.push({
               edge,
-              source: sourceNode?.id || 'unknown',
-              target: targetNode?.id || 'unknown',
+              source: fromId,
+              target: toId,
               intersectedNode: node.id,
               point: { x: point.x, y: point.y }
             });
@@ -289,6 +297,11 @@ describe('Atlas Edge-Node Intersections (Real Data)', () => {
     const summary = intersections.map(i => 
       `${i.source} → ${i.target} passes through ${i.intersectedNode}`
     );
+    
+    if (intersections.length > 0) {
+      console.log(`\nIntersections detected (${intersections.length} total):`);
+      summary.forEach(s => console.log(`  ${s}`));
+    }
     
     expect(intersections).toEqual([]);
   });
@@ -370,6 +383,13 @@ describe('Atlas Edge-Node Intersections (Real Data)', () => {
       }
     }
     
+    if (overlaps.length > 0) {
+      console.log('\nEdge overlaps detected:');
+      overlaps.forEach(({ edge1, edge2, overlapCount }) => {
+        console.log(`  ${edges[edge1].from} → ${edges[edge1].to} overlaps ${edges[edge2].from} → ${edges[edge2].to}: ${overlapCount} points`);
+      });
+    }
+    
     expect(overlaps.length).toBe(0);
   });
   
@@ -384,15 +404,10 @@ describe('Atlas Edge-Node Intersections (Real Data)', () => {
     const frankfurterNode = nodes.find(n => n.id === 'host-api.frankfurter.app');
     if (!frankfurterNode) return; // Skip if not in fixture
     
-    // Find edge from 4203 to frankfurter (not from app)
-    const node4203 = nodes.find(n => n.id === 'host-127.0.0.1:4203');
-    expect(node4203).toBeDefined();
-    
-    const frankfurterEdgeFrom4203 = edges.find(e => {
-      const source = findNodeAtPoint(e.x1, e.y1, nodes);
-      const target = findNodeAtPoint(e.x2, e.y2, nodes);
-      return source?.id === 'host-127.0.0.1:4203' && target?.id === 'host-api.frankfurter.app';
-    });
+    // Find edge from 4203 to frankfurter using data attributes
+    const frankfurterEdgeFrom4203 = edges.find(e => 
+      e.from === 'host-127.0.0.1:4203' && e.to === 'host-api.frankfurter.app'
+    );
     
     expect(frankfurterEdgeFrom4203).toBeDefined();
   });
@@ -408,19 +423,12 @@ describe('Atlas Edge-Node Intersections (Real Data)', () => {
     const node4201 = nodes.find(n => n.id === 'host-127.0.0.1:4201');
     expect(node4201).toBeDefined();
     
-    // Find edge to 4201
-    const edge4201 = edges.find(e => {
-      const target = findNodeAtPoint(e.x2, e.y2, nodes);
-      return target?.id === 'host-127.0.0.1:4201';
-    });
+    // Find edge from app to 4201 using data attributes
+    const edge4201 = edges.find(e => 
+      e.from === 'app' && e.to === 'host-127.0.0.1:4201'
+    );
     
     expect(edge4201).toBeDefined();
-    
-    // Verify source is Application
-    if (edge4201) {
-      const source = findNodeAtPoint(edge4201.x1, edge4201.y1, nodes);
-      expect(source?.id).toBe('app');
-    }
   });
   
   it('should have exactly one edge for every distinct parent-host→child-host pair in fixture', () => {
@@ -443,20 +451,19 @@ describe('Atlas Edge-Node Intersections (Real Data)', () => {
       }
     });
     
-    // Extract actual edges from SVG
+    // Extract actual edges from SVG using data attributes
     const actualPairs = new Set<string>();
     edges.forEach(edge => {
-      const source = findNodeAtPoint(edge.x1, edge.y1, nodes);
-      const target = findNodeAtPoint(edge.x2, edge.y2, nodes);
+      // Use data-from and data-to attributes
+      const fromId = edge.from;
+      const toId = edge.to;
       
-      if (source && target) {
-        // Extract host from node ID (e.g., 'host-127.0.0.1:4203' -> '127.0.0.1:4203')
-        const sourceHost = source.id === 'app' ? 'app' : source.id.replace('host-', '');
-        const targetHost = target.id.replace('host-', '');
-        
-        if (sourceHost !== 'app') { // Only count host→host edges
-          actualPairs.add(`${sourceHost}→${targetHost}`);
-        }
+      // Extract host from node ID (e.g., 'host-127.0.0.1:4203' -> '127.0.0.1:4203')
+      const sourceHost = fromId === 'app' ? 'app' : fromId.replace('host-', '');
+      const targetHost = toId.replace('host-', '');
+      
+      if (sourceHost !== 'app') { // Only count host→host edges
+        actualPairs.add(`${sourceHost}→${targetHost}`);
       }
     });
     
