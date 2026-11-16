@@ -655,13 +655,16 @@ describe('atlas-doc-html', () => {
 
     const files = buildAtlasDocHtmlFiles(getAtlasDocMap('default'));
     expect(files['index.html']).toContain('data-view="architecture"');
-    expect(files['index.html']).toContain('data-view="chains"');
+    expect(files['index.html']).toContain('data-view="timeline"');
+    expect(files['index.html']).toContain('data-view="data"');
     expect(files['index.html']).toContain('Living architecture');
     expect(files['index.html']).toContain("var uniqueMode = 'endpoint'");
     expect(files['index.html']).toContain("var view = 'architecture'");
     expect(files['index.html']).toContain('kind-filters');
-    expect(files['index.html']).toContain('data-view="requests"');
-    expect(files['index.html']).toContain('data-view="scrub"');
+    expect(files['index.html']).toContain('id="timeline-mode"');
+    expect(files['index.html']).toContain('id="data-mode"');
+    expect(files['index.html']).toContain('<option value="requests">Requests</option>');
+    expect(files['index.html']).toContain('<option value="scrub">Scrub</option>');
     expect(files['index.html']).toContain('req-table');
     expect(files['index.html']).toContain('data-req-search');
     expect(files['index.html']).toContain('hopMatchesSearchQuery');
@@ -732,7 +735,7 @@ describe('atlas-doc-html', () => {
       expect(fs.existsSync(indexPath)).toBe(true);
       const index = fs.readFileSync(indexPath, 'utf8');
       expect(index).toContain('"pageId":"home"');
-      expect(index).toContain('data-view="chains"');
+      expect(index).toContain('data-view="data" data-data-mode="chains"');
       expect(fs.existsSync(path.join(dir, 'pages', 'home.html'))).toBe(true);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
@@ -1051,7 +1054,7 @@ describe('atlas-doc-html fields view', () => {
     resetAtlasDocRuntime();
   });
 
-  it('embeds Fields tab and GUI-used fields catalog UI', () => {
+  it('embeds Fields in Data view with GUI-used fields catalog UI', () => {
     const map = upsertAtlasDocFromPresentation({
       cms: { pageId: 'home', nodeId: 'hero', type: 'hero', path: 'home/hero' },
       datasources: [{ datasourceId: 'oden:home', requestId: 'req-cms' }],
@@ -1071,8 +1074,11 @@ describe('atlas-doc-html fields view', () => {
         responseBodyPreview: JSON.stringify({ properties: { title: 'Hi', secret: 'nope' } }),
       },
     ]);
-    expect(files['index.html']).toContain('data-view="fields"');
+    // Fields is now under Data view with mode switcher
+    expect(files['index.html']).toContain('data-view="data"');
     expect(files['index.html']).toContain('view-fields');
+    expect(files['index.html']).toContain('id="data-mode"');
+    expect(files['index.html']).toContain('<option value="fields">Fields</option>');
     expect(files['index.html']).toContain('GUI-used response fields');
     expect(files['index.html']).toContain('properties.title');
   });
