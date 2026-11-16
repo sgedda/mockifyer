@@ -95,38 +95,84 @@ export function generateSystemDiagramSVG(
     );
   });
   
-  // Classify hosts into tiers
-  const tier1Hosts: string[] = []; // Local gateways and hosts with no parents
-  const tier2Hosts: string[] = []; // External hosts called by tier 1
+  // Assign tiers by call depth (BFS from Application)
+  // Tier N contains hosts at distance N from app (longest path)
+  const hostTier = new Map<string, number>();
+  const hostsByTier = new Map<number, string[]>();
   
+  // BFS to find longest path to each host
+  const queue: Array<{host: string, depth: number}> = [];
+  
+  // Start with hosts called directly by app (no parent in the data)
   allHosts.forEach(host => {
-    const isLocalGateway = host.startsWith('127.0.0.1:') || host.startsWith('localhost:');
-    const hasNoParent = !childParentMap.has(host) || childParentMap.get(host)!.size === 0;
-    
-    if (isLocalGateway || hasNoParent) {
-      tier1Hosts.push(host);
-    } else {
-      tier2Hosts.push(host);
+    if (!childParentMap.has(host) || childParentMap.get(host)!.size === 0) {
+      queue.push({host, depth: 1});
+      hostTier.set(host, 1);
     }
   });
   
-  // Layout tiers as horizontal rows
+  // BFS to assign tiers based on longest path
+  while (queue.length > 0) {
+    const {host, depth} = queue.shift()!;
+    
+    // Update this host's tier if we found a longer path
+    const currentTier = hostTier.get(host) || 0;
+    if (depth > currentTier) {
+      hostTier.set(host, depth);
+    }
+    
+    // Process children
+    const children = parentChildMap.get(host);
+    if (children) {
+      children.forEach(child => {
+        const childDepth = depth + 1;
+        const childCurrentTier = hostTier.get(child) || 0;
+        if (childDepth > childCurrentTier) {
+          hostTier.set(child, childDepth);
+          queue.push({host: child, depth: childDepth});
+        }
+      });
+    }
+  }
+  
+  // Group hosts by tier
+  hostTier.forEach((tier, host) => {
+    if (!hostsByTier.has(tier)) {
+      hostsByTier.set(tier, []);
+    }
+    hostsByTier.get(tier)!.push(host);
+  });
+  
+  const maxTier = Math.max(...Array.from(hostsByTier.keys()));
+  const tiers: string[][] = [];
+  for (let i = 1; i <= maxTier; i++) {
+    tiers.push(hostsByTier.get(i) || []);
+  }
+  
+  // Layout tiers with wrapping for large tiers
   let y = MARGIN;
   const hostNodeWidths = new Map<string, number>();
   allHosts.forEach(host => {
     hostNodeWidths.set(host, getNodeWidth(host));
   });
   
+  const MAX_NODES_PER_ROW = 5; // Wrap if tier has more than this
+  const ROW_GAP = 80; // Gap between wrapped rows within a tier
+  
+  // Calculate diagram width based on largest row
+  let maxRowWidth = getNodeWidth('Application');
+  tiers.forEach(tierHosts => {
+    for (let i = 0; i < tierHosts.length; i += MAX_NODES_PER_ROW) {
+      const rowHosts = tierHosts.slice(i, i + MAX_NODES_PER_ROW);
+      const rowWidth = rowHosts.reduce((sum, h) => sum + hostNodeWidths.get(h)!, 0) + 
+                      (rowHosts.length - 1) * NODE_GAP;
+      maxRowWidth = Math.max(maxRowWidth, rowWidth);
+    }
+  });
+  const diagramWidth = Math.max(maxRowWidth, 600);
+  
   // Tier 0: Application (centered)
   const appWidth = getNodeWidth('Application');
-  const tier1Width = tier1Hosts.length > 0 
-    ? tier1Hosts.reduce((sum, h) => sum + hostNodeWidths.get(h)!, 0) + (tier1Hosts.length - 1) * NODE_GAP
-    : 0;
-  const tier2Width = tier2Hosts.length > 0
-    ? tier2Hosts.reduce((sum, h) => sum + hostNodeWidths.get(h)!, 0) + (tier2Hosts.length - 1) * NODE_GAP
-    : 0;
-  const diagramWidth = Math.max(appWidth, tier1Width, tier2Width, 600);
-  
   const appX = MARGIN + (diagramWidth - appWidth) / 2;
   nodes.push({
     id: 'app',
@@ -138,49 +184,54 @@ export function generateSystemDiagramSVG(
   });
   y += NODE_HEIGHT + TIER_GAP;
   
-  // Tier 1: Local gateways and direct-called hosts
-  let x = tier1Width > 0 ? MARGIN + (diagramWidth - tier1Width) / 2 : MARGIN;
-  tier1Hosts.forEach(host => {
-    const width = hostNodeWidths.get(host)!;
-    nodes.push({
-      id: `host-${host}`,
-      label: host,
-      type: hostStatuses.get(host) === 'mocked' ? 'mocked-backend' : 
-            hostStatuses.get(host) === 'code-only' ? 'code-backend' :
-            hostStatuses.get(host) === 'error' ? 'error-backend' :
-            'backend',
-      x,
-      y,
-      width
-    });
-    x += width + NODE_GAP;
+  // Lay out each tier, wrapping if needed
+  tiers.forEach((tierHosts, tierIndex) => {
+    if (tierHosts.length === 0) return;
+    
+    const tierStartY = y;
+    let maxTierY = y;
+    
+    // Split into rows if needed
+    for (let rowStart = 0; rowStart < tierHosts.length; rowStart += MAX_NODES_PER_ROW) {
+      const rowHosts = tierHosts.slice(rowStart, rowStart + MAX_NODES_PER_ROW);
+      const rowWidth = rowHosts.reduce((sum, h) => sum + hostNodeWidths.get(h)!, 0) + 
+                      (rowHosts.length - 1) * NODE_GAP;
+      
+      let x = MARGIN + (diagramWidth - rowWidth) / 2;
+      const rowY = rowStart === 0 ? y : y + ROW_GAP;
+      
+      rowHosts.forEach(host => {
+        const width = hostNodeWidths.get(host)!;
+        nodes.push({
+          id: `host-${host}`,
+          label: host,
+          type: hostStatuses.get(host) === 'mocked' ? 'mocked-backend' : 
+                hostStatuses.get(host) === 'code-only' ? 'code-backend' :
+                hostStatuses.get(host) === 'error' ? 'error-backend' :
+                'backend',
+          x,
+          y: rowY,
+          width
+        });
+        x += width + NODE_GAP;
+      });
+      
+      maxTierY = Math.max(maxTierY, rowY + NODE_HEIGHT);
+      if (rowStart > 0) y += ROW_GAP;
+    }
+    
+    y = maxTierY + TIER_GAP;
   });
-  y += NODE_HEIGHT + TIER_GAP;
   
-  // Tier 2: External hosts called by tier 1
-  x = tier2Width > 0 ? MARGIN + (diagramWidth - tier2Width) / 2 : MARGIN;
-  tier2Hosts.forEach(host => {
-    const width = hostNodeWidths.get(host)!;
-    nodes.push({
-      id: `host-${host}`,
-      label: host,
-      type: hostStatuses.get(host) === 'mocked' ? 'mocked-backend' : 
-            hostStatuses.get(host) === 'code-only' ? 'code-backend' :
-            hostStatuses.get(host) === 'error' ? 'error-backend' :
-            'backend',
-      x,
-      y,
-      width
-    });
-    x += width + NODE_GAP;
-  });
-  y += NODE_HEIGHT + MARGIN;
+  y += MARGIN;
   
   const contentWidth = diagramWidth + MARGIN * 2;
   const diagramHeight = y;
   
-  // Create edges based on actual parent-child relationships
-  // App -> Tier 1 hosts
+  // Create edges: App -> tier 1 hosts, then ALL parent->child host relationships
+  
+  // App -> Tier 1 hosts (hosts with no parents)
+  const tier1Hosts = tiers[0] || [];
   tier1Hosts.forEach(host => {
     const hostInventory = inventory.byHost.get(host);
     if (!hostInventory) return;
@@ -196,25 +247,20 @@ export function generateSystemDiagramSVG(
     });
   });
   
-  // Tier 1 -> Tier 2 (based on parent-child relationships)
-  tier2Hosts.forEach(childHost => {
-    const parents = childParentMap.get(childHost);
-    if (!parents) return;
-    
-    parents.forEach(parentHost => {
-      if (tier1Hosts.includes(parentHost)) {
-        const status = hostStatuses.get(childHost) || 'live';
-        const hostInventory = inventory.byHost.get(childHost);
-        const count = hostInventory ? hostInventory.length : 0;
-        
-        edges.push({
-          from: `host-${parentHost}`,
-          to: `host-${childHost}`,
-          label: `${count} ep`,
-          status: status as any,
-          count
-        });
-      }
+  // ALL parent->child host relationships (including local->local)
+  parentChildMap.forEach((children, parentHost) => {
+    children.forEach(childHost => {
+      const status = hostStatuses.get(childHost) || 'live';
+      const hostInventory = inventory.byHost.get(childHost);
+      const count = hostInventory ? hostInventory.length : 0;
+      
+      edges.push({
+        from: `host-${parentHost}`,
+        to: `host-${childHost}`,
+        label: `${count} ep`,
+        status: status as any,
+        count
+      });
     });
   });
   

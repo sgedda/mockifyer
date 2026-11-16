@@ -382,4 +382,53 @@ describe('Atlas Edge-Node Intersections (Real Data)', () => {
       expect(source?.id).toBe('host-127.0.0.1:4203');
     }
   });
+  
+  it('should have exactly one edge for every distinct parent-host→child-host pair in fixture', () => {
+    const inventory = buildEndpointInventory(fixtureEvents, []);
+    const svg = generateSystemDiagramSVG(inventory, fixtureEvents);
+    
+    const nodes = extractNodeRects(svg);
+    const edges = extractEdgeLines(svg);
+    
+    // Build expected parent-child pairs from fixture
+    const expectedPairs = new Set<string>();
+    fixtureEvents.forEach(ev => {
+      if (ev.parentRequestId && ev.host) {
+        const parentEvent = fixtureEvents.find(e => 
+          e.requestId === ev.parentRequestId || (e as any).id === ev.parentRequestId
+        );
+        if (parentEvent && parentEvent.host && parentEvent.host !== ev.host) {
+          expectedPairs.add(`${parentEvent.host}→${ev.host}`);
+        }
+      }
+    });
+    
+    // Extract actual edges from SVG
+    const actualPairs = new Set<string>();
+    edges.forEach(edge => {
+      const source = findNodeAtPoint(edge.x1, edge.y1, nodes);
+      const target = findNodeAtPoint(edge.x2, edge.y2, nodes);
+      
+      if (source && target) {
+        // Extract host from node ID (e.g., 'host-127.0.0.1:4203' -> '127.0.0.1:4203')
+        const sourceHost = source.id === 'app' ? 'app' : source.id.replace('host-', '');
+        const targetHost = target.id.replace('host-', '');
+        
+        if (sourceHost !== 'app') { // Only count host→host edges
+          actualPairs.add(`${sourceHost}→${targetHost}`);
+        }
+      }
+    });
+    
+    // Every expected pair should have exactly one edge
+    const missing: string[] = [];
+    expectedPairs.forEach(pair => {
+      if (!actualPairs.has(pair)) {
+        missing.push(pair);
+      }
+    });
+    
+    expect(missing).toEqual([]);
+    expect(actualPairs.size).toBe(expectedPairs.size);
+  });
 });
