@@ -6,6 +6,7 @@
 import { generateSystemDiagramSVG } from '../packages/mockifyer-core/src/utils/atlas-architecture-view';
 import { buildEndpointInventory } from '../packages/mockifyer-core/src/utils/atlas-endpoint-inventory';
 import type { NetworkEvent } from '../packages/mockifyer-core/src/utils/network-event-types';
+import type { ScannedEndpoint } from '../packages/mockifyer-core/src/utils/atlas-code-scanner';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -477,5 +478,75 @@ describe('Atlas Edge-Node Intersections (Real Data)', () => {
     
     expect(missing).toEqual([]);
     expect(actualPairs.size).toBe(expectedPairs.size);
+  });
+  
+  it('should fit legend inside viewBox on narrow graphs (1-2 hosts)', () => {
+    // Create minimal inventory with 1-2 hosts
+    const minimalEvents: NetworkEvent[] = [
+      {
+        id: 'evt1',
+        timestamp: new Date().toISOString(),
+        scenario: 'test',
+        source: 'upstream' as const,
+        transport: 'fetch' as const,
+        url: 'https://api.example.com/test',
+        host: 'api.example.com',
+        method: 'GET',
+        path: '/test',
+        status: 200
+      }
+    ];
+    
+    const inventory = buildEndpointInventory(minimalEvents, []);
+    const svg = generateSystemDiagramSVG(inventory, minimalEvents);
+    
+    // Extract viewBox (format: "minX minY width height")
+    const viewBoxMatch = svg.match(/viewBox="([^"]+)"/);
+    expect(viewBoxMatch).toBeTruthy();
+    const [, , width] = viewBoxMatch![1].split(' ').map(Number);
+    
+    // Legend spans from x=40 to approximately x=550 (legendX + 410 + text width)
+    // The "Caller not recorded" text at x=410 is ~20 chars * 7px = ~140px wide
+    const legendRightEdge = 40 + 410 + 20 * 7;
+    
+    expect(width).toBeGreaterThanOrEqual(legendRightEdge);
+  });
+  
+  it('should give parentless inventory hosts an Application edge', () => {
+    // Create inventory with a code-only host that has no events
+    const events: NetworkEvent[] = [];
+    
+    const codeOnlyEndpoints: ScannedEndpoint[] = [
+      {
+        method: 'GET',
+        urlTemplate: 'https://api.phantom.com/never-called',
+        resolvedUrl: 'https://api.phantom.com/never-called',
+        filePath: 'test.ts',
+        line: 1,
+        column: 1,
+        callType: 'fetch'
+      }
+    ];
+    
+    const inventory = buildEndpointInventory(events, codeOnlyEndpoints);
+    const svg = generateSystemDiagramSVG(inventory, events);
+    
+    const nodes = extractNodeRects(svg);
+    const edges = extractEdgeLines(svg);
+    
+    // Find the phantom host node
+    const phantomNode = nodes.find(n => n.id === 'host-api.phantom.com');
+    expect(phantomNode).toBeDefined();
+    
+    // Find edge from app to phantom host
+    const phantomEdge = edges.find(e => 
+      e.from === 'app' && e.to === 'host-api.phantom.com'
+    );
+    expect(phantomEdge).toBeDefined();
+    
+    // The edge should be marked as inferred (data-inferred="true")
+    const pathMatch = svg.match(/<path[^>]*data-from="app"[^>]*data-to="host-api\.phantom\.com"[^>]*>/);
+    expect(pathMatch).toBeTruthy();
+    expect(pathMatch![0]).toContain('data-inferred="true"');
   });
 });

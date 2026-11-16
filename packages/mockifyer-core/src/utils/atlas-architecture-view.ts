@@ -159,6 +159,16 @@ export function generateSystemDiagramSVG(
     });
   });
   
+  // Give parentless inventory hosts an Application edge (inferred)
+  // These are hosts that exist only in the inventory (code-only, mocked-only, URL-only)
+  // with no captured event
+  allHosts.forEach(host => {
+    if (!appChildren.has(host) && !appChildrenInferred.has(host) && !childParentMap.has(host)) {
+      g.setEdge('app', `host-${host}`);
+      inferredEdges.add(`app→host-${host}`);
+    }
+  });
+  
   // Run dagre layout
   dagre.layout(g);
   
@@ -181,20 +191,7 @@ export function generateSystemDiagramSVG(
     });
   });
   
-  // Calculate actual diagram bounds from nodes (crop empty space)
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  nodes.forEach(node => {
-    const nodeWidth = node.width || 160;
-    minX = Math.min(minX, node.x);
-    minY = Math.min(minY, node.y);
-    maxX = Math.max(maxX, node.x + nodeWidth);
-    maxY = Math.max(maxY, node.y + NODE_HEIGHT);
-  });
-  
-  const contentWidth = maxX - minX + MARGIN * 2;
-  const diagramHeight = maxY - minY + MARGIN * 2;
-  
-  // Create edges with dagre waypoints
+  // Create edges with dagre waypoints (extract first, then calculate bounds)
   const edges: Array<{
     from: string;
     to: string;
@@ -243,6 +240,44 @@ export function generateSystemDiagramSVG(
       inferred: isInferred
     });
   });
+  
+  // Calculate actual diagram bounds from nodes, edges, and legend
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  
+  // Include nodes
+  nodes.forEach(node => {
+    const nodeWidth = node.width || 160;
+    minX = Math.min(minX, node.x);
+    minY = Math.min(minY, node.y);
+    maxX = Math.max(maxX, node.x + nodeWidth);
+    maxY = Math.max(maxY, node.y + NODE_HEIGHT);
+  });
+  
+  // Include edge points and labels
+  edges.forEach(edge => {
+    if (edge.points) {
+      edge.points.forEach(p => {
+        minX = Math.min(minX, p.x);
+        maxX = Math.max(maxX, p.x);
+      });
+    }
+    // Account for edge labels (approximate width)
+    if (edge.label && edge.points && edge.points.length >= 2) {
+      const midIdx = Math.floor(edge.points.length / 2);
+      const labelWidth = edge.label.length * 7 + 8;
+      maxX = Math.max(maxX, edge.points[midIdx].x + labelWidth / 2);
+    }
+  });
+  
+  // Include legend extent
+  // Legend starts at x=40, rightmost item "Caller not recorded" text starts at x=410
+  // Text is ~20 chars * 7px = ~140px wide
+  const LEGEND_X = 40;
+  const legendRightmost = LEGEND_X + 410 + 20 * 7;
+  maxX = Math.max(maxX, legendRightmost);
+  
+  const contentWidth = maxX - minX + MARGIN * 2;
+  const diagramHeight = maxY - minY + MARGIN * 2;
   
   // Generate SVG with legend below
   const legendHeight = 60;
