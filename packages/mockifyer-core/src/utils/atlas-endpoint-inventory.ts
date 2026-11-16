@@ -158,26 +158,27 @@ export function buildEndpointInventory(
       const match = scanned.resolvedUrl!.match(/^(https?:\/\/[^\/\{]+)(\{param\})(.*)/);
       if (match) {
         // Split: http://host:port{param} -> host:port and /{param}
+        // Keep {param} as-is since it's a literal template in the malformed URL
         host = extractHost(match[1], fallbackHost);
-        pathTemplate = normalizeTemplatePlaceholders('/' + match[2] + match[3]);
+        pathTemplate = '/' + match[2] + match[3];
       } else {
         host = extractHost(scanned.resolvedUrl!, fallbackHost);
         const normalized = normalizeUrlToTemplate(scanned.resolvedUrl!);
-        pathTemplate = normalizeTemplatePlaceholders(normalized.template);
+        pathTemplate = normalized.template;
       }
     } else if (isRelativePath) {
       // Resolved relative path: use fallbackHost instead of "Unresolved base URL"
       host = fallbackHost;
       const normalized = normalizeUrlToTemplate(scanned.resolvedUrl!);
-      pathTemplate = normalizeTemplatePlaceholders(normalized.template);
+      pathTemplate = normalized.template;
     } else {
       // Truly unresolved (e.g., '{param}' or other templates)
       host = 'Unresolved base URL';
       if (scanned.resolvedUrl) {
         const normalized = normalizeUrlToTemplate(scanned.resolvedUrl);
-        pathTemplate = normalizeTemplatePlaceholders(normalized.template);
+        pathTemplate = normalized.template;
       } else {
-        // Normalize template placeholders (:id, {param}) to standard format
+        // Normalize template placeholders (:id, {param}) to standard format from code scanner
         pathTemplate = normalizeTemplatePlaceholders(scanned.urlTemplate);
       }
     }

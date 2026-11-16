@@ -6,8 +6,7 @@
 const UUID_PATTERN = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
 const HASH_PATTERN = /\b[0-9a-f]{32,64}\b/gi;
 const NUMERIC_ID_PATTERN = /\/\d+(?=\/|$)/g;
-// Only match slugs with mixed alphanumeric (e.g., "post-123-abc"), not static kebab-case routes
-const SLUG_PATTERN = /\/(?=.*[a-z])(?=.*\d)[a-z0-9]+-[a-z0-9-]+(?=\/|$)/gi;
+const SLUG_PATTERN = /\/[a-z0-9]+-[a-z0-9-]+(?=\/|$)/gi;
 
 export interface NormalizedUrl {
   template: string;
@@ -28,6 +27,10 @@ export function normalizeUrlToTemplate(url: string): NormalizedUrl {
     // Decode URL-encoded characters like %7B -> {, %7D -> }
     let path = decodeURIComponent(urlObj.pathname);
     const parameters: string[] = [];
+
+    // First, normalize any template syntax (:id, {userId}) that might be in the URL
+    // This handles code scanner URLs like /users/:id
+    path = normalizeTemplatePlaceholders(path);
 
     // UUIDs
     path = path.replace(UUID_PATTERN, () => {
@@ -62,11 +65,12 @@ export function normalizeUrlToTemplate(url: string): NormalizedUrl {
 
 /**
  * Normalize template placeholders to a consistent format.
- * Converts Express-style (:id) and generic ({param}) to specific types ({id}, {uuid}, {slug}).
+ * Converts Express-style (:id) and infers types from parameter names.
  * Examples:
  *   /users/:id -> /users/{id}
- *   /posts/{param} -> /posts/{id}
- *   /repos/:userId/:repoId -> /repos/{id}/{id}
+ *   /posts/:userId -> /posts/{id}
+ *   /repos/{slug} -> /repos/{slug}
+ *   /items/{param} -> /items/{id}
  */
 export function normalizeTemplatePlaceholders(template: string): string {
   let normalized = template;
@@ -74,7 +78,7 @@ export function normalizeTemplatePlaceholders(template: string): string {
   // Express-style :param -> {param}
   normalized = normalized.replace(/:([a-zA-Z_][a-zA-Z0-9_]*)/g, '{$1}');
   
-  // Infer type from parameter name
+  // Infer type from parameter name (for code scanner templates)
   // UUID-like names
   normalized = normalized.replace(/\{(?:uuid|guid)\}/gi, '{uuid}');
   // Hash-like names

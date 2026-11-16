@@ -22,7 +22,7 @@ describe('Atlas Inventory - Malformed URL splitting', () => {
     expect(inventory.all.length).toBe(1);
     const item = inventory.all[0];
     expect(item.host).toBe('127.0.0.1:4200');
-    expect(item.urlTemplate).toBe('/{param}');
+    expect(item.urlTemplate).toBe('/{id}');
   });
 
   it('should split https://host{param}/path into host and /{param}/path', () => {
@@ -45,7 +45,7 @@ describe('Atlas Inventory - Malformed URL splitting', () => {
     expect(inventory.all.length).toBe(1);
     const item = inventory.all[0];
     expect(item.host).toBe('api.example.com');
-    expect(item.urlTemplate).toBe('/{param}/graphql');
+    expect(item.urlTemplate).toBe('/{id}/graphql');
   });
 
   it('should handle properly formed URLs normally', () => {

@@ -86,7 +86,7 @@ describe('Atlas Bugbot fixes', () => {
       // The template is normalized to remove the {param} but retains the pattern
       const unresolvedItems = inventory.byHost.get('Unresolved base URL');
       expect(unresolvedItems).toBeDefined();
-      expect(unresolvedItems?.[0]?.urlTemplate).toMatch(/param/);
+      expect(unresolvedItems?.[0]?.urlTemplate).toMatch(/\{id\}/);
     });
   });
 
