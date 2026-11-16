@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "domain": "localhost:4290",
+      "pathPattern": "/api/weather/*",
+      "pathTemplate": "/api/weather/{city}"
+    },
+    {
+      "domain": "api.open-meteo.com",
+      "pathPattern": "/v1/forecast*",
+      "pathTemplate": "/v1/forecast"
+    },
+    {
+      "domain": "api.frankfurter.app",
+      "pathPattern": "/latest*",
+      "pathTemplate": "/latest"
+    }
+  ]
+}

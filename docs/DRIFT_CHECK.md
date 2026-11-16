@@ -8,6 +8,8 @@ Drift check compares your recorded mock responses with live API responses to det
 
 Security: Never exposes actual values (only types and paths), so secrets stay safe.
 
+**📊 [Live Showcase](https://sgedda.github.io/mockifyer/drift/)** — See drift detection in action with nightly checks against simulated and real APIs.
+
 ## Quick Start
 
 ```bash
@@ -282,6 +284,7 @@ DRIFT_CHECK=1 npm test
 | `--delay <ms>` | Delay between request batches | `100` |
 | `--no-history` | Skip writing history (for ad-hoc checks) | `false` |
 | `--json` | Output JSON report | `false` |
+| `--html <dir>` | Generate HTML report to directory | None |
 
 ### Management Commands
 

@@ -1,0 +1,387 @@
+name: Drift Check Showcase
+
+on:
+  schedule:
+    # Run nightly at 3:00 AM UTC (same as e2e.yml)
+    - cron: '0 3 * * *'
+  
+  # Allow manual runs from Actions tab
+  workflow_dispatch:
+
+jobs:
+  drift-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install root dependencies
+        run: npm ci
+      
+      - name: Build Mockifyer core
+        run: |
+          cd packages/mockifyer-core
+          npm ci
+          npm run build
+      
+      - name: Install drift simulator dependencies
+        working-directory: demos/drift-showcase
+        run: npm install
+      
+      - name: Start drift simulator (v2 mode with drift)
+        working-directory: demos/drift-showcase
+        run: |
+          DRIFT_MODE=v2 npm start > /tmp/drift-simulator.log 2>&1 &
+          SIMULATOR_PID=$!
+          echo "Drift simulator PID: $SIMULATOR_PID"
+          echo $SIMULATOR_PID > /tmp/drift-simulator.pid
+          sleep 2
+          if ! ps -p $SIMULATOR_PID > /dev/null; then
+            echo "Drift simulator failed to start!"
+            cat /tmp/drift-simulator.log
+            exit 1
+          fi
+          curl -f http://localhost:4290/health || exit 1
+      
+      - name: Run drift check and generate HTML report
+        id: drift
+        continue-on-error: true
+        working-directory: demos/drift-showcase
+        run: |
+          set +e
+          mkdir -p drift-report
+          node ../../packages/mockifyer-core/dist/cli/drift-check.js \
+            --mock-data-path ./mock-data \
+            --scenario drift-watch \
+            --html ./drift-report \
+            --json > drift-report.json
+          
+          # Capture exit code (0 = clean, 1 = drift, 2 = error)
+          EXIT_CODE=$?
+          set -e
+          echo "exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
+          
+          # Parse report summary
+          if [ -f drift-report.json ]; then
+            breaking=$(jq -r '.breakingDriftCount // 0' drift-report.json)
+            warnings=$(jq -r '.warningOnlyCount // 0' drift-report.json)
+            total=$(jq -r '.totalMocks // 0' drift-report.json)
+            
+            echo "breaking=$breaking" >> $GITHUB_OUTPUT
+            echo "warnings=$warnings" >> $GITHUB_OUTPUT
+            echo "total=$total" >> $GITHUB_OUTPUT
+            
+            if [ "$breaking" -gt 0 ]; then
+              echo "summary=🚨 $breaking breaking changes, $warnings warnings (checked $total endpoints)" >> $GITHUB_OUTPUT
+            elif [ "$warnings" -gt 0 ]; then
+              echo "summary=⚠️  $warnings warnings (checked $total endpoints)" >> $GITHUB_OUTPUT
+            else
+              echo "summary=✅ All $total endpoints in sync" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "breaking=0" >> $GITHUB_OUTPUT
+            echo "warnings=0" >> $GITHUB_OUTPUT
+            echo "total=0" >> $GITHUB_OUTPUT
+            echo "summary=❌ Drift check failed" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Stop drift simulator
+        if: always()
+        run: |
+          if [ -f /tmp/drift-simulator.pid ]; then
+            SIMULATOR_PID=$(cat /tmp/drift-simulator.pid)
+            if ps -p $SIMULATOR_PID > /dev/null; then
+              kill $SIMULATOR_PID || true
+            fi
+          fi
+      
+      - name: Upload drift report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: drift-report
+          path: demos/drift-showcase/drift-report/
+          retention-days: 30
+          if-no-files-found: warn
+          overwrite: true
+      
+      - name: Upload drift JSON
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: drift-json
+          path: demos/drift-showcase/drift-report.json
+          retention-days: 30
+          if-no-files-found: warn
+          overwrite: true
+      
+      - name: Summary
+        if: always()
+        run: |
+          echo "## 🎭 Drift Check Showcase" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Result:** ${{ steps.drift.outputs.summary }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.drift.outputs.breaking }}" -gt 0 ] || [ "${{ steps.drift.outputs.warnings }}" -gt 0 ]; then
+            echo "The drift report will be published to GitHub Pages at:" >> $GITHUB_STEP_SUMMARY
+            echo "🔗 https://sgedda.github.io/mockifyer/drift/" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "All endpoints are in sync with their recorded mocks." >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "_This showcase demonstrates Mockifyer's drift detection against simulated and live APIs._" >> $GITHUB_STEP_SUMMARY
+
+  # Publish both Atlas and Drift to GitHub Pages
+  # Only on main branch after drift-check completes
+  deploy-pages:
+    needs: drift-check
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+      actions: read
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+
+    steps:
+      - name: Download drift report
+        id: download_drift
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: drift-report
+          path: drift-report
+      
+      - name: Download latest Atlas artifact
+        id: download_atlas
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Find the most recent successful e2e run on main that has atlas-architecture artifact
+          echo "Searching for latest Atlas artifact..."
+          RUN_ID=$(gh api \
+            "/repos/${{ github.repository }}/actions/workflows/e2e.yml/runs?branch=main&status=success&per_page=10" \
+            --jq '.workflow_runs[] | select(.conclusion == "success") | .id' | head -1)
+          
+          if [ -z "$RUN_ID" ]; then
+            echo "No successful e2e run found with Atlas artifact"
+            echo "skip=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          echo "Found e2e run: $RUN_ID"
+          
+          # Download the atlas-architecture artifact from that run
+          mkdir -p atlas-report
+          gh api "/repos/${{ github.repository }}/actions/runs/$RUN_ID/artifacts" \
+            --jq '.artifacts[] | select(.name == "atlas-architecture") | .id' | head -1 | \
+            xargs -I {} gh api "/repos/${{ github.repository }}/actions/artifacts/{}/zip" > atlas.zip || {
+              echo "Failed to download Atlas artifact"
+              echo "skip=true" >> $GITHUB_OUTPUT
+              exit 0
+            }
+          
+          unzip -q atlas.zip -d atlas-report
+          rm atlas.zip
+          
+          if [ ! -d "atlas-report" ] || [ -z "$(ls -A atlas-report 2>/dev/null)" ]; then
+            echo "Atlas artifact is empty"
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+            echo "✓ Downloaded Atlas artifact from run $RUN_ID"
+          fi
+      
+      - name: Check artifacts exist
+        id: check_artifacts
+        run: |
+          has_drift=false
+          has_atlas=false
+          
+          if [ -d "drift-report" ] && [ -n "$(ls -A drift-report 2>/dev/null)" ]; then
+            echo "✓ Drift report found: $(du -sh drift-report | cut -f1)"
+            has_drift=true
+          fi
+          
+          if [ "${{ steps.download_atlas.outputs.skip }}" != "true" ] && [ -d "atlas-report" ] && [ -n "$(ls -A atlas-report 2>/dev/null)" ]; then
+            echo "✓ Atlas report found: $(du -sh atlas-report | cut -f1)"
+            has_atlas=true
+          fi
+          
+          if [ "$has_drift" = false ] && [ "$has_atlas" = false ]; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "⚠️ No artifacts to deploy"
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Prepare Pages directory structure
+        if: steps.check_artifacts.outputs.skip != 'true'
+        id: prepare_pages
+        run: |
+          mkdir -p pages-root
+          
+          # Copy drift report to /drift/
+          if [ -d "drift-report" ] && [ -n "$(ls -A drift-report 2>/dev/null)" ]; then
+            mkdir -p pages-root/drift
+            cp -r drift-report/* pages-root/drift/
+            echo "✓ Drift report copied to /drift/"
+          fi
+          
+          # Copy Atlas report to /atlas/
+          if [ -d "atlas-report" ] && [ -n "$(ls -A atlas-report 2>/dev/null)" ]; then
+            mkdir -p pages-root/atlas
+            cp -r atlas-report/* pages-root/atlas/
+            echo "✓ Atlas report copied to /atlas/"
+          fi
+          
+          # Create root index.html with links to available reports
+          HAS_ATLAS=""
+          if [ -d "pages-root/atlas" ] && [ -n "$(ls -A pages-root/atlas 2>/dev/null)" ]; then
+            HAS_ATLAS="yes"
+            echo "has_atlas=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_atlas=false" >> $GITHUB_OUTPUT
+          fi
+          echo "HAS_ATLAS=$HAS_ATLAS" >> $GITHUB_ENV
+          
+          cat > pages-root/index.html << EOF
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Mockifyer Documentation</title>
+            <style>
+              * { margin: 0; padding: 0; box-sizing: border-box; }
+              body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                min-height: 100vh;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 2rem;
+              }
+              .container {
+                background: white;
+                border-radius: 1rem;
+                padding: 3rem;
+                max-width: 600px;
+                box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+              }
+              h1 {
+                font-size: 2.5rem;
+                margin-bottom: 0.5rem;
+                color: #667eea;
+              }
+              .subtitle {
+                color: #666;
+                margin-bottom: 2rem;
+              }
+              .links {
+                display: flex;
+                flex-direction: column;
+                gap: 1rem;
+              }
+              a {
+                display: block;
+                padding: 1.5rem;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                text-decoration: none;
+                border-radius: 0.5rem;
+                font-size: 1.25rem;
+                font-weight: 600;
+                transition: transform 0.2s, box-shadow 0.2s;
+              }
+              a:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+              }
+              .description {
+                font-size: 0.875rem;
+                opacity: 0.9;
+                margin-top: 0.5rem;
+              }
+              .footer {
+                margin-top: 2rem;
+                text-align: center;
+                color: #999;
+                font-size: 0.875rem;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <h1>📚 Mockifyer</h1>
+              <p class="subtitle">API mock record/replay with drift detection</p>
+              
+              <div class="links">
+                <a href="drift/">
+                  🎭 Drift Check Showcase
+                  <div class="description">Live drift detection against simulated & real APIs</div>
+                </a>$([ -n "$HAS_ATLAS" ] && echo '
+                <a href="atlas/">
+                  🗺️ Atlas Architecture
+                  <div class="description">Auto-generated API architecture documentation</div>
+                </a>')
+              </div>
+              
+              <div class="footer">
+                <p>Generated from nightly CI runs</p>
+                <p><a href="https://github.com/sgedda/mockifyer" style="all: unset; color: #667eea; cursor: pointer;">View on GitHub</a></p>
+              </div>
+            </div>
+          </body>
+          </html>
+          EOF
+          
+          echo "Pages directory structure:"
+          ls -la pages-root/
+          [ -d pages-root/drift ] && echo "  /drift/:" && ls -la pages-root/drift/ | head -5
+          [ -d pages-root/atlas ] && echo "  /atlas/:" && ls -la pages-root/atlas/ | head -5
+      
+      - name: Upload Pages artifact
+        if: steps.check_artifacts.outputs.skip != 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: pages-root
+          retention-days: 1
+      
+      - name: Deploy to GitHub Pages
+        if: steps.check_artifacts.outputs.skip != 'true'
+        id: deployment
+        uses: actions/deploy-pages@v4
+      
+      - name: Add Pages link to job summary
+        if: steps.check_artifacts.outputs.skip != 'true' && steps.deployment.outcome == 'success'
+        run: |
+          echo "## 📚 Documentation Published" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Site URL:** ${{ steps.deployment.outputs.page_url }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- 🎭 [Drift Check Showcase](${{ steps.deployment.outputs.page_url }}drift/)" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.prepare_pages.outputs.has_atlas }}" = "true" ]; then
+            echo "- 🗺️ [Atlas Architecture](${{ steps.deployment.outputs.page_url }}atlas/)" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "_Updated from \`main\` branch_" >> $GITHUB_STEP_SUMMARY

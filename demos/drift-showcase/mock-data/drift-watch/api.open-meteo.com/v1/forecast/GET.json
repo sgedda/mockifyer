@@ -1,0 +1,48 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "https://api.open-meteo.com/v1/forecast?latitude=51.5074&longitude=-0.1278&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min",
+    "headers": {}
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "data": {
+      "latitude": 51.5,
+      "longitude": -0.13,
+      "generationtime_ms": 0.12,
+      "utc_offset_seconds": 0,
+      "timezone": "GMT",
+      "timezone_abbreviation": "GMT",
+      "elevation": 23.0,
+      "current_units": {
+        "time": "iso8601",
+        "interval": "seconds",
+        "temperature_2m": "°C",
+        "weather_code": "wmo code"
+      },
+      "current": {
+        "time": "2026-11-16T00:00",
+        "interval": 900,
+        "temperature_2m": 12.3,
+        "weather_code": 3
+      },
+      "daily_units": {
+        "time": "iso8601",
+        "temperature_2m_max": "°C",
+        "temperature_2m_min": "°C"
+      },
+      "daily": {
+        "time": ["2026-11-16", "2026-11-17"],
+        "temperature_2m_max": [14.5, 13.8],
+        "temperature_2m_min": [8.2, 9.1]
+      }
+    }
+  },
+  "metadata": {
+    "recordedAt": "2026-11-16T00:00:00.000Z",
+    "scenario": "drift-watch"
+  }
+}
