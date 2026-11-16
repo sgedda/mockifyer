@@ -368,18 +368,42 @@ describe('Atlas Edge-Node Intersections (Real Data)', () => {
     const frankfurterNode = nodes.find(n => n.id === 'host-api.frankfurter.app');
     if (!frankfurterNode) return; // Skip if not in fixture
     
-    // Find edge to frankfurter
-    const frankfurterEdge = edges.find(e => {
+    // Find edge from 4203 to frankfurter (not from app)
+    const node4203 = nodes.find(n => n.id === 'host-127.0.0.1:4203');
+    expect(node4203).toBeDefined();
+    
+    const frankfurterEdgeFrom4203 = edges.find(e => {
+      const source = findNodeAtPoint(e.x1, e.y1, nodes);
       const target = findNodeAtPoint(e.x2, e.y2, nodes);
-      return target?.id === 'host-api.frankfurter.app';
+      return source?.id === 'host-127.0.0.1:4203' && target?.id === 'host-api.frankfurter.app';
     });
     
-    expect(frankfurterEdge).toBeDefined();
+    expect(frankfurterEdgeFrom4203).toBeDefined();
+  });
+  
+  it('should have 127.0.0.1:4201 with edge from Application', () => {
+    const inventory = buildEndpointInventory(fixtureEvents, []);
+    const svg = generateSystemDiagramSVG(inventory, fixtureEvents);
     
-    // Verify source is 127.0.0.1:4203
-    if (frankfurterEdge) {
-      const source = findNodeAtPoint(frankfurterEdge.x1, frankfurterEdge.y1, nodes);
-      expect(source?.id).toBe('host-127.0.0.1:4203');
+    const nodes = extractNodeRects(svg);
+    const edges = extractEdgeLines(svg);
+    
+    // Find 4201 node
+    const node4201 = nodes.find(n => n.id === 'host-127.0.0.1:4201');
+    expect(node4201).toBeDefined();
+    
+    // Find edge to 4201
+    const edge4201 = edges.find(e => {
+      const target = findNodeAtPoint(e.x2, e.y2, nodes);
+      return target?.id === 'host-127.0.0.1:4201';
+    });
+    
+    expect(edge4201).toBeDefined();
+    
+    // Verify source is Application
+    if (edge4201) {
+      const source = findNodeAtPoint(edge4201.x1, edge4201.y1, nodes);
+      expect(source?.id).toBe('app');
     }
   });
   

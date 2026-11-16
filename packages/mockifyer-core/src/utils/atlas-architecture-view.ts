@@ -37,7 +37,6 @@ export function generateSystemDiagramSVG(
   screens?: string[]
 ): string {
   const nodes: SystemDiagramNode[] = [];
-  const edges: SystemDiagramEdge[] = [];
   
   // Node positioning constants
   const NODE_HEIGHT = 45;
@@ -53,13 +52,24 @@ export function generateSystemDiagramSVG(
   };
   
   // Build parent-child relationships from events
+  // Treat unresolved parentRequestId as Application (parent not in captured events)
   const parentChildMap = new Map<string, Set<string>>(); // parent host -> Set<child hosts>
   const childParentMap = new Map<string, Set<string>>(); // child host -> Set<parent hosts>
+  const appChildren = new Set<string>(); // Hosts called directly by Application
   
   events.forEach(ev => {
-    if (ev.parentRequestId && ev.host) {
+    if (!ev.host) return;
+    
+    if (!ev.parentRequestId) {
+      // No parent = Application
+      appChildren.add(ev.host);
+    } else {
       const parentEvent = events.find(e => e.requestId === ev.parentRequestId || e.id === ev.parentRequestId);
-      if (parentEvent && parentEvent.host && parentEvent.host !== ev.host) {
+      if (!parentEvent) {
+        // Unresolved parent = Application
+        appChildren.add(ev.host);
+      } else if (parentEvent.host && parentEvent.host !== ev.host) {
+        // Host → host
         if (!parentChildMap.has(parentEvent.host)) {
           parentChildMap.set(parentEvent.host, new Set());
         }
@@ -95,47 +105,53 @@ export function generateSystemDiagramSVG(
     );
   });
   
-  // Assign tiers by call depth (BFS from Application)
-  // Tier N contains hosts at distance N from app (longest path)
+  // Sugiyama-style layering: longest-path assignment
   const hostTier = new Map<string, number>();
-  const hostsByTier = new Map<number, string[]>();
   
-  // BFS to find longest path to each host
-  const queue: Array<{host: string, depth: number}> = [];
-  
-  // Start with hosts called directly by app (no parent in the data)
-  allHosts.forEach(host => {
-    if (!childParentMap.has(host) || childParentMap.get(host)!.size === 0) {
-      queue.push({host, depth: 1});
-      hostTier.set(host, 1);
-    }
+  // Initialize: hosts called by Application start at tier 1
+  appChildren.forEach(host => {
+    hostTier.set(host, 1);
   });
   
-  // BFS to assign tiers based on longest path
-  while (queue.length > 0) {
-    const {host, depth} = queue.shift()!;
+  // Iteratively assign tiers: each host goes to 1 + max(parent tiers)
+  let changed = true;
+  let iterations = 0;
+  while (changed && iterations < 100) {
+    changed = false;
+    iterations++;
     
-    // Update this host's tier if we found a longer path
-    const currentTier = hostTier.get(host) || 0;
-    if (depth > currentTier) {
-      hostTier.set(host, depth);
-    }
-    
-    // Process children
-    const children = parentChildMap.get(host);
-    if (children) {
-      children.forEach(child => {
-        const childDepth = depth + 1;
-        const childCurrentTier = hostTier.get(child) || 0;
-        if (childDepth > childCurrentTier) {
-          hostTier.set(child, childDepth);
-          queue.push({host: child, depth: childDepth});
+    allHosts.forEach(host => {
+      const parents = childParentMap.get(host);
+      if (!parents || parents.size === 0) {
+        // No host parents, but might be called by app
+        if (!hostTier.has(host)) {
+          hostTier.set(host, 1);
+          changed = true;
+        }
+        return;
+      }
+      
+      let maxParentTier = 0;
+      parents.forEach(parentHost => {
+        const parentTier = hostTier.get(parentHost);
+        if (parentTier !== undefined) {
+          maxParentTier = Math.max(maxParentTier, parentTier);
         }
       });
-    }
+      
+      if (maxParentTier > 0) {
+        const newTier = maxParentTier + 1;
+        const currentTier = hostTier.get(host);
+        if (currentTier === undefined || newTier > currentTier) {
+          hostTier.set(host, newTier);
+          changed = true;
+        }
+      }
+    });
   }
   
   // Group hosts by tier
+  const hostsByTier = new Map<number, string[]>();
   hostTier.forEach((tier, host) => {
     if (!hostsByTier.has(tier)) {
       hostsByTier.set(tier, []);
@@ -143,10 +159,43 @@ export function generateSystemDiagramSVG(
     hostsByTier.get(tier)!.push(host);
   });
   
-  const maxTier = Math.max(...Array.from(hostsByTier.keys()));
+  const maxTier = Math.max(0, ...Array.from(hostsByTier.keys()));
   const tiers: string[][] = [];
   for (let i = 1; i <= maxTier; i++) {
     tiers.push(hostsByTier.get(i) || []);
+  }
+  
+  // Barycenter ordering within tiers to reduce crossings
+  for (let t = 0; t < tiers.length; t++) {
+    const tierHosts = tiers[t];
+    if (tierHosts.length <= 1) continue;
+    
+    // Calculate barycenter for each host based on parent positions
+    const barycenters = new Map<string, number>();
+    tierHosts.forEach(host => {
+      const parents = childParentMap.get(host) || new Set();
+      if (parents.size === 0 && appChildren.has(host)) {
+        // Parent is Application (centered)
+        barycenters.set(host, 0);
+      } else {
+        let sum = 0;
+        let count = 0;
+        parents.forEach(parentHost => {
+          const parentTierIdx = hostTier.get(parentHost)! - 1;
+          if (parentTierIdx === t - 1) {
+            const parentIdx = tiers[parentTierIdx].indexOf(parentHost);
+            if (parentIdx >= 0) {
+              sum += parentIdx;
+              count++;
+            }
+          }
+        });
+        barycenters.set(host, count > 0 ? sum / count : tierHosts.indexOf(host));
+      }
+    });
+    
+    // Sort by barycenter
+    tierHosts.sort((a, b) => (barycenters.get(a) || 0) - (barycenters.get(b) || 0));
   }
   
   // Layout tiers with wrapping for large tiers
@@ -228,39 +277,152 @@ export function generateSystemDiagramSVG(
   const contentWidth = diagramWidth + MARGIN * 2;
   const diagramHeight = y;
   
-  // Create edges: App -> tier 1 hosts, then ALL parent->child host relationships
+  // Create edges with dummy waypoints for skip-tier edges (Sugiyama style)
   
-  // App -> Tier 1 hosts (hosts with no parents)
-  const tier1Hosts = tiers[0] || [];
-  tier1Hosts.forEach(host => {
+  // Edge structure: from node ID, to node ID, waypoints (intermediate tier positions)
+  interface EdgeWithWaypoints {
+    from: string;
+    to: string;
+    waypoints: Array<{tier: number, x?: number}>; // tier index, x position computed later
+    label?: string;
+    status: string;
+    count: number;
+  }
+  
+  const edgesWithWaypoints: EdgeWithWaypoints[] = [];
+  
+  // App -> hosts
+  appChildren.forEach(host => {
     const hostInventory = inventory.byHost.get(host);
     if (!hostInventory) return;
     
     const status = hostStatuses.get(host) || 'live';
+    const childTier = hostTier.get(host) || 1;
     
-    edges.push({
+    // Create waypoints for each intermediate tier
+    const waypoints: Array<{tier: number}> = [];
+    for (let t = 1; t < childTier; t++) {
+      waypoints.push({ tier: t });
+    }
+    
+    edgesWithWaypoints.push({
       from: 'app',
       to: `host-${host}`,
+      waypoints,
       label: `${hostInventory.length} ep`,
       status: status as any,
       count: hostInventory.length
     });
   });
   
-  // ALL parent->child host relationships (including local->local)
+  // Host -> host relationships
   parentChildMap.forEach((children, parentHost) => {
     children.forEach(childHost => {
       const status = hostStatuses.get(childHost) || 'live';
       const hostInventory = inventory.byHost.get(childHost);
       const count = hostInventory ? hostInventory.length : 0;
       
-      edges.push({
+      const parentTier = hostTier.get(parentHost) || 1;
+      const childTier = hostTier.get(childHost) || 1;
+      
+      // Create waypoints for intermediate tiers
+      const waypoints: Array<{tier: number}> = [];
+      for (let t = parentTier + 1; t < childTier; t++) {
+        waypoints.push({ tier: t });
+      }
+      
+      edgesWithWaypoints.push({
         from: `host-${parentHost}`,
         to: `host-${childHost}`,
+        waypoints,
         label: `${count} ep`,
         status: status as any,
         count
       });
+    });
+  });
+  
+  // Compute waypoint x positions with per-edge offsets
+  // Group edges by waypoint tier to spread them out
+  const edgesByWaypointTier = new Map<number, typeof edgesWithWaypoints>();
+  edgesWithWaypoints.forEach((edge, idx) => {
+    edge.waypoints.forEach(wp => {
+      if (!edgesByWaypointTier.has(wp.tier)) {
+        edgesByWaypointTier.set(wp.tier, []);
+      }
+      if (!edgesByWaypointTier.get(wp.tier)!.includes(edge)) {
+        edgesByWaypointTier.get(wp.tier)!.push(edge);
+      }
+    });
+  });
+  
+  edgesWithWaypoints.forEach((edge, edgeIdx) => {
+    edge.waypoints.forEach(wp => {
+      const tierIdx = wp.tier - 1;
+      if (tierIdx < 0 || tierIdx >= tiers.length) return;
+      
+      // Find nodes at this tier
+      const tierNodes = tiers[tierIdx].map(h => nodes.find(n => n.id === `host-${h}`)).filter(n => n);
+      
+      // Base x position (center of gap or diagram)
+      let baseX: number;
+      if (tierNodes.length === 0) {
+        baseX = MARGIN + diagramWidth / 2;
+      } else if (tierNodes.length === 1) {
+        const node = tierNodes[0]!;
+        baseX = node.x + (node.width || 160) + 20;
+      } else {
+        const node0 = tierNodes[0]!;
+        const node1 = tierNodes[1]!;
+        const w0 = node0.width || 160;
+        baseX = node0.x + w0 + (node1.x - (node0.x + w0)) / 2;
+      }
+      
+      // Add small horizontal offset per edge to avoid overlaps
+      const edgesAtThisTier = edgesByWaypointTier.get(wp.tier) || [];
+      const edgeIndexAtTier = edgesAtThisTier.indexOf(edge);
+      const offsetRange = 40; // Total spread range
+      const offset = edgeIndexAtTier * (offsetRange / Math.max(1, edgesAtThisTier.length - 1)) - offsetRange / 2;
+      
+      wp.x = baseX + offset;
+    });
+  });
+  
+  // Convert to old edge format with computed waypoints
+  const edges: Array<{from: string, to: string, label: string | undefined, status: 'live' | 'error' | 'code-only' | 'mocked' | 'unexercised', count: number, waypoints?: Array<{x: number, y: number}>}> = [];
+  
+  edgesWithWaypoints.forEach(edge => {
+    // Compute Y positions for waypoints in gaps BETWEEN tiers (not at node level)
+    const waypointsWithXY = edge.waypoints.map(wp => {
+      const tierIdx = wp.tier - 1;
+      
+      // Place waypoint in the vertical gap BETWEEN this tier and the next
+      // This ensures it doesn't overlap with nodes
+      let tierY: number;
+      
+      if (tierIdx >= 0 && tierIdx < tiers.length && tiers[tierIdx].length > 0) {
+        const firstNode = nodes.find(n => n.id === `host-${tiers[tierIdx][0]}`);
+        if (firstNode) {
+          // Place waypoint halfway through the gap AFTER this tier
+          tierY = firstNode.y + NODE_HEIGHT + TIER_GAP / 2;
+        } else {
+          tierY = MARGIN + NODE_HEIGHT + tierIdx * (NODE_HEIGHT + TIER_GAP) + NODE_HEIGHT + TIER_GAP / 2;
+        }
+      } else {
+        // Default calculation
+        tierY = MARGIN + NODE_HEIGHT + tierIdx * (NODE_HEIGHT + TIER_GAP) + NODE_HEIGHT + TIER_GAP / 2;
+      }
+      
+      return { x: wp.x || MARGIN + diagramWidth / 2, y: tierY };
+    });
+    
+    edges.push({
+      from: edge.from,
+      to: edge.to,
+      label: edge.label,
+      status: edge.status as 'live' | 'error' | 'code-only' | 'mocked' | 'unexercised',
+      count: edge.count,
+      waypoints: waypointsWithXY
     });
   });
   
@@ -307,24 +469,49 @@ export function generateSystemDiagramSVG(
     const x2 = toNode.x + (toNode.width || 160) / 2;
     const y2 = toNode.y;
     
-    // Use cubic Bezier curve for smooth path between tiers
-    // Control points create vertical S-curve that avoids intermediate nodes
-    const verticalDistance = y2 - y1;
-    const controlPointOffset = verticalDistance * 0.4; // 40% of vertical distance
+    // Build path through waypoints (Sugiyama-style routing)
+    let pathData = `M ${x1} ${y1}`;
     
-    const cx1 = x1; // Control point 1: directly below source
-    const cy1 = y1 + controlPointOffset;
-    const cx2 = x2; // Control point 2: directly above target
-    const cy2 = y2 - controlPointOffset;
-    
-    // Cubic Bezier path: M start C cp1 cp2 end
-    const pathData = `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`;
+    const edgeWithWaypoints = edge as any;
+    if (edgeWithWaypoints.waypoints && edgeWithWaypoints.waypoints.length > 0) {
+      // Path through waypoints using cubic Bezier segments
+      const points = [{ x: x1, y: y1 }, ...edgeWithWaypoints.waypoints, { x: x2, y: y2 }];
+      
+      for (let i = 0; i < points.length - 1; i++) {
+        const p0 = points[i];
+        const p1 = points[i + 1];
+        
+        const dx = p1.x - p0.x;
+        const dy = p1.y - p0.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const offset = Math.min(dist * 0.4, 40);
+        
+        // Control points for smooth S-curve between waypoints
+        const cx1 = p0.x;
+        const cy1 = p0.y + offset;
+        const cx2 = p1.x;
+        const cy2 = p1.y - offset;
+        
+        pathData += ` C ${cx1} ${cy1}, ${cx2} ${cy2}, ${p1.x} ${p1.y}`;
+      }
+    } else {
+      // Direct edge with simple cubic Bezier
+      const verticalDistance = y2 - y1;
+      const controlPointOffset = verticalDistance * 0.4;
+      
+      const cx1 = x1;
+      const cy1 = y1 + controlPointOffset;
+      const cx2 = x2;
+      const cy2 = y2 - controlPointOffset;
+      
+      pathData += ` C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`;
+    }
     
     svg += `<path d="${pathData}" 
       stroke="${color}" stroke-width="2" stroke-dasharray="${strokeDasharray}" 
       fill="none" marker-end="url(#${marker})" />`;
     
-    // Label at midpoint of curve (approximate)
+    // Label at midpoint
     if (edge.label) {
       const labelX = (x1 + x2) / 2;
       const labelY = (y1 + y2) / 2;
