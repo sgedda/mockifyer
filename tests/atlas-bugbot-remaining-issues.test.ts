@@ -6,6 +6,7 @@
 import { buildEndpointInventory } from '../packages/mockifyer-core/src/utils/atlas-endpoint-inventory';
 import { generateSystemDiagramSVG } from '../packages/mockifyer-core/src/utils/atlas-architecture-view';
 import type { NetworkEvent } from '../packages/mockifyer-core/src/utils/network-event-types';
+import type { ScannedEndpoint } from '../packages/mockifyer-core/src/utils/atlas-code-scanner';
 
 // Helper to create valid NetworkEvent for tests
 function createEvent(overrides: Partial<NetworkEvent> & { url: string; method: string }): NetworkEvent {
@@ -227,25 +228,46 @@ describe('Bugbot remaining issues verification', () => {
   /**
    * Bug 4581415355: UUID placeholders collapse to generic IDs
    * Fixed in bed9fe99 with case-sensitive camelCase pattern
+   * The bug: case-insensitive [a-zA-Z]+Id matches {Uuid} and converts to {id}
    */
   describe('UUID preservation (4581415355)', () => {
-    it('should keep {uuid} and not convert to {id}', () => {
-      const events: NetworkEvent[] = [
-        createEvent({
-          url: 'https://api.service.com/resources/550e8400-e29b-41d4-a716-446655440000',
+    it('should keep {Uuid} placeholder separate from {userId}', () => {
+      // Test with scanned endpoints that have {Uuid} placeholder names
+      const scanned: ScannedEndpoint[] = [
+        {
+          urlTemplate: 'https://api.service.com/resources/{Uuid}',
+          resolvedUrl: 'https://api.service.com/resources/{Uuid}',
+          filePath: '/test.ts',
+          line: 10,
+          column: 5,
           method: 'GET',
-          status: 200,
-          durationMs: 50
-        })
+          callType: 'axios' as const
+        },
+        {
+          urlTemplate: 'https://api.service.com/users/{userId}',
+          resolvedUrl: 'https://api.service.com/users/{userId}',
+          filePath: '/test.ts',
+          line: 20,
+          column: 5,
+          method: 'GET',
+          callType: 'axios' as const
+        }
       ];
       
-      const inventory = buildEndpointInventory(events, []);
+      const inventory = buildEndpointInventory([], scanned);
       
-      // Should normalize to {uuid}, not {id}
-      const resourceEndpoint = inventory.all.find(e => e.urlTemplate.includes('{uuid}'));
-      expect(resourceEndpoint).toBeDefined();
-      expect(resourceEndpoint!.urlTemplate).toBe('/resources/{uuid}');
-      expect(resourceEndpoint!.urlTemplate).not.toBe('/resources/{id}');
+      // With the bug (reverted), {Uuid} matches [a-zA-Z]+Id and becomes {id}
+      // With the fix, {Uuid} is preserved as {uuid} while {userId} becomes {id}
+      const uuidEndpoint = inventory.all.find(e => e.urlTemplate.includes('resources'));
+      const userEndpoint = inventory.all.find(e => e.urlTemplate.includes('users'));
+      
+      expect(uuidEndpoint).toBeDefined();
+      expect(userEndpoint).toBeDefined();
+      
+      // With fix: /resources/{uuid} uses uuid placeholder
+      // With bug: /resources/{id} collapses to id
+      expect(uuidEndpoint!.urlTemplate).toBe('/resources/{uuid}');
+      expect(userEndpoint!.urlTemplate).toBe('/users/{id}');
     });
   });
 
