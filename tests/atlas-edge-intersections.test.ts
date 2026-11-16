@@ -549,4 +549,67 @@ describe('Atlas Edge-Node Intersections (Real Data)', () => {
     expect(pathMatch).toBeTruthy();
     expect(pathMatch![0]).toContain('data-inferred="true"');
   });
+  
+  it('should extract host from url when host field is missing and detect parent-child links', () => {
+    // Events without host field but with url field (host should be parsed from url)
+    const events: NetworkEvent[] = [
+      {
+        id: 'parent-evt',
+        requestId: 'req-parent',
+        timestamp: new Date().toISOString(),
+        scenario: 'test',
+        source: 'upstream' as const,
+        transport: 'fetch' as const,
+        url: 'https://api.parent.com/data',
+        method: 'GET',
+        path: '/data',
+        status: 200
+        // NO host field - should be parsed from url
+      },
+      {
+        id: 'child-evt',
+        requestId: 'req-child',
+        parentRequestId: 'req-parent', // Child of parent-evt
+        timestamp: new Date().toISOString(),
+        scenario: 'test',
+        source: 'upstream' as const,
+        transport: 'fetch' as const,
+        url: 'https://api.child.com/nested',
+        method: 'GET',
+        path: '/nested',
+        status: 200
+        // NO host field - should be parsed from url
+      }
+    ];
+    
+    const inventory = buildEndpointInventory(events, []);
+    const svg = generateSystemDiagramSVG(inventory, events);
+    
+    const nodes = extractNodeRects(svg);
+    const edges = extractEdgeLines(svg);
+    
+    // Verify both hosts are in the diagram
+    const parentNode = nodes.find(n => n.id === 'host-api.parent.com');
+    const childNode = nodes.find(n => n.id === 'host-api.child.com');
+    expect(parentNode).toBeDefined();
+    expect(childNode).toBeDefined();
+    
+    // Verify Application -> parent edge exists
+    const appToParentEdge = edges.find(e => 
+      e.from === 'app' && e.to === 'host-api.parent.com'
+    );
+    expect(appToParentEdge).toBeDefined();
+    
+    // Verify parent -> child edge exists (not Application -> child)
+    const parentToChildEdge = edges.find(e => 
+      e.from === 'host-api.parent.com' && e.to === 'host-api.child.com'
+    );
+    expect(parentToChildEdge).toBeDefined();
+    
+    // Verify child does NOT have a direct Application edge
+    const appToChildEdge = edges.find(e => 
+      e.from === 'app' && e.to === 'host-api.child.com'
+    );
+    expect(appToChildEdge).toBeUndefined();
+  });
 });

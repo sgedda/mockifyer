@@ -52,6 +52,18 @@ export function generateSystemDiagramSVG(
     return Math.max(160, text.length * CHAR_WIDTH + NODE_PADDING * 2);
   };
   
+  // Helper to extract host from URL when host field is missing
+  const getEventHost = (ev: NetworkEvent): string | undefined => {
+    if (ev.host) return ev.host;
+    if (!ev.url) return undefined;
+    try {
+      const url = new URL(ev.url);
+      return url.host;
+    } catch {
+      return undefined;
+    }
+  };
+  
   // Build parent-child relationships from events
   // Track proven edges (no parentRequestId) vs inferred edges (parentRequestId set but parent not found)
   const parentChildMap = new Map<string, Set<string>>(); // parent host -> Set<child hosts>
@@ -60,27 +72,31 @@ export function generateSystemDiagramSVG(
   const appChildrenInferred = new Set<string>(); // Hosts with inferred Application call (parentRequestId set but not found)
   
   events.forEach(ev => {
-    if (!ev.host) return;
+    const host = getEventHost(ev);
+    if (!host) return;
     
     if (!ev.parentRequestId) {
       // No parent = proven Application call
-      appChildren.add(ev.host);
+      appChildren.add(host);
     } else {
       const parentEvent = events.find(e => e.requestId === ev.parentRequestId || e.id === ev.parentRequestId);
       if (!parentEvent) {
         // Unresolved parent = inferred Application call
-        appChildrenInferred.add(ev.host);
-      } else if (parentEvent.host && parentEvent.host !== ev.host) {
-        // Host → host
-        if (!parentChildMap.has(parentEvent.host)) {
-          parentChildMap.set(parentEvent.host, new Set());
+        appChildrenInferred.add(host);
+      } else {
+        const parentHost = getEventHost(parentEvent);
+        if (parentHost && parentHost !== host) {
+          // Host → host
+          if (!parentChildMap.has(parentHost)) {
+            parentChildMap.set(parentHost, new Set());
+          }
+          parentChildMap.get(parentHost)!.add(host);
+          
+          if (!childParentMap.has(host)) {
+            childParentMap.set(host, new Set());
+          }
+          childParentMap.get(host)!.add(parentHost);
         }
-        parentChildMap.get(parentEvent.host)!.add(ev.host);
-        
-        if (!childParentMap.has(ev.host)) {
-          childParentMap.set(ev.host, new Set());
-        }
-        childParentMap.get(ev.host)!.add(parentEvent.host);
       }
     }
   });
