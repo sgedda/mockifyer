@@ -69,12 +69,12 @@ const REPLAY_MODE_OPTIONS: Array<{ value: MockReplayMode; label: string; descrip
   {
     value: 'stored',
     label: 'Use saved mock',
-    description: 'Serve the stored response body (field and date overrides still apply).',
+    description: 'Serve the stored response body (field and date overrides still apply). Note: Request-only stubs need a response first—select "Refresh on next request" to capture one.',
   },
   {
     value: 'refresh-next',
     label: 'Refresh on next request',
-    description: 'The next app request fetches upstream, updates this file, then returns to saved mock mode.',
+    description: 'The next app request fetches upstream, updates this file, then returns to saved mock mode. Use this to activate request-only stubs.',
   },
   {
     value: 'always-refresh',

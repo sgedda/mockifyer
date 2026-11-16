@@ -480,7 +480,10 @@ class MockifyerClass {
       }
 
       if (this.config.failOnMissingMock) {
-        throw new Error(`No mock data found for request: ${this.generateRequestKey(request)}`);
+        const hasUsableMock = cachedMock && !cachedMock.mockData.alwaysUseRealApi && !cachedMock.mockData.responsePending && !cachedMock.mockData.refreshOnNextRequest && !cachedMock.mockData.alwaysRefreshFromLive;
+        if (!hasUsableMock) {
+          throw new Error(`No mock data found for request: ${this.generateRequestKey(request)}`);
+        }
       }
 
       return config;
