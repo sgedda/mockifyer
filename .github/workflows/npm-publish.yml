@@ -27,11 +27,11 @@ jobs:
           npm --prefix packages/mockifyer-core install
           npm --prefix packages/mockifyer-dashboard install
 
-      - name: Run tests
-        run: npm test
-
       - name: Build packages
         run: npm run build
+
+      - name: Run tests
+        run: npm test
 
   publish:
     name: Publish to npm and GitHub Packages
