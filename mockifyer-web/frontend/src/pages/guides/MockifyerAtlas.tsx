@@ -215,10 +215,10 @@ npx -p @sgedda/mockifyer-core mockifyer-atlas`} />
               The <code className="bg-muted px-1 rounded">scan</code> command analyzes your TypeScript/JavaScript source 
               to discover all <code className="bg-muted px-1 rounded">fetch()</code> and{' '}
               <code className="bg-muted px-1 rounded">axios</code> calls. Useful when you want an endpoint inventory 
-              before running the app.
+              before running the app. Requires <code className="bg-muted px-1 rounded">typescript</code> as a dependency.
             </p>
 
-            <CodeBlock language="bash" code={`# Scan ./src for endpoints (requires mockifyer-core installed)
+            <CodeBlock language="bash" code={`# Scan ./src for endpoints (requires typescript installed)
 mockifyer-atlas scan
 
 # Scan a different directory

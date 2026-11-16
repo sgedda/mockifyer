@@ -855,7 +855,21 @@ async function runScan(options: CliOptions): Promise<void> {
 
   console.log(theme.bold('[atlas scan]'), `Scanning ${dir}...`);
   
-  const { scanCodeForEndpoints } = await import("../utils/atlas-code-scanner");
+  let scanCodeForEndpoints: (dir: string) => { endpoints: any[]; errors: any[] };
+  try {
+    const scanner = await import("../utils/atlas-code-scanner");
+    scanCodeForEndpoints = scanner.scanCodeForEndpoints;
+  } catch (err) {
+    const message = (err as Error).message;
+    if (message.includes("Cannot find module 'typescript'")) {
+      console.error(theme.err('\n[atlas scan] TypeScript is required for code scanning.'));
+      console.error(theme.muted('Install it with: npm install --save-dev typescript'));
+      console.error(theme.muted('Or use: npx -p typescript -p @sgedda/mockifyer-core mockifyer-atlas scan'));
+      process.exit(1);
+    }
+    throw err;
+  }
+  
   const result = scanCodeForEndpoints(dir);
   
   console.log(theme.bold('[atlas scan]'), `Found ${result.endpoints.length} endpoint(s)`);
