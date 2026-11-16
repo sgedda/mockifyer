@@ -164,14 +164,20 @@ export default function MockifyerAtlas() {
               The Atlas CLI reads that stream and displays nested call trees in your terminal.
             </p>
 
-            <CodeBlock language="bash" code={`# Default: Metro on port 8081
+            <CodeBlock language="bash" code={`# Requires ts-node. Install mockifyer-core in your project first:
+npm install --save-dev @sgedda/mockifyer-core ts-node
+
+# Default: Metro on port 8081
 npx mockifyer-atlas
 
 # Custom port
 npx mockifyer-atlas --port 8090
 
 # Plain text (no colors)
-npx mockifyer-atlas --no-color`} />
+npx mockifyer-atlas --no-color
+
+# Or run without installing (using -p flag):
+npx -p ts-node -p @sgedda/mockifyer-core mockifyer-atlas`} />
 
             <div>
               <h4 className="font-semibold mb-2 text-sm">Interactive Keys</h4>
@@ -212,14 +218,17 @@ npx mockifyer-atlas --no-color`} />
               before running the app.
             </p>
 
-            <CodeBlock language="bash" code={`# Scan ./src for endpoints
+            <CodeBlock language="bash" code={`# Scan ./src for endpoints (requires mockifyer-core + ts-node installed)
 npx mockifyer-atlas scan
 
 # Scan a different directory
 npx mockifyer-atlas scan --dir ./apps/mobile/src
 
 # Save results as JSON
-npx mockifyer-atlas scan --output endpoints.json`} />
+npx mockifyer-atlas scan --output endpoints.json
+
+# Or without installing (using -p flag):
+npx -p ts-node -p @sgedda/mockifyer-core mockifyer-atlas scan`} />
 
             <div className="text-sm text-muted-foreground">
               <strong>Output:</strong> Grouped by host, each endpoint shows method, URL template, and source file location. 
@@ -237,11 +246,14 @@ npx mockifyer-atlas scan --output endpoints.json`} />
               Export Atlas hops as HAR 1.2 (HTTP Archive), compatible with Chrome DevTools Network panel, Proxyman, and Charles Proxy.
             </p>
 
-            <CodeBlock language="bash" code={`# From Atlas HTML directory
-npx @sgedda/mockifyer-core mockifyer-atlas-har --dir ./mock-data/atlas-html
+            <CodeBlock language="bash" code={`# From Atlas HTML directory (requires ts-node)
+npx -p ts-node -p @sgedda/mockifyer-core mockifyer-atlas-har --dir ./mock-data/atlas-html
 
 # From a saved events JSON
-npx @sgedda/mockifyer-core mockifyer-atlas-har --events ./hops.json -o session.har`} />
+npx -p ts-node -p @sgedda/mockifyer-core mockifyer-atlas-har --events ./hops.json -o session.har
+
+# If mockifyer-core and ts-node are installed in your project:
+npx mockifyer-atlas-har --dir ./mock-data/atlas-html`} />
 
             <div className="text-sm text-muted-foreground">
               <strong>Use case:</strong> Share a HAR with teammates who don't have Mockifyer. They can open it in 
@@ -304,6 +316,7 @@ setupMockifyer({
             </p>
 
             <ol className="text-sm text-muted-foreground space-y-2 list-decimal list-inside">
+              <li>Install dependencies: <code className="bg-muted px-1 rounded">npm install --save-dev @sgedda/mockifyer-core ts-node</code></li>
               <li>Start your Expo or React Native app with Metro (<code className="bg-muted px-1 rounded">npx expo start</code>).</li>
               <li>In another terminal: <code className="bg-muted px-1 rounded">npx mockifyer-atlas</code></li>
               <li>Use the app (navigate, trigger API calls).</li>
@@ -426,11 +439,22 @@ setupMockifyer({
               <code className="bg-muted px-1 rounded">@sgedda/mockifyer-core</code> ≥1.10.196 (now on npm).
             </p>
 
-            <CodeBlock language="bash" code={`# Check installed version
+            <p className="text-sm text-muted-foreground mb-3">
+              <strong>Requirements:</strong> Both CLIs use TypeScript source with a{' '}
+              <code className="bg-muted px-1 rounded">ts-node</code> shebang, so you need{' '}
+              <code className="bg-muted px-1 rounded">ts-node</code> installed. 
+              You can install them together in your project, or use{' '}
+              <code className="bg-muted px-1 rounded">npx -p ts-node -p @sgedda/mockifyer-core</code> to run without installing.
+            </p>
+
+            <CodeBlock language="bash" code={`# Install in your project (recommended)
+npm install --save-dev @sgedda/mockifyer-core ts-node
+
+# Check installed version
 npm list @sgedda/mockifyer-core
 
 # Upgrade to latest
-npm install @sgedda/mockifyer-core@latest`} />
+npm install --save-dev @sgedda/mockifyer-core@latest ts-node`} />
 
             <p className="text-sm text-muted-foreground mt-3">
               The live WanderWeird Atlas at{' '}
