@@ -1,4 +1,4 @@
-#!/usr/bin/env ts-node
+#!/usr/bin/env node
 
 /**
  * Interactive Atlas hop stream against Metro (no dashboard GUI).
@@ -57,7 +57,6 @@ import type { AtlasStreamPaint } from "../utils/metro-network-stream-tty";
 import { createEmptyAtlasDocMap } from "../utils/atlas-doc";
 import { writeAtlasDocHtml } from "../utils/atlas-doc-html";
 import { flushNetworkBodySpillsToDir } from "../utils/network-body-spill";
-import { scanCodeForEndpoints } from "../utils/atlas-code-scanner";
 
 interface CliOptions {
   port?: number;
@@ -390,6 +389,7 @@ async function renderAtlasHtmlLocally(
   let scannedEndpoints: any[] = [];
   if (fs.existsSync(srcDir)) {
     try {
+      const { scanCodeForEndpoints } = await import("../utils/atlas-code-scanner");
       const scanResult = scanCodeForEndpoints(srcDir);
       scannedEndpoints = scanResult.endpoints;
     } catch (err) {
@@ -855,6 +855,7 @@ async function runScan(options: CliOptions): Promise<void> {
 
   console.log(theme.bold('[atlas scan]'), `Scanning ${dir}...`);
   
+  const { scanCodeForEndpoints } = await import("../utils/atlas-code-scanner");
   const result = scanCodeForEndpoints(dir);
   
   console.log(theme.bold('[atlas scan]'), `Found ${result.endpoints.length} endpoint(s)`);
