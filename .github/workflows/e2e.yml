@@ -248,6 +248,7 @@ jobs:
         env:
           MAIN_DASHBOARD_URL: http://127.0.0.1:3012
           MAIN_MCP_CLI: ${{ github.workspace }}/packages/mockifyer-mcp/dist/cli.js
+          MOCKIFYER_DEBUG_PROXY_TIMING: '1'
         run: npx playwright test
 
       # Side-by-side clips plus a Markdown description per test and the run summary (also the job summary).
