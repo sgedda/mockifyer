@@ -21,8 +21,9 @@ app must keep rendering from mocks when a backend is down.
 | WanderWeird services (gateway :4200 … wander-api :4203), proxy runtime, pinned to `guide-demo-2` | http://127.0.0.1:4200 | `GATEWAY_URL` |
 
 Demo data: scenarios `guide-demo-2` (Atlantis 99°), `heatwave` (44°), `rainy-weekend` (11°), client lane
-`wanderweird-demo` → `guide-demo-2` (see the guide, section 4.14). `global-setup.ts` fails fast if a
-piece is down. The MCP tests use `../packages/mockifyer-mcp/dist/cli.js` (build it first).
+`wanderweird-demo` → `guide-demo-2` (see the guide, section 4.14). `global-setup.ts` verifies services and
+the Athens mock with a few short retries (attempt logs include status/elapsed); it fails with the attempt
+history if probes still fail. The MCP tests use `../packages/mockifyer-mcp/dist/cli.js` (build it first).
 
 ## Run locally
 
