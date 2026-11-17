@@ -31,7 +31,17 @@ export default function Logo({ className, showIcon = true, size = 'md', as = 'li
             width={sizeClasses[size].imgSize}
             height={sizeClasses[size].imgSize}
             className={cn(
-              'transition-transform duration-300 group-hover:scale-110',
+              'transition-transform duration-300 group-hover:scale-110 dark:block hidden',
+              sizeClasses[size].imgClass
+            )}
+          />
+          <img
+            src="/logo-light-192.png"
+            alt="Mockifyer"
+            width={sizeClasses[size].imgSize}
+            height={sizeClasses[size].imgSize}
+            className={cn(
+              'transition-transform duration-300 group-hover:scale-110 dark:hidden block',
               sizeClasses[size].imgClass
             )}
           />
