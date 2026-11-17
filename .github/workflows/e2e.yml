@@ -89,7 +89,7 @@ jobs:
       - name: Start dashboard (sqlite) in background
         working-directory: ${{ env.WW }}
         run: |
-          nohup npx mockifyer-dashboard --provider sqlite --path ./mock-data --port 3002 --host 127.0.0.1 > /tmp/dashboard.log 2>&1 &
+          nohup env MOCKIFYER_DEBUG_PROXY_TIMING=1 npx mockifyer-dashboard --provider sqlite --path ./mock-data --port 3002 --host 127.0.0.1 > /tmp/dashboard.log 2>&1 &
           DASH_PID=$!
           echo "Dashboard PID: $DASH_PID"
           echo $DASH_PID > /tmp/dashboard.pid
@@ -117,7 +117,7 @@ jobs:
       - name: Start WanderWeird services unpinned (follow lane)
         working-directory: ${{ env.WW }}
         run: |
-          nohup npm run dev:proxy:record > /tmp/services.log 2>&1 &
+          nohup env MOCKIFYER_DEBUG_PROXY_TIMING=1 npm run dev:proxy:record > /tmp/services.log 2>&1 &
           echo "Services PID: $!"
 
       - name: Wait for services

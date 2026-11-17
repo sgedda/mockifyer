@@ -23,6 +23,10 @@ async function proxyJson(
   url: string,
   init?: RequestInit
 ): Promise<{ status: number; body: unknown }> {
+  const debug = process.env.MOCKIFYER_DEBUG_PROXY_TIMING === '1';
+  const isWanderHop = url.startsWith(WANDER_BASE);
+  const fetchStarted = Date.now();
+  if (debug && isWanderHop) console.log(`[gateway-api] wander hop starting: ${url}`);
   let response: Response;
   try {
     response = await fetch(url, {
@@ -33,8 +37,12 @@ async function proxyJson(
         ...(init?.headers ?? {}),
       },
     });
+    const fetchDuration = Date.now() - fetchStarted;
+    if (debug && isWanderHop) console.log(`[gateway-api] wander hop completed in ${fetchDuration}ms, status ${response.status}`);
   } catch (err) {
+    const fetchDuration = Date.now() - fetchStarted;
     const details = err instanceof Error ? err.message : String(err);
+    if (debug && isWanderHop) console.log(`[gateway-api] wander hop failed after ${fetchDuration}ms: ${details}`);
     console.error(`[gateway-api] upstream unavailable: ${url}: ${details}`);
     return {
       status: UPSTREAM_UNAVAILABLE_STATUS,

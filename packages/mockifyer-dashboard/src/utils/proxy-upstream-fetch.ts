@@ -116,20 +116,21 @@ export async function fetchProxyUpstreamAndReadText(
   init: RequestInit,
   tlsInsecure: boolean
 ): Promise<{ response: Response; rawText: string }> {
+  const debug = process.env.MOCKIFYER_DEBUG_PROXY_TIMING === '1';
   const fetchStarted = Date.now();
-  console.log(`[ProxyUpstream] starting fetch to ${url}`);
+  if (debug) console.log(`[ProxyUpstream] starting fetch to ${url}`);
   const response = await fetchProxyUpstream(url, init, tlsInsecure);
   const fetchDuration = Date.now() - fetchStarted;
-  console.log(`[ProxyUpstream] fetch completed in ${fetchDuration}ms, status ${response.status}`);
+  if (debug) console.log(`[ProxyUpstream] fetch completed in ${fetchDuration}ms, status ${response.status}`);
   try {
     const textStarted = Date.now();
     const rawText = await response.text();
     const textDuration = Date.now() - textStarted;
-    console.log(`[ProxyUpstream] response.text() read ${rawText.length} bytes in ${textDuration}ms`);
+    if (debug) console.log(`[ProxyUpstream] response.text() read ${rawText.length} bytes in ${textDuration}ms`);
     return { response, rawText };
   } catch (error) {
     const errorDuration = Date.now() - fetchStarted;
-    console.log(`[ProxyUpstream] response.text() failed after ${errorDuration}ms total: ${error instanceof Error ? error.message : String(error)}`);
+    if (debug) console.log(`[ProxyUpstream] response.text() failed after ${errorDuration}ms total: ${error instanceof Error ? error.message : String(error)}`);
     throw wrapProxyUpstreamFetchError(init.method, url, error);
   }
 }
