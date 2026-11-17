@@ -111,7 +111,7 @@ jobs:
       - name: Start main dashboard (branch build, :3012)
         run: |
           mkdir -p /tmp/mockifyer-main-data
-          nohup node packages/mockifyer-dashboard/bin/mockifyer-dashboard --provider sqlite --path /tmp/mockifyer-main-data --port 3012 --host 127.0.0.1 > /tmp/main-dashboard.log 2>&1 &
+          nohup env MOCKIFYER_DEBUG_PROXY_TIMING=1 node packages/mockifyer-dashboard/bin/mockifyer-dashboard --provider sqlite --path /tmp/mockifyer-main-data --port 3012 --host 127.0.0.1 > /tmp/main-dashboard.log 2>&1 &
           npx wait-on -t 60000 -i 1000 http-get://127.0.0.1:3012/api/scenario-config
 
       - name: Start WanderWeird services unpinned (follow lane)

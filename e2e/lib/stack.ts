@@ -98,6 +98,8 @@ async function slowHopsSince(sinceMs: number): Promise<string> {
   return lines.length ? lines.join(' ; ') : 'none';
 }
 
+const GATEWAY_ATLANTIS_URL = `${GATEWAY}/api/discover?destinationKey=atlantis`;
+
 /** Wait until the gateway serves Atlantis with HTTP 200 (wander-api warm after a restart). */
 export async function waitForGateway(timeoutMs = 60_000) {
   const started = Date.now();
@@ -105,13 +107,15 @@ export async function waitForGateway(timeoutMs = 60_000) {
   const misses: string[] = [];
   while (Date.now() < end) {
     const attemptStarted = Date.now();
-    console.log(`[stack] waitForGateway attempt ${misses.length + 1} at T+${seconds(started)}`);
+    console.log(
+      `[stack] waitForGateway attempt ${misses.length + 1} at T+${seconds(started)} ${GATEWAY_ATLANTIS_URL}`
+    );
     try {
-      const r = await fetch(`${GATEWAY}/api/discover?destinationKey=atlantis`, {
+      const r = await fetch(GATEWAY_ATLANTIS_URL, {
         signal: AbortSignal.timeout(GATEWAY_ATTEMPT_TIMEOUT_MS),
       });
       const duration = Date.now() - attemptStarted;
-      console.log(`[stack] gateway responded ${r.status} in ${duration}ms`);
+      console.log(`[stack] gateway responded ${r.status} in ${duration}ms (${GATEWAY_ATLANTIS_URL})`);
       if (r.status === 200) {
         console.log(`[stack] gateway 200 after ${seconds(started)}${misses.length ? ` (misses: ${misses.join(', ')})` : ''}`);
         if (misses.length) console.log(`[stack] slow or failed hops: ${await slowHopsSince(started)}`);
@@ -120,10 +124,14 @@ export async function waitForGateway(timeoutMs = 60_000) {
       misses.push(`${r.status} in ${seconds(attemptStarted)}`);
     } catch (err) {
       const duration = Date.now() - attemptStarted;
-      console.log(`[stack] gateway attempt failed after ${duration}ms: ${err instanceof Error ? err.message : String(err)}`);
+      console.log(
+        `[stack] gateway attempt failed after ${duration}ms (${GATEWAY_ATLANTIS_URL}): ${err instanceof Error ? err.message : String(err)}`
+      );
       misses.push(`${err instanceof Error ? err.name : 'error'} in ${seconds(attemptStarted)}`);
     }
     await new Promise((r) => setTimeout(r, GATEWAY_POLL_INTERVAL_MS));
   }
-  throw new Error(`gateway did not return 200 for Atlantis in time (misses: ${misses.join(', ')})`);
+  throw new Error(
+    `gateway did not return 200 for Atlantis in time (${GATEWAY_ATLANTIS_URL}; misses: ${misses.join(', ')})`
+  );
 }

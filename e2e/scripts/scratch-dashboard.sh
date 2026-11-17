@@ -36,7 +36,9 @@ stop_dashboard() {
 start_dashboard() {
   stop_dashboard
   mkdir -p "$DATA_DIR"
-  setsid nohup node "$REPO_ROOT/packages/mockifyer-dashboard/bin/mockifyer-dashboard" \
+  # Forward MOCKIFYER_DEBUG_PROXY_TIMING when set (same as ww-service.sh / CI stack).
+  env ${MOCKIFYER_DEBUG_PROXY_TIMING:+MOCKIFYER_DEBUG_PROXY_TIMING="$MOCKIFYER_DEBUG_PROXY_TIMING"} \
+    setsid nohup node "$REPO_ROOT/packages/mockifyer-dashboard/bin/mockifyer-dashboard" \
     --provider sqlite --path "$DATA_DIR" --port "$PORT" --host 127.0.0.1 > "$LOG_FILE" 2>&1 < /dev/null &
   for _ in $(seq "$START_WAIT_SECONDS"); do
     curl -sf "http://127.0.0.1:$PORT/api/health" >/dev/null 2>&1 && { echo "scratch dashboard up on :$PORT (empty, $DATA_DIR)"; return 0; }
