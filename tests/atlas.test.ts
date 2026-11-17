@@ -657,6 +657,10 @@ describe('atlas-doc-html', () => {
     expect(files['index.html']).toContain('data-view="architecture"');
     expect(files['index.html']).toContain('data-view="timeline"');
     expect(files['index.html']).toContain('data-view="data"');
+    expect(files['index.html']).toContain('<meta name="color-scheme" content="light"');
+    expect(files['index.html']).toContain('color-scheme: light;');
+    expect(files['index.html']).not.toContain('color-scheme: light dark');
+    expect(files['index.html']).not.toContain('prefers-color-scheme');
     expect(files['index.html']).toContain('Living architecture');
     expect(files['index.html']).toContain("var uniqueMode = 'endpoint'");
     expect(files['index.html']).toContain("var view = 'architecture'");

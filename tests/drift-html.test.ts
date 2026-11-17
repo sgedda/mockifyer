@@ -55,6 +55,27 @@ describe('Drift HTML Generation', () => {
     expect(html).toContain('Clean (3)');
   });
 
+  it('always renders in light mode (no OS dark preference)', () => {
+    const report: DriftCheckReport = {
+      totalMocks: 0,
+      driftedMocks: 0,
+      breakingDriftCount: 0,
+      warningOnlyCount: 0,
+      skippedCount: 0,
+      notCheckedCount: 0,
+      summary: '✓ No mocks',
+      failOnWarnings: false,
+      mockReports: [],
+    };
+
+    const html = generateDriftHtml(report);
+
+    expect(html).toContain('<meta name="color-scheme" content="light">');
+    expect(html).toContain('color-scheme: light;');
+    expect(html).not.toContain('color-scheme: light dark');
+    expect(html).not.toContain('prefers-color-scheme');
+  });
+
   it('should generate HTML for a report with breaking drift', () => {
     const report: DriftCheckReport = {
       totalMocks: 2,

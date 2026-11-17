@@ -1,10 +1,16 @@
 import {
+  ATLAS_CODE_HIGHLIGHT_CSS,
   highlightAtlasCode,
   highlightCurlHtml,
   highlightJsonHtml,
 } from '@sgedda/mockifyer-core';
 
 describe('atlas-syntax-highlight', () => {
+  it('ships light-only token CSS (no OS dark preference)', () => {
+    expect(ATLAS_CODE_HIGHLIGHT_CSS).toContain('color-scheme: light;');
+    expect(ATLAS_CODE_HIGHLIGHT_CSS).not.toContain('prefers-color-scheme');
+  });
+
   it('colors JSON keys, strings, numbers, and literals', () => {
     const html = highlightJsonHtml('{\n  "alias": "home",\n  "n": 1,\n  "ok": true\n}');
     expect(html).toContain('<span class="json-k">&quot;alias&quot;</span>');
