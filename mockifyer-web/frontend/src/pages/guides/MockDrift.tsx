@@ -308,7 +308,16 @@ Drifted mocks:
               <h4 className="font-semibold mb-2 text-sm">JSON Output</h4>
               <CodeBlock language="bash" code={`npx mockifyer-drift-check --json > drift-report.json`} />
               <p className="text-sm text-muted-foreground mt-2">
-                JSON mode outputs a structured report for CI integration. See <code className="bg-muted px-1 rounded">docs/examples/drift-nightly.yml</code> for a full example.
+                JSON mode outputs a structured report for CI integration. See{' '}
+                <a 
+                  href="https://github.com/sgedda/mockifyer/blob/main/docs/examples/drift-nightly.yml"
+                  className="text-primary hover:underline"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <code className="bg-muted px-1 rounded">docs/examples/drift-nightly.yml</code>
+                </a>{' '}
+                for a full example.
               </p>
             </div>
 
@@ -492,39 +501,247 @@ xdg-open /tmp/drift-report/index.html  # Linux`} />
           <CardContent className="space-y-4">
             <p className="text-sm text-muted-foreground">
               Save as <code className="bg-muted px-1 rounded">.github/workflows/drift-check.yml</code> 
-              (full example: <code className="bg-muted px-1 rounded">docs/examples/drift-nightly.yml</code>):
+              (full example: <a 
+                href="https://github.com/sgedda/mockifyer/blob/main/docs/examples/drift-nightly.yml"
+                className="text-primary hover:underline"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <code className="bg-muted px-1 rounded">docs/examples/drift-nightly.yml</code>
+              </a>):
             </p>
 
-            <CodeBlock language="yaml" code={`name: API Drift Check
+            <details className="group">
+              <summary className="cursor-pointer text-sm font-semibold mb-2 text-muted-foreground hover:text-foreground transition-colors">
+                Click to expand full workflow ▼
+              </summary>
+              <div className="mt-2">
+                <CodeBlock language="yaml" code={`# GitHub Actions workflow for nightly API drift detection
+# Copy this file to .github/workflows/drift-check.yml to enable it
+
+name: API Drift Check
 
 on:
   schedule:
-    - cron: '0 3 * * *'  # Nightly at 3am UTC
-  workflow_dispatch:      # Manual trigger
+    # Run nightly at 3:00 AM UTC (adjust to your timezone)
+    - cron: '0 3 * * *'
+  
+  # Allow manual runs from Actions tab
+  workflow_dispatch:
 
 jobs:
   drift-check:
     runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
+    
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
       
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
       
       - name: Install dependencies
         run: npm ci
       
       - name: Run drift check
+        id: drift
+        # Continue on error so we can create/update the issue
+        continue-on-error: true
         run: |
           npx mockifyer-drift-check \\
             --scenario drift-watch \\
             --header "Authorization: Bearer \${{ secrets.API_TOKEN }}" \\
             --json > drift-report.json
+          
+          # Capture exit code (0 = clean, 1 = drift, 2 = error)
+          echo "exit_code=$?" >> $GITHUB_OUTPUT
       
-      # Parse report and create/update GitHub issue...
-      # See docs/examples/drift-nightly.yml for full workflow`} />
+      - name: Parse drift report
+        id: parse
+        if: always()
+        run: |
+          # Check if report exists
+          if [ ! -f drift-report.json ]; then
+            echo "summary=Drift check failed to run" >> $GITHUB_OUTPUT
+            echo "has_drift=error" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Extract key metrics
+          breaking=$(jq -r '.breakingDriftCount // 0' drift-report.json)
+          warnings=$(jq -r '.warningOnlyCount // 0' drift-report.json)
+          total=$(jq -r '.totalMocks // 0' drift-report.json)
+          
+          echo "breaking=$breaking" >> $GITHUB_OUTPUT
+          echo "warnings=$warnings" >> $GITHUB_OUTPUT
+          echo "total=$total" >> $GITHUB_OUTPUT
+          
+          # Determine if we have drift
+          if [ "$breaking" -gt 0 ]; then
+            echo "has_drift=breaking" >> $GITHUB_OUTPUT
+            echo "summary=🚨 $breaking breaking changes, $warnings warnings (checked $total mocks)" >> $GITHUB_OUTPUT
+          elif [ "$warnings" -gt 0 ]; then
+            echo "has_drift=warnings" >> $GITHUB_OUTPUT
+            echo "summary=⚠️  $warnings warnings (checked $total mocks)" >> $GITHUB_OUTPUT
+          else
+            echo "has_drift=no" >> $GITHUB_OUTPUT
+            echo "summary=✅ All $total mocks are in sync" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Generate issue body
+        id: issue_body
+        if: always() && (steps.parse.outputs.has_drift == 'breaking' || steps.parse.outputs.has_drift == 'warnings')
+        run: |
+          cat > issue-body.md << EOF
+          ## API Drift Detected
+          
+          **Summary:** \${{ steps.parse.outputs.summary }}
+          
+          **Run:** [\${{ github.run_id }}](\${{ github.server_url }}/\${{ github.repository }}/actions/runs/\${{ github.run_id }})
+          **Commit:** \${{ github.sha }}
+          **Date:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          
+          ---
+          
+          ### Drifted Endpoints
+          
+          EOF
+          
+          # Extract drifted endpoints grouped by endpoint
+          jq -r '[.mockReports[] | select(.hasDrift == true)] | map(
+            "#### \\(.method) \\\`\\(.url)\\\`\\n\\n" +
+            (if .hasBreakingDrift then "**Status:** 🚨 Breaking\\n\\n" else "**Status:** ⚠️  Warning\\n\\n" end) +
+            "**Issues:**\\n" +
+            ([.issues[] | "- \\\`\\(.path)\\\`: \\(.message)"] | join("\\n")) +
+            "\\n\\n**Accept command:**\\n\\\`\\\`\\\`bash\\nnpx mockifyer-drift-check --accept \\"\\(.method) \\(.url | split("?")[0] | sub("^https?://[^/]+"; ""))\\"\\n\\\`\\\`\\\`\\n\\n---\\n"
+          ) | join("\\n")' drift-report.json >> issue-body.md || echo "Failed to parse endpoints" >> issue-body.md
+          
+          # Add instructions
+          cat >> issue-body.md << 'EOF'
+          
+          ### What to do
+          
+          1. **Review the changes** — Are they expected API updates?
+          2. **Accept breaking changes** individually or **accept all warnings**:
+             \\\`\\\`\\\`bash
+             # Accept a specific endpoint (re-records from live)
+             npx mockifyer-drift-check --accept "GET /api/endpoint"
+             
+             # Accept all warnings (non-breaking changes)
+             npx mockifyer-drift-check --accept-all-warnings
+             \\\`\\\`\\\`
+          3. **Ignore fields** that change frequently (timestamps, IDs):
+             \\\`\\\`\\\`bash
+             npx mockifyer-drift-check --ignore-field "GET /api/endpoint" "fieldPath"
+             \\\`\\\`\\\`
+          4. **Snooze** if the drift is temporary or expected:
+             \\\`\\\`\\\`bash
+             npx mockifyer-drift-check --snooze "GET /api/endpoint" --days 7
+             \\\`\\\`\\\`
+          5. **Commit and push** your changes after accepting/ignoring.
+          
+          ### Documentation
+          
+          - [Drift Check Guide](../DRIFT_CHECK.md)
+          - [Dashboard Drift Tab](http://localhost:3002/drift) (when running locally)
+          
+          ---
+          
+          _This issue is automatically created/updated by the [API Drift Check workflow](.github/workflows/drift-check.yml)._
+          EOF
+      
+      - name: Find existing drift issue
+        id: find_issue
+        if: always()
+        env:
+          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+        run: |
+          issue_number=$(gh issue list \\
+            --label "api-drift" \\
+            --state open \\
+            --json number \\
+            --jq '.[0].number // empty')
+          
+          if [ -n "$issue_number" ]; then
+            echo "issue_number=$issue_number" >> $GITHUB_OUTPUT
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Ensure api-drift label exists
+        if: always() && (steps.parse.outputs.has_drift == 'breaking' || steps.parse.outputs.has_drift == 'warnings')
+        env:
+          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh label create "api-drift" \\
+            --description "API contract drift detected" \\
+            --color "d73a4a" || true
+      
+      - name: Create or update drift issue
+        if: always() && (steps.parse.outputs.has_drift == 'breaking' || steps.parse.outputs.has_drift == 'warnings')
+        env:
+          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "\${{ steps.find_issue.outputs.exists }}" = "true" ]; then
+            # Update existing issue
+            title="🚨 API Drift: \${{ steps.parse.outputs.breaking }} breaking changes, \${{ steps.parse.outputs.warnings }} warnings"
+            if [ "\${{ steps.parse.outputs.has_drift }}" = "breaking" ]; then
+              title="🚨 API Drift: \${{ steps.parse.outputs.breaking }} breaking changes"
+            else
+              title="⚠️  API Drift: \${{ steps.parse.outputs.warnings }} warnings"
+            fi
+            
+            gh issue edit \${{ steps.find_issue.outputs.issue_number }} \\
+              --title "$title" \\
+              --body-file issue-body.md
+            
+            # Add a comment
+            gh issue comment \${{ steps.find_issue.outputs.issue_number }} \\
+              --body "Updated: \${{ steps.parse.outputs.summary }} (run #\${{ github.run_number }})"
+          else
+            # Create new issue
+            title="🚨 API Drift: \${{ steps.parse.outputs.breaking }} breaking changes"
+            if [ "\${{ steps.parse.outputs.has_drift }}" = "warnings" ]; then
+              title="⚠️  API Drift: \${{ steps.parse.outputs.warnings }} warnings"
+            fi
+            
+            gh issue create \\
+              --title "$title" \\
+              --body-file issue-body.md \\
+              --label "api-drift"
+          fi
+      
+      - name: Close drift issue if clean
+        if: always() && steps.parse.outputs.has_drift == 'no' && steps.find_issue.outputs.exists == 'true'
+        env:
+          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue close \${{ steps.find_issue.outputs.issue_number }} \\
+            --comment "✅ Drift resolved. All mocks are now in sync with the live API." \\
+            --reason completed
+      
+      - name: Upload drift report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: drift-report
+          path: drift-report.json
+          retention-days: 30
+      
+      - name: Fail workflow on breaking drift
+        if: steps.parse.outputs.has_drift == 'breaking'
+        run: |
+          echo "::error::Breaking API drift detected. Review and accept changes."
+          exit 1`} />
+              </div>
+            </details>
 
             <div className="space-y-2 text-sm">
               <p className="font-semibold">What it does:</p>
@@ -599,13 +816,14 @@ jobs:
             </div>
 
             <div className="space-y-2 text-sm">
-              <p className="font-semibold">Workflow highlights:</p>
+              <p className="font-semibold">How our repo schedules it:</p>
               <ul className="text-muted-foreground space-y-1 list-disc list-inside">
-                <li>Runs nightly at 3:00 AM UTC</li>
+                <li>Runs on <code className="bg-muted px-1 rounded">schedule: cron '0 3 * * *'</code> (03:00 UTC nightly) and <code className="bg-muted px-1 rounded">workflow_dispatch</code></li>
+                <li>Starts the drift simulator in <code className="bg-muted px-1 rounded">demos/drift-showcase</code> (v2 mode with drift)</li>
+                <li>Runs drift check with <code className="bg-muted px-1 rounded">--html ./drift-report</code> and <code className="bg-muted px-1 rounded">--json</code></li>
                 <li>Checks simulated endpoints (localhost:4290) and live APIs (open-meteo.com, frankfurter.app)</li>
-                <li>Generates HTML report with <code className="bg-muted px-1 rounded">--html ./drift-report</code></li>
-                <li>Publishes to <code className="bg-muted px-1 rounded">/drift/</code> on GitHub Pages alongside <code className="bg-muted px-1 rounded">/atlas/</code></li>
-                <li>Uploads JSON artifact for 30 days</li>
+                <li>Uploads the <code className="bg-muted px-1 rounded">drift-report</code> artifact (30-day retention)</li>
+                <li>On <code className="bg-muted px-1 rounded">main</code> branch: deploys the HTML report to GitHub Pages at <code className="bg-muted px-1 rounded">/drift/</code> (alongside <code className="bg-muted px-1 rounded">/atlas/</code> from E2E runs)</li>
               </ul>
             </div>
           </CardContent>
