@@ -66,6 +66,7 @@ start_service() {
   echo "Starting $SERVICE $mode via $DASH${WW_RECORD:+, record env $WW_RECORD}"
   env "${record_env[@]}" ${scenario:+MOCKIFYER_SCENARIO="$scenario"} \
     MOCKIFYER_RUNTIME=proxy MOCKIFYER_PROXY_URL="$DASH" MOCKIFYER_ACTIVATION_MODE=client_id_header \
+    ${MOCKIFYER_DEBUG_PROXY_TIMING:+MOCKIFYER_DEBUG_PROXY_TIMING="$MOCKIFYER_DEBUG_PROXY_TIMING"} \
     setsid nohup npm run dev -w "@wanderweird/$SERVICE" > "$LOG_FILE" 2>&1 < /dev/null &
   for _ in $(seq "$START_WAIT_SECONDS"); do
     port_open && { echo "$SERVICE up on :$PORT"; return 0; }
