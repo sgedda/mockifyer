@@ -116,7 +116,15 @@ describe('mockifyer init CLI', () => {
 
     const output = getOutput();
     expect(output).toContain('Detected: react-native');
-    expect(output).toContain('setupMockifyerForReactNative');
+    expect(output).toContain(
+      "import { setupMockifyerForReactNative } from '@sgedda/mockifyer-fetch/react-native';"
+    );
+    expect(output).toContain('await setupMockifyerForReactNative({');
+    expect(output).toContain('isDev: __DEV__,');
+    expect(output).toContain('recordMode: true,');
+    expect(output).toContain('recordNewMocksAsPassthrough: true');
+    expect(output).toContain('recordResponses: false');
+    expect(output).not.toContain("from '@sgedda/mockifyer-fetch';");
   });
 
   it('does not overwrite existing config without --force', async () => {

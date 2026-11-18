@@ -169,13 +169,17 @@ function getSetupInstructions(clientType: ClientType): string[] {
       ];
     case 'react-native':
       return [
-        "import { setupMockifyerForReactNative } from '@sgedda/mockifyer-fetch';",
+        "import { setupMockifyerForReactNative } from '@sgedda/mockifyer-fetch/react-native';",
         '',
-        "setupMockifyerForReactNative({",
+        "await setupMockifyerForReactNative({",
+        "  isDev: __DEV__,",
         "  mockDataPath: './mock-data',",
         "  runtimeMode: 'on',",
-        "  recordNewMocksAsPassthrough: true,  // Selective: activate in dashboard",
-        "  recordResponses: false,             // Request-only stubs initially",
+        "  recordMode: true,",
+        "  config: {",
+        "    recordNewMocksAsPassthrough: true,  // Selective: activate in dashboard",
+        "    recordResponses: false,             // Request-only stubs initially",
+        "  },",
         "});",
       ];
     default:
