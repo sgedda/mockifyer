@@ -19,6 +19,7 @@ import {
   enhanceReportWithHistory,
 } from './drift-management';
 import { requireSafeScenarioName } from './safe-scenario';
+import { readDriftResponseBody } from './response-body';
 
 interface DriftConfig {
   scenario?: string;
@@ -448,8 +449,7 @@ async function checkSingleMock(
 
       clearTimeout(timeout);
 
-      // Parse response body
-      const actualBody = await parseResponseBody(response);
+      const actualBody = await readDriftResponseBody(response);
 
       // Compare with mock (always compare status and all fields)
       const issues = compareResponses(
@@ -517,24 +517,6 @@ async function checkSingleMock(
       skipReason: errorMessage,
     };
   }
-}
-
-/**
- * Parse response body, attempting JSON first.
- */
-async function parseResponseBody(response: Response): Promise<unknown> {
-  const contentType = response.headers.get('content-type') || '';
-
-  if (contentType.includes('application/json')) {
-    const text = await response.text();
-    try {
-      return JSON.parse(text);
-    } catch {
-      return text;
-    }
-  }
-
-  return await response.text();
 }
 
 /**
