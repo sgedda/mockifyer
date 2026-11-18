@@ -27,18 +27,27 @@ describe('drift-management', () => {
     server = http.createServer((req, res) => {
       const url = req.url || '';
 
-      if (url === '/users/1') {
+      const pathname = url.split('?')[0];
+
+      if (pathname === '/users/1') {
         // Missing email field (breaking drift)
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ id: 1, name: 'Alice Updated' }));
-      } else if (url === '/users/2') {
+      } else if (pathname === '/users/2') {
         // New field (warning)
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ id: 2, name: 'Bob', email: 'bob@example.com', newField: 'warning' }));
-      } else if (url === '/users/3') {
+      } else if (pathname === '/users/3') {
         // Unchanged (for accept)
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ id: 3, name: 'Charlie', email: 'charlie@example.com', role: 'admin' }));
+      } else if (pathname === '/trips') {
+        const dated = url.includes('date=');
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(dated ? { kind: 'dated-live' } : { kind: 'bare-live' }));
+      } else if (pathname === '/vendor/user') {
+        res.writeHead(200, { 'Content-Type': 'application/vnd.github+json' });
+        res.end(JSON.stringify({ id: 9, name: 'Vendor', stable: true }));
       } else {
         res.writeHead(404);
         res.end();
@@ -279,6 +288,153 @@ describe('drift-management', () => {
       expect(result.messages[0]).toContain('✓');
     });
 
+    it('stores a +json live body as an object', async () => {
+      const mockPath = path.join(testDir, 'default', 'vendor.json');
+      createMockFile(
+        'default',
+        {
+          request: {
+            method: 'GET',
+            url: `http://localhost:${serverPort}/vendor/user`,
+            headers: {},
+            queryParams: {},
+          },
+          response: {
+            status: 200,
+            data: { id: 9, name: 'Old', stable: false },
+          },
+        } as MockData,
+        'vendor.json'
+      );
+
+      const result = await acceptDrift({
+        method: 'GET',
+        path: '/vendor/user',
+        mockDataPath: testDir,
+        scenario: 'default',
+        driftOptions: {},
+      });
+
+      expect(result.success).toBe(true);
+      const updatedMock = JSON.parse(fs.readFileSync(mockPath, 'utf-8'));
+      expect(updatedMock.response.data).toEqual({ id: 9, name: 'Vendor', stable: true });
+    });
+
+    it('updates the exact path when a query variant of the same pathname also exists', async () => {
+      const barePath = path.join(testDir, 'default', 'z-bare.json');
+      const datedPath = path.join(testDir, 'default', 'a-dated.json');
+      createMockFile(
+        'default',
+        {
+          request: {
+            method: 'GET',
+            url: `http://localhost:${serverPort}/trips`,
+            headers: {},
+            queryParams: {},
+          },
+          response: { status: 200, data: { kind: 'stored-bare' } },
+        } as MockData,
+        'z-bare.json'
+      );
+      createMockFile(
+        'default',
+        {
+          request: {
+            method: 'GET',
+            url: `http://localhost:${serverPort}/trips?date=2026-11-10`,
+            headers: {},
+            queryParams: {},
+          },
+          response: { status: 200, data: { kind: 'stored-dated' } },
+        } as MockData,
+        'a-dated.json'
+      );
+
+      const result = await acceptDrift({
+        method: 'GET',
+        path: '/trips',
+        mockDataPath: testDir,
+        scenario: 'default',
+        driftOptions: {},
+      });
+
+      expect(result.success).toBe(true);
+      expect(JSON.parse(fs.readFileSync(barePath, 'utf-8')).response.data.kind).toBe('bare-live');
+      expect(JSON.parse(fs.readFileSync(datedPath, 'utf-8')).response.data.kind).toBe('stored-dated');
+    });
+
+    it('refuses to accept a pathname that matches several query variants', async () => {
+      const firstPath = path.join(testDir, 'default', 'a-trip.json');
+      const secondPath = path.join(testDir, 'default', 'b-trip.json');
+      createMockFile(
+        'default',
+        {
+          request: {
+            method: 'GET',
+            url: `http://localhost:${serverPort}/trips?date=2026-11-10`,
+            headers: {},
+            queryParams: {},
+          },
+          response: { status: 200, data: { kind: 'stored-dated' } },
+        } as MockData,
+        'a-trip.json'
+      );
+      createMockFile(
+        'default',
+        {
+          request: {
+            method: 'GET',
+            url: `http://localhost:${serverPort}/trips?date=2026-11-11`,
+            headers: {},
+            queryParams: {},
+          },
+          response: { status: 200, data: { kind: 'stored-other' } },
+        } as MockData,
+        'b-trip.json'
+      );
+
+      const result = await acceptDrift({
+        method: 'GET',
+        path: '/trips',
+        mockDataPath: testDir,
+        scenario: 'default',
+        driftOptions: {},
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.message).toContain('Multiple mocks match');
+      expect(JSON.parse(fs.readFileSync(firstPath, 'utf-8')).response.data.kind).toBe('stored-dated');
+      expect(JSON.parse(fs.readFileSync(secondPath, 'utf-8')).response.data.kind).toBe('stored-other');
+    });
+
+    it('accepts the only query variant when the path omits that query', async () => {
+      const mockPath = path.join(testDir, 'default', 'only-dated.json');
+      createMockFile(
+        'default',
+        {
+          request: {
+            method: 'GET',
+            url: `http://localhost:${serverPort}/trips?date=2026-11-10`,
+            headers: {},
+            queryParams: {},
+          },
+          response: { status: 200, data: { kind: 'stored-dated' } },
+        } as MockData,
+        'only-dated.json'
+      );
+
+      const result = await acceptDrift({
+        method: 'GET',
+        path: '/trips',
+        mockDataPath: testDir,
+        scenario: 'default',
+        driftOptions: {},
+      });
+
+      expect(result.success).toBe(true);
+      expect(JSON.parse(fs.readFileSync(mockPath, 'utf-8')).response.data.kind).toBe('dated-live');
+    });
+
     it('should fail gracefully when endpoint not found', async () => {
       const result = await acceptDrift({
         method: 'GET',
@@ -379,6 +535,54 @@ describe('drift-management', () => {
       expect(report.driftedMocks).toBe(0);
       expect(report.skippedCount).toBe(1);
       expect(report.mockReports[0].skipReason).toContain('Snoozed until');
+    });
+
+    it('does not snooze a different query variant when the path is ambiguous', async () => {
+      createMockFile(
+        'default',
+        {
+          request: {
+            method: 'GET',
+            url: `http://localhost:${serverPort}/trips?date=2026-11-10`,
+            headers: {},
+            queryParams: {},
+          },
+          response: { status: 200, data: { kind: 'stored-dated' } },
+        } as MockData,
+        'a-trip.json'
+      );
+      createMockFile(
+        'default',
+        {
+          request: {
+            method: 'GET',
+            url: `http://localhost:${serverPort}/trips?date=2026-11-11`,
+            headers: {},
+            queryParams: {},
+          },
+          response: { status: 200, data: { kind: 'stored-other' } },
+        } as MockData,
+        'b-trip.json'
+      );
+
+      await checkDrift({
+        scenario: 'default',
+        mockDataPath: testDir,
+        driftOptions: {},
+      });
+
+      const result = await snoozeEndpoint({
+        method: 'GET',
+        path: '/trips',
+        days: 7,
+        mockDataPath: testDir,
+        scenario: 'default',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.message).toContain('Multiple endpoints match');
+      const history = loadDriftHistory(testDir, 'default');
+      expect(history!.mockReports.every((report) => report.snoozedUntil == null)).toBe(true);
     });
   });
 
