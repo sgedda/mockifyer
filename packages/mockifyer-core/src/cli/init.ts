@@ -153,6 +153,7 @@ function getSetupInstructions(clientType: ClientType): string[] {
         "  recordMode: true,",
         "  recordNewMocksAsPassthrough: true,  // Selective: activate in dashboard",
         "  recordResponses: false,             // Request-only stubs initially",
+        "  useGlobalAxios: true,",
         "});",
       ];
     case 'fetch':
