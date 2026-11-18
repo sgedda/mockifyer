@@ -489,4 +489,61 @@ describe('drift-management', () => {
       expect(report.driftedMocks).toBe(0);
     });
   });
+
+  describe('scenario path traversal', () => {
+    it('does not walk or write a scenario path outside mock-data', async () => {
+      const outside = path.join(path.dirname(testDir), `outside-${path.basename(testDir)}`);
+      fs.mkdirSync(outside);
+      const mockPath = path.join(outside, 'secret.json');
+      const original = JSON.stringify({
+        request: { method: 'GET', url: 'http://127.0.0.1:9/secret', headers: {} },
+        response: { status: 200, data: { secret: true } },
+      });
+      fs.writeFileSync(mockPath, original);
+
+      const escaped = `../${path.basename(outside)}`;
+
+      await expect(
+        checkDrift({
+          scenario: escaped,
+          mockDataPath: testDir,
+          driftOptions: { noHistory: true, timeoutMs: 200 },
+        })
+      ).rejects.toThrow(/Invalid scenario name/);
+
+      await expect(
+        acceptDrift({
+          method: 'GET',
+          path: '/secret',
+          scenario: escaped,
+          mockDataPath: testDir,
+          driftOptions: { timeoutMs: 200 },
+        })
+      ).rejects.toThrow(/Invalid scenario name/);
+
+      await expect(
+        writeDriftHistory(
+          {
+            reportVersion: 1,
+            timestamp: new Date().toISOString(),
+            totalMocks: 0,
+            driftedMocks: 0,
+            breakingDriftCount: 0,
+            warningOnlyCount: 0,
+            skippedCount: 0,
+            notCheckedCount: 0,
+            mockReports: [],
+            summary: '',
+            failOnWarnings: false,
+          },
+          testDir,
+          escaped
+        )
+      ).rejects.toThrow(/Invalid scenario name/);
+
+      expect(fs.existsSync(path.join(outside, '.drift'))).toBe(false);
+      expect(fs.readFileSync(mockPath, 'utf-8')).toBe(original);
+      fs.rmSync(outside, { recursive: true, force: true });
+    });
+  });
 });

@@ -18,6 +18,7 @@ import {
   writeDriftHistory,
   enhanceReportWithHistory,
 } from './drift-management';
+import { requireSafeScenarioName } from './safe-scenario';
 
 interface DriftConfig {
   scenario?: string;
@@ -193,7 +194,8 @@ export async function checkDrift(options: {
 }): Promise<DriftCheckReport> {
   // Load config from file and merge with CLI options
   const fileConfig = loadDriftConfig();
-  const { scenario, mockDataPath, driftOptions } = mergeConfig(fileConfig, options);
+  const { scenario: requestedScenario, mockDataPath, driftOptions } = mergeConfig(fileConfig, options);
+  const scenario = requireSafeScenarioName(requestedScenario);
 
   const scenarioPath = path.join(mockDataPath, scenario);
 

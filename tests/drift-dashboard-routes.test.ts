@@ -282,6 +282,41 @@ describe('Drift Dashboard Routes', () => {
     });
   });
 
+  describe('scenario path traversal', () => {
+    it('rejects a scenario that escapes mock-data and leaves the outside file untouched', async () => {
+      const outside = path.join(path.dirname(tmpDir), `outside-${path.basename(tmpDir)}`);
+      fs.mkdirSync(outside);
+      const mockPath = path.join(outside, 'secret.json');
+      const original = JSON.stringify({
+        request: { method: 'GET', url: 'http://127.0.0.1:9/secret', headers: {} },
+        response: { status: 200, data: { secret: true } },
+      });
+      fs.writeFileSync(mockPath, original);
+      const escaped = `../${path.basename(outside)}`;
+
+      const latest = await request(app)
+        .get('/api/drift/latest')
+        .query({ scenario: escaped })
+        .expect(400);
+      expect(latest.body.error).toContain('Invalid scenario name');
+
+      const check = await request(app)
+        .post(`/api/drift/check?scenario=${encodeURIComponent(escaped)}`)
+        .expect(400);
+      expect(check.body.error).toContain('Invalid scenario name');
+
+      const accept = await request(app)
+        .post('/api/drift/accept')
+        .send({ method: 'GET', path: '/secret', scenario: escaped })
+        .expect(400);
+      expect(accept.body.error).toContain('Invalid scenario name');
+
+      expect(fs.existsSync(path.join(outside, '.drift'))).toBe(false);
+      expect(fs.readFileSync(mockPath, 'utf-8')).toBe(original);
+      fs.rmSync(outside, { recursive: true, force: true });
+    });
+  });
+
   describe('POST /api/drift/check', () => {
     it('should handle drift check request', async () => {
       const scenarioDir = path.join(tmpDir, 'default');

@@ -1,5 +1,5 @@
 import express, { Request, Response } from 'express';
-import { getCurrentScenario } from '@sgedda/mockifyer-core';
+import { getCurrentScenario, parseScenarioName } from '@sgedda/mockifyer-core';
 import {
   checkDrift,
   loadDriftHistory,
@@ -18,12 +18,47 @@ import * as path from 'path';
 
 const router = express.Router();
 
-function resolveScenario(req: Request, mockDataPath: string): string {
-  const q = req.query.scenario;
-  if (typeof q === 'string' && q.trim()) return q.trim();
+function invalidScenarioResponse(res: Response, raw: string): null {
+  res.status(400).json({
+    error: `Invalid scenario name: "${raw}". Use only letters, numbers, hyphens, and underscores.`,
+  });
+  return null;
+}
+
+/**
+ * Scenario from `?scenario=` or the JSON body, then the active scenario.
+ * Sends 400 and returns null when the name is not a single safe path segment.
+ */
+function resolveScenario(req: Request, res: Response, mockDataPath: string): string | null {
+  const queryScenario = req.query.scenario;
+  if (queryScenario !== undefined && queryScenario !== '') {
+    if (typeof queryScenario !== 'string') {
+      res.status(400).json({ error: 'Scenario name must be a string' });
+      return null;
+    }
+    const trimmed = queryScenario.trim();
+    if (trimmed) {
+      const parsed = parseScenarioName(trimmed);
+      return parsed ?? invalidScenarioResponse(res, trimmed);
+    }
+  }
+
   const bodyScenario = req.body?.scenario;
-  if (typeof bodyScenario === 'string' && bodyScenario.trim()) return bodyScenario.trim();
-  return getCurrentScenario(mockDataPath);
+  if (bodyScenario !== undefined && bodyScenario !== null && bodyScenario !== '') {
+    if (typeof bodyScenario !== 'string') {
+      res.status(400).json({ error: 'Scenario name must be a string' });
+      return null;
+    }
+    const trimmed = bodyScenario.trim();
+    if (trimmed) {
+      const parsed = parseScenarioName(trimmed);
+      return parsed ?? invalidScenarioResponse(res, trimmed);
+    }
+  }
+
+  const current = getCurrentScenario(mockDataPath);
+  const parsedCurrent = parseScenarioName(current);
+  return parsedCurrent ?? invalidScenarioResponse(res, current);
 }
 
 /**
@@ -32,7 +67,8 @@ function resolveScenario(req: Request, mockDataPath: string): string {
 router.get('/latest', async (req: Request, res: Response) => {
   try {
     const { mockDataPath } = getDashboardContext(req);
-    const scenario = resolveScenario(req, mockDataPath);
+    const scenario = resolveScenario(req, res, mockDataPath);
+    if (!scenario) return;
 
     const history = loadDriftHistory(mockDataPath, scenario);
 
@@ -62,7 +98,8 @@ router.get('/latest', async (req: Request, res: Response) => {
 router.get('/history', async (req: Request, res: Response) => {
   try {
     const { mockDataPath } = getDashboardContext(req);
-    const scenario = resolveScenario(req, mockDataPath);
+    const scenario = resolveScenario(req, res, mockDataPath);
+    if (!scenario) return;
 
     const driftDir = path.join(mockDataPath, scenario, '.drift');
 
@@ -104,7 +141,8 @@ router.get('/history', async (req: Request, res: Response) => {
 router.post('/check', async (req: Request, res: Response) => {
   try {
     const { mockDataPath } = getDashboardContext(req);
-    const scenario = resolveScenario(req, mockDataPath);
+    const scenario = resolveScenario(req, res, mockDataPath);
+    if (!scenario) return;
 
     const driftOptions: DriftCheckOptions = {
       allowUnsafeMethods: false,
@@ -135,7 +173,8 @@ router.post('/check', async (req: Request, res: Response) => {
 router.post('/accept', async (req: Request, res: Response) => {
   try {
     const { mockDataPath } = getDashboardContext(req);
-    const scenario = resolveScenario(req, mockDataPath);
+    const scenario = resolveScenario(req, res, mockDataPath);
+    if (!scenario) return;
     const { method, path: urlPath } = req.body;
 
     if (!method || !urlPath) {
@@ -168,7 +207,8 @@ router.post('/accept', async (req: Request, res: Response) => {
 router.post('/accept-all-warnings', async (req: Request, res: Response) => {
   try {
     const { mockDataPath } = getDashboardContext(req);
-    const scenario = resolveScenario(req, mockDataPath);
+    const scenario = resolveScenario(req, res, mockDataPath);
+    if (!scenario) return;
 
     const result = await acceptAllWarnings({
       mockDataPath,
@@ -192,7 +232,8 @@ router.post('/accept-all-warnings', async (req: Request, res: Response) => {
 router.post('/snooze', async (req: Request, res: Response) => {
   try {
     const { mockDataPath } = getDashboardContext(req);
-    const scenario = resolveScenario(req, mockDataPath);
+    const scenario = resolveScenario(req, res, mockDataPath);
+    if (!scenario) return;
     const { method, path: urlPath, days = 7 } = req.body;
 
     if (!method || !urlPath) {

@@ -15,6 +15,7 @@ import {
 } from './drift-report';
 import { checkDrift } from './check-drift';
 import { omitProxyUpstreamRequestHeaders } from '../proxy-upstream-headers';
+import { requireSafeScenarioName } from './safe-scenario';
 
 /**
  * Accept drift for one endpoint: re-fetch live and update mock file.
@@ -29,7 +30,7 @@ export async function acceptDrift(options: {
   const { method, path: urlPath } = options;
   
   const fileConfig = loadDriftConfigForManagement();
-  const scenario = options.scenario ?? fileConfig.scenario ?? 'default';
+  const scenario = requireSafeScenarioName(options.scenario ?? fileConfig.scenario ?? 'default');
   const mockDataPath = options.mockDataPath ?? detectMockDataPath();
   const driftOptions: DriftCheckOptions = {
     baseUrl: options.driftOptions?.baseUrl ?? fileConfig.baseUrl,
@@ -164,7 +165,7 @@ export async function acceptAllWarnings(options: {
   driftOptions: DriftCheckOptions;
 }): Promise<{ accepted: number; failed: number; messages: string[] }> {
   const fileConfig = loadDriftConfigForManagement();
-  const scenario = options.scenario ?? fileConfig.scenario ?? 'default';
+  const scenario = requireSafeScenarioName(options.scenario ?? fileConfig.scenario ?? 'default');
   const mockDataPath = options.mockDataPath ?? detectMockDataPath();
   const driftOptions: DriftCheckOptions = {
     baseUrl: options.driftOptions?.baseUrl ?? fileConfig.baseUrl,
@@ -240,7 +241,7 @@ export async function snoozeEndpoint(options: {
   const { method, path: urlPath, days } = options;
   
   const fileConfig = loadDriftConfigForManagement();
-  const scenario = options.scenario ?? fileConfig.scenario ?? 'default';
+  const scenario = requireSafeScenarioName(options.scenario ?? fileConfig.scenario ?? 'default');
   const mockDataPath = options.mockDataPath ?? detectMockDataPath();
 
   const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
@@ -351,7 +352,8 @@ export function loadDriftHistory(
   mockDataPath: string,
   scenario: string
 ): DriftHistoryReport | null {
-  const historyPath = path.join(mockDataPath, scenario, '.drift', 'latest.json');
+  const safeScenario = requireSafeScenarioName(scenario);
+  const historyPath = path.join(mockDataPath, safeScenario, '.drift', 'latest.json');
 
   if (!fs.existsSync(historyPath)) {
     return null;
@@ -373,7 +375,8 @@ export async function writeDriftHistory(
   scenario: string,
   retention: number = 30
 ): Promise<void> {
-  const driftDir = path.join(mockDataPath, scenario, '.drift');
+  const safeScenario = requireSafeScenarioName(scenario);
+  const driftDir = path.join(mockDataPath, safeScenario, '.drift');
   fs.mkdirSync(driftDir, { recursive: true });
 
   // Write timestamped report
@@ -487,7 +490,7 @@ function findMockFile(
   method: string,
   urlPath: string
 ): string | null {
-  const scenarioPath = path.join(mockDataPath, scenario);
+  const scenarioPath = path.join(mockDataPath, requireSafeScenarioName(scenario));
 
   function walkDir(dirPath: string): string | null {
     if (!fs.existsSync(dirPath)) {
