@@ -313,7 +313,7 @@ export function generateSystemDiagramSVG(
   const legendHeight = 60;
   const totalHeight = diagramHeight + legendHeight;
   
-  let svg = `<svg viewBox="0 0 ${contentWidth} ${totalHeight}" xmlns="http://www.w3.org/2000/svg" class="atlas-system-diagram" style="width: 100%; height: auto; min-height: 400px;" preserveAspectRatio="xMidYMid meet">`;
+  let svg = `<svg viewBox="0 0 ${contentWidth} ${totalHeight}" xmlns="http://www.w3.org/2000/svg" class="atlas-system-diagram" style="width: 100%; height: auto;" preserveAspectRatio="xMidYMid meet">`;
   
   // Define arrow markers (Mock=green, Live=blue, Error=red, Code-only=grey, Inferred=grey)
   svg += `<defs>
@@ -449,8 +449,13 @@ export function generateSystemDiagramSVG(
   
   svg += `</g>`;
   svg += '</svg>';
-  
-  return svg;
+
+  return (
+    `<div class="atlas-system-diagram-wrap">` +
+    `<button type="button" class="atlas-diagram-open btn-export" data-export="open-svg">Open diagram</button>` +
+    `<div class="atlas-system-diagram-frame">${svg}</div>` +
+    `</div>`
+  );
 }
 
 function escapeHtml(text: string): string {
@@ -514,6 +519,7 @@ export function generateEndpointInventoryHTML(
     }
     html += '</div>';
     
+    html += '<div class="atlas-table-wrap">';
     html += '<table class="atlas-endpoint-table">';
     html += '<thead><tr><th>Method</th><th>Endpoint</th><th>Auth</th><th>Status</th><th>Calls</th><th>Actions</th></tr></thead>';
     html += '<tbody>';
@@ -621,7 +627,8 @@ export function generateEndpointInventoryHTML(
     });
     
     html += '</tbody></table>';
-    html += '</div>';
+    html += '</div>'; // atlas-table-wrap
+    html += '</div>'; // atlas-host-section
   }
   
   html += '</div>';

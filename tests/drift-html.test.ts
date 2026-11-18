@@ -76,6 +76,27 @@ describe('Drift HTML Generation', () => {
     expect(html).not.toContain('prefers-color-scheme');
   });
 
+  it('includes mobile-safe overflow and wrapping CSS', () => {
+    const report: DriftCheckReport = {
+      totalMocks: 0,
+      driftedMocks: 0,
+      breakingDriftCount: 0,
+      warningOnlyCount: 0,
+      skippedCount: 0,
+      notCheckedCount: 0,
+      summary: '✓ No mocks',
+      failOnWarnings: false,
+      mockReports: [],
+    };
+
+    const html = generateDriftHtml(report);
+
+    expect(html).toContain('overflow-x: hidden');
+    expect(html).toContain('overflow-wrap: anywhere');
+    expect(html).toContain('max-width: min(1200px, 100%)');
+    expect(html).toContain('min-width: 0');
+  });
+
   it('should generate HTML for a report with breaking drift', () => {
     const report: DriftCheckReport = {
       totalMocks: 2,

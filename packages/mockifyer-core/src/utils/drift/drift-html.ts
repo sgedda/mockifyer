@@ -348,10 +348,15 @@ function sharedCss(): string {
   --radius: 0.5rem;
 }
 
-* {
+*, *::before, *::after {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+}
+
+html {
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 body {
@@ -360,10 +365,16 @@ body {
   color: hsl(var(--foreground));
   line-height: 1.5;
   padding: 2rem;
+  max-width: 100%;
+  overflow-x: hidden;
+  overflow-wrap: anywhere;
+  word-wrap: break-word;
 }
 
 .container {
-  max-width: 1200px;
+  max-width: min(1200px, 100%);
+  width: 100%;
+  min-width: 0;
   margin: 0 auto;
 }
 
@@ -423,8 +434,10 @@ body {
 
 .summary-stats {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr));
   gap: 1.5rem;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .stat {
@@ -520,7 +533,10 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 0.75rem;
   transition: background 0.2s;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .endpoint-header:hover {
@@ -532,6 +548,8 @@ body {
   align-items: center;
   gap: 0.75rem;
   flex: 1;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .method-badge {
@@ -568,6 +586,8 @@ body {
   font-family: 'Courier New', monospace;
   font-size: 0.9rem;
   word-break: break-all;
+  overflow-wrap: anywhere;
+  min-width: 0;
 }
 
 .badge {
@@ -638,6 +658,9 @@ body {
 
 .issue-content {
   flex: 1;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .issue-path {
@@ -716,13 +739,17 @@ body {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .clean-url, .status-url {
   font-family: 'Courier New', monospace;
   font-size: 0.875rem;
   flex: 1;
+  min-width: 0;
   word-break: break-all;
+  overflow-wrap: anywhere;
 }
 
 .status-reason {
@@ -757,22 +784,40 @@ body {
   body {
     padding: 1rem;
   }
-  
+
   .header h1 {
-    font-size: 2rem;
+    font-size: 1.75rem;
   }
-  
+
+  .summary-card {
+    padding: 1.25rem;
+  }
+
   .summary-stats {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
   }
-  
+
+  .stat-value {
+    font-size: 1.75rem;
+  }
+
   .endpoint-header {
     flex-direction: column;
     align-items: flex-start;
     gap: 0.5rem;
+    padding: 0.85rem 1rem;
   }
-  
+
   .endpoint-title {
+    flex-wrap: wrap;
+  }
+
+  .endpoint-details {
+    padding: 1rem;
+  }
+
+  .issue-item {
     flex-wrap: wrap;
   }
 }

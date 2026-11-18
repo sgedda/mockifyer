@@ -213,9 +213,15 @@ function sharedCss(): string {
   --bar2: 142.1 70.6% 45.3%;
 }
 
-* { box-sizing: border-box; }
+*, *::before, *::after { box-sizing: border-box; }
+html {
+  max-width: 100%;
+  overflow-x: hidden;
+}
 body {
   margin: 0;
+  max-width: 100%;
+  overflow-x: hidden;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -223,12 +229,15 @@ body {
   color: hsl(var(--foreground));
   line-height: 1.45;
   font-size: 15px;
+  overflow-wrap: anywhere;
+  word-wrap: break-word;
 }
 @media (min-width: 1024px) {
   body { font-size: 16px; }
 }
 header {
   padding: 1.25rem 1.5rem;
+  max-width: 100%;
   border-bottom: 1px solid hsl(var(--border));
   background: hsl(var(--card));
   box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
@@ -254,7 +263,18 @@ header p {
 }
 main {
   padding: 1.25rem 1.5rem 2.5rem;
-  max-width: 80rem;
+  max-width: min(80rem, 100%);
+  width: 100%;
+  min-width: 0;
+}
+#atlas-app,
+.layout,
+.panel,
+.arch-section,
+.atlas-inventory,
+.atlas-host-section {
+  max-width: 100%;
+  min-width: 0;
 }
 a {
   color: hsl(var(--primary));
@@ -394,8 +414,8 @@ pre.json {
 .arch-hero { background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: 8px; padding: 1rem 1.1rem; margin: 0 0 1rem; }
 .arch-hero h2 { margin: 0 0 0.4rem; font-size: 1.15rem; }
 .arch-hero .arch-intent { margin: 0.35rem 0 0.65rem; font-size: 0.95rem; max-width: 48rem; }
-.arch-stats { display: flex; flex-wrap: wrap; gap: 0.45rem; margin: 0.5rem 0 0; }
-.arch-stat { border: 1px solid hsl(var(--border)); border-radius: 6px; padding: 0.25rem 0.55rem; font-size: 0.78rem; background: hsl(var(--muted)); color: hsl(var(--foreground)); }
+.arch-stats { display: flex; flex-wrap: wrap; gap: 0.45rem; margin: 0.5rem 0 0; max-width: 100%; min-width: 0; }
+.arch-stat { border: 1px solid hsl(var(--border)); border-radius: 6px; padding: 0.25rem 0.55rem; font-size: 0.78rem; background: hsl(var(--muted)); color: hsl(var(--foreground)); max-width: 100%; min-width: 0; overflow-wrap: anywhere; }
 .arch-stat strong { font-weight: 700; }
 .arch-shot-strip { display: flex; flex-wrap: wrap; gap: 0.75rem; margin: 0.5rem 0 1rem; }
 .arch-shot { max-width: 11rem; border: 1px solid transparent; border-radius: 8px; padding: 0.25rem; cursor: pointer; background: transparent; font: inherit; text-align: left; color: inherit; }
@@ -442,7 +462,8 @@ pre.json {
   border-radius: 8px;
   padding: 0.75rem;
   margin-bottom: 1.5rem;
-  max-width: 800px;
+  max-width: min(800px, 100%);
+  min-width: 0;
 }
 .atlas-toc-title {
   font-weight: 700;
@@ -469,18 +490,60 @@ pre.json {
 .atlas-toc a:hover {
   color: hsl(var(--primary));
 }
-.atlas-system-diagram {
+.atlas-system-diagram-wrap {
+  width: 100%;
   max-width: 100%;
-  height: auto;
-  display: block;
+  min-width: 0;
   margin: 1rem 0;
   background: hsl(var(--card));
   border: 1px solid hsl(var(--border));
   border-radius: 8px;
-  padding: 1rem;
+  padding: 0.75rem;
+}
+.atlas-system-diagram-frame {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.atlas-system-diagram {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  min-width: 0;
+}
+.atlas-diagram-open {
+  display: inline-flex;
+  align-items: center;
+  margin: 0 0 0.65rem;
+  padding: 0.35rem 0.75rem;
+  background: hsl(var(--secondary));
+  color: hsl(var(--secondary-foreground));
+  border: 1px solid hsl(var(--border));
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}
+.atlas-diagram-open:hover { opacity: 0.85; }
+.atlas-table-wrap {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  background: hsl(var(--card));
+  margin: 0.5rem 0;
 }
 .atlas-host-section {
   margin: 1.5rem 0;
+  max-width: 100%;
+  min-width: 0;
 }
 .atlas-host-section h3 {
   font-size: 1.05rem;
@@ -489,9 +552,12 @@ pre.json {
 }
 .atlas-host-stats {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.65rem;
   margin: 0.5rem 0 0.75rem;
   font-size: 0.8rem;
+  max-width: 100%;
+  min-width: 0;
 }
 .atlas-host-stats .stat {
   padding: 0.25rem 0.65rem;
@@ -506,12 +572,14 @@ pre.json {
 }
 .atlas-endpoint-table {
   width: 100%;
+  min-width: 36rem;
   border-collapse: collapse;
   font-size: 0.85rem;
   background: hsl(var(--card));
-  border: 1px solid hsl(var(--border));
-  border-radius: 8px;
-  overflow: hidden;
+}
+.atlas-table-wrap .atlas-endpoint-table {
+  border: 0;
+  border-radius: 0;
 }
 .atlas-endpoint-table th {
   text-align: left;
@@ -522,6 +590,7 @@ pre.json {
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.025em;
+  white-space: nowrap;
 }
 .atlas-endpoint-table td {
   padding: 0.55rem 0.65rem;
@@ -549,6 +618,8 @@ pre.json {
   font-family: ui-monospace, monospace;
   font-size: 0.8rem;
   color: hsl(var(--foreground));
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .auth-badge {
   display: inline-block;
@@ -966,8 +1037,16 @@ nav.crumb { margin-bottom: 1rem; font-size: 0.9rem; }
 .fields-toolbar .seg { display: flex; flex-wrap: wrap; gap: 0.25rem; align-items: center; }
 .fields-toolbar .seg button { border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 999px; padding: 0.2rem 0.65rem; cursor: pointer; font-size: 0.75rem; }
 .fields-toolbar .seg button.on { background: hsl(var(--foreground)); color: hsl(var(--card)); border-color: hsl(var(--foreground)); }
+.atlas-table-wrap .fields-table,
+.atlas-table-wrap .arch-conn-table,
+.atlas-table-wrap .req-table {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
 .fields-table {
   width: 100%;
+  min-width: 28rem;
   border-collapse: collapse;
   font-size: 0.875rem;
   background: hsl(var(--card));
@@ -1276,7 +1355,14 @@ nav.crumb { margin-bottom: 1rem; font-size: 0.9rem; }
 .chain-box.kind-backend { border-left: 4px solid #7c3aed; }
 .chain-box.kind-other { border-left: 4px solid #64748b; }
 .chain-box.kind-noise { border-left: 4px solid #94a3b8; opacity: 0.85; }
-@media print { @page { size: A4; margin: 1.5cm; } body { font-size: 10pt; line-height: 1.4; color: #000; background: #fff; } header { border-bottom: 2px solid #000; padding-bottom: 0.5cm; margin-bottom: 1cm; } main { max-width: 100%; } .atlas-toc { position: static; float: none; margin: 0 0 1cm; page-break-inside: avoid; } h2, h3 { page-break-after: avoid; } .atlas-host-section { page-break-inside: avoid; } .snippet-panel, .atlas-system-diagram, .flow-card { page-break-inside: avoid; } .btn-snippet, .btn-copy-snippet, .snippet-tabs, .arch-nav-hint, button[data-view] { display: none !important; } .snippet-code { display: block !important; background: #f5f5f5 !important; border: 1px solid #ccc !important; color: #000 !important; font-size: 8pt; } .atlas-endpoint-table { font-size: 8pt; } .atlas-endpoint-table th, .atlas-endpoint-table td { padding: 0.3cm 0.4cm; } a { color: #000; text-decoration: underline; } }
+@media (max-width: 640px) {
+  header { padding: 1rem; }
+  main { padding: 1rem 0.85rem 2rem; }
+  .arch-diagram-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+  .timeline-controls, .data-controls { flex-wrap: wrap; }
+  .tabs { flex-wrap: wrap; }
+}
+@media print { @page { size: A4; margin: 1.5cm; } body { font-size: 10pt; line-height: 1.4; color: #000; background: #fff; } header { border-bottom: 2px solid #000; padding-bottom: 0.5cm; margin-bottom: 1cm; } main { max-width: 100%; } .atlas-toc { position: static; float: none; margin: 0 0 1cm; page-break-inside: avoid; } h2, h3 { page-break-after: avoid; } .atlas-host-section { page-break-inside: avoid; } .snippet-panel, .atlas-system-diagram-wrap, .atlas-system-diagram, .flow-card { page-break-inside: avoid; } .btn-snippet, .btn-copy-snippet, .snippet-tabs, .arch-nav-hint, button[data-view], .atlas-diagram-open { display: none !important; } .snippet-code { display: block !important; background: #f5f5f5 !important; border: 1px solid #ccc !important; color: #000 !important; font-size: 8pt; } .atlas-endpoint-table { font-size: 8pt; min-width: 0; } .atlas-endpoint-table th, .atlas-endpoint-table td { padding: 0.3cm 0.4cm; } a { color: #000; text-decoration: underline; } }
 `.trim();
 }
 
@@ -4467,6 +4553,14 @@ function renderErrorPanelHtml(analysis, escFn) {
               }, 1500);
             });
           }
+        } else if (exportType === 'open-svg') {
+          var svgEl = document.querySelector('#arch-system-diagram .atlas-system-diagram');
+          if (!svgEl) return;
+          var svgMarkup = svgEl.outerHTML;
+          var blob = new Blob([svgMarkup], { type: 'image/svg+xml' });
+          var url = URL.createObjectURL(blob);
+          window.open(url, '_blank', 'noopener');
+          setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
         } else if (exportType === 'markdown') {
           // Generate Markdown from architecture data
           var markdown = generateArchitectureMarkdown();
@@ -5590,7 +5684,7 @@ function renderErrorPanelHtml(analysis, escFn) {
   }
 
   function renderFieldsByPath(rows) {
-    var html = '<table class="fields-table"><thead><tr>';
+    var html = '<div class="atlas-table-wrap"><table class="fields-table"><thead><tr>';
     html += '<th>Response path</th><th>Kind</th><th>Hop(s)</th><th>GUI node(s)</th>';
     html += '</tr></thead><tbody>';
     rows.forEach(function (row) {
@@ -5612,7 +5706,7 @@ function renderErrorPanelHtml(analysis, escFn) {
       }).join('') : '<span class="meta empty">—</span>') + '</div></td>';
       html += '</tr>';
     });
-    html += '</tbody></table>';
+    html += '</tbody></table></div>';
     return html;
   }
 

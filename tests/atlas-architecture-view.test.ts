@@ -79,6 +79,14 @@ describe('Atlas Architecture View', () => {
     it('should include atlas-system-diagram class', () => {
       expect(svg).toContain('class="atlas-system-diagram"');
     });
+
+    it('wraps the SVG for mobile full-width scaling with an open control', () => {
+      expect(svg).toContain('class="atlas-system-diagram-wrap"');
+      expect(svg).toContain('class="atlas-system-diagram-frame"');
+      expect(svg).toContain('data-export="open-svg"');
+      expect(svg).toContain('Open diagram');
+      expect(svg).not.toContain('min-height: 400px');
+    });
   });
 
   describe('Node Structure and Layout', () => {

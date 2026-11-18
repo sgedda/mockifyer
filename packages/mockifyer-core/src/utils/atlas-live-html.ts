@@ -175,11 +175,13 @@ html[data-theme="dark"] {
   --row-hover: hsla(217.2, 91.2%, 59.8%, 0.08);
   --row-selected: hsla(217.2, 91.2%, 59.8%, 0.15);
 }
-* { box-sizing: border-box; }
+*, *::before, *::after { box-sizing: border-box; }
 html,
 body {
   margin: 0;
   height: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
   background: hsl(var(--background));
   color: hsl(var(--foreground));
   font-family: var(--sans);
@@ -187,6 +189,8 @@ body {
   -moz-osx-font-smoothing: grayscale;
   font-size: 15px;
   line-height: 1.5;
+  overflow-wrap: anywhere;
+  word-wrap: break-word;
 }
 @media (min-width: 1024px) {
   html,
@@ -200,10 +204,11 @@ body {
   min-height: 100%;
 }
 .shell {
-  max-width: 1100px;
+  max-width: min(1100px, 100%);
   margin: 0 auto;
   padding: 1.25rem 1rem 2rem;
   width: 100%;
+  min-width: 0;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -278,9 +283,10 @@ header {
   color: hsl(var(--muted-foreground));
 }
 .search-label input[type="search"] {
-  min-width: 12rem;
-  flex: 1 1 14rem;
-  max-width: 24rem;
+  min-width: 0;
+  flex: 1 1 12rem;
+  max-width: min(24rem, 100%);
+  width: 100%;
   font: inherit;
   font-family: var(--sans);
   font-size: 0.875rem;
@@ -412,6 +418,8 @@ button:disabled {
   border-radius: calc(var(--radius) + 4px);
   overflow: hidden;
   flex: 1;
+  min-width: 0;
+  max-width: 100%;
   min-height: 320px;
   display: flex;
   flex-direction: column;
@@ -425,6 +433,8 @@ button:disabled {
   padding: 0.65rem 0.75rem 1rem;
   overflow: auto;
   flex: 1;
+  min-width: 0;
+  max-width: 100%;
   white-space: pre;
 }
 .row {
@@ -545,8 +555,13 @@ kbd {
   box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
 }
 @media (max-width: 640px) {
-  .row { grid-template-columns: 1fr; }
+  .shell { padding: 1rem 0.75rem 1.5rem; }
+  .header-top { flex-direction: column; align-items: stretch; }
+  .header-actions { margin-left: 0; }
+  .search-label { width: 100%; }
+  .row { grid-template-columns: 1fr; min-width: 0; }
   .links { padding-left: 1rem; }
+  .main { overflow-wrap: anywhere; }
 }
 </style>
 </head>

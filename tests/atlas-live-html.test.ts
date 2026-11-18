@@ -114,6 +114,9 @@ describe('atlas-live-html', () => {
     expect(html).toContain('<meta name="color-scheme" content="light"');
     expect(html).toContain('color-scheme: light;');
     expect(html).not.toContain('prefers-color-scheme');
+    expect(html).toContain('overflow-x: hidden');
+    expect(html).toContain('overflow-wrap: anywhere');
+    expect(html).toContain('max-width: min(1100px, 100%)');
     expect(html).toContain('EventSource');
     expect(html).toContain('/mockifyer-network-events/stream');
     expect(html).toContain('data-parent');
