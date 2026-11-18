@@ -111,6 +111,9 @@ describe('atlas-live-html', () => {
 
     expect(html).toContain('<!DOCTYPE html>');
     expect(html).toContain('Mockifyer Atlas');
+    expect(html).toContain('<meta name="color-scheme" content="light"');
+    expect(html).toContain('color-scheme: light;');
+    expect(html).not.toContain('prefers-color-scheme');
     expect(html).toContain('EventSource');
     expect(html).toContain('/mockifyer-network-events/stream');
     expect(html).toContain('data-parent');

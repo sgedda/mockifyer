@@ -33,6 +33,7 @@ export function generateDriftHtml(
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light">
   <title>${escapeHtml(title)}</title>
   <style>
     ${sharedCss()}
@@ -322,9 +323,9 @@ function escapeHtml(value: unknown): string {
 
 function sharedCss(): string {
   return `
-/* Mockifyer drift report styles - based on Atlas HTML design system */
+/* Mockifyer drift report styles - based on Atlas HTML design system (light only) */
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
   --background: 0 0% 100%;
   --foreground: 240 10% 3.9%;
   --card: 0 0% 100%;
@@ -345,30 +346,6 @@ function sharedCss(): string {
   --warning: 38 92% 50%;
   --warning-foreground: 0 0% 98%;
   --radius: 0.5rem;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: 240 10% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 240 10% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --border: 240 3.7% 15.9%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 240 3.7% 15.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 64.9%;
-    --accent: 240 3.7% 15.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --success: 142 76% 36%;
-    --success-foreground: 0 0% 98%;
-    --warning: 38 92% 50%;
-    --warning-foreground: 0 0% 98%;
-  }
 }
 
 * {

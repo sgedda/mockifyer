@@ -88,10 +88,12 @@ export function buildAtlasLiveStreamHtml(
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta name="color-scheme" content="light"/>
 <title>${title}</title>
 <style>
-/* Mockifyer.dev design system - HSL-based colors for light and dark modes */
+/* Mockifyer.dev design system - HSL-based colors (light only; optional data-theme override) */
 :root {
+  color-scheme: light;
   /* Background & foreground */
   --background: 0 0% 100%;
   --foreground: 240 10% 3.9%;
@@ -124,32 +126,6 @@ export function buildAtlasLiveStreamHtml(
   /* Fonts */
   --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
   --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: 240 10% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 240 10% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --border: 240 3.7% 15.9%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 240 3.7% 15.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 64.9%;
-    --accent: 240 3.7% 15.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --success: 142.1 70.6% 45.3%;
-    --success-foreground: 210 40% 98%;
-    --warning: 38 92% 50%;
-    --warning-foreground: 20 14.3% 4.1%;
-    --row-hover: hsla(217.2, 91.2%, 59.8%, 0.08);
-    --row-selected: hsla(217.2, 91.2%, 59.8%, 0.15);
-  }
 }
 
 html[data-theme="light"] {

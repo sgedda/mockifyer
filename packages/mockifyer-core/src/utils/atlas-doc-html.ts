@@ -179,9 +179,9 @@ export function safeAtlasPageFileId(pageId: string): string {
 
 function sharedCss(): string {
   return `
-/* Mockifyer.dev design system - HSL-based colors for light and dark modes */
+/* Mockifyer.dev design system - HSL-based colors (light only) */
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
   /* Background & foreground */
   --background: 0 0% 100%;
   --foreground: 240 10% 3.9%;
@@ -211,32 +211,6 @@ function sharedCss(): string {
   /* Chart colors */
   --bar: 221.2 83.2% 53.3%;
   --bar2: 142.1 70.6% 45.3%;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: 240 10% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 240 10% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --border: 240 3.7% 15.9%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 240 3.7% 15.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 64.9%;
-    --accent: 240 3.7% 15.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --success: 142.1 70.6% 45.3%;
-    --success-foreground: 210 40% 98%;
-    --warning: 38 92% 50%;
-    --warning-foreground: 20 14.3% 4.1%;
-    --bar: 217.2 91.2% 59.8%;
-    --bar2: 142.1 70.6% 45.3%;
-  }
 }
 
 * { box-sizing: border-box; }
@@ -386,12 +360,6 @@ pre {
   font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
   line-height: 1.5;
 }
-@media (prefers-color-scheme: dark) {
-  pre {
-    background: hsl(240 3.7% 12%);
-    border-color: hsl(var(--border));
-  }
-}
 pre.json {
   white-space: pre-wrap;
   word-break: break-word;
@@ -403,18 +371,6 @@ pre.json {
 .json-n { color: #dc2626; }
 .json-b { color: #7c3aed; }
 .json-null { color: #64748b; }
-@media (prefers-color-scheme: dark) {
-  .json-k { color: #38bdf8; }
-  .json-s { color: #4ade80; }
-  .json-n { color: #fb7185; }
-  .json-b { color: #a78bfa; }
-  .json-null { color: #94a3b8; }
-  .req-table th, .arch-conn-table th, .atlas-endpoint-table th { background: hsl(240 3.7% 15.9%); color: hsl(var(--foreground)); }
-  .req-table tr.req-row:hover, .arch-conn-table tr.arch-conn-row:hover { background: hsl(240 3.7% 12%); }
-  .req-table tr.req-row.selected, .arch-conn-table tr.arch-conn-row.selected { background: hsl(217 91% 20%); }
-  .req-table tr.req-row.has-error { background: hsl(0 84% 15%); color: hsl(0 0% 98%); }
-  .req-table tr.req-row.has-slow { background: hsl(38 92% 15%); color: hsl(0 0% 98%); }
-}
 .json-used-direct {
   background: rgba(34, 197, 94, 0.15);
   border-radius: 2px;
@@ -1331,6 +1287,7 @@ function shell(title: string, body: string, crumb?: string, extraHead = ''): str
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="light" />
 <title>${escapeHtml(title)}</title>
 <style>
 ${sharedCss()}

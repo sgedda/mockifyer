@@ -5,9 +5,10 @@
 
 export type AtlasCodeHighlightKind = 'json' | 'curl' | 'auto' | 'plain';
 
-/** CSS custom properties + token classes (light + dark via prefers-color-scheme). */
+/** CSS custom properties + token classes (light by default; optional data-theme override). */
 export const ATLAS_CODE_HIGHLIGHT_CSS = `
 :root {
+  color-scheme: light;
   --code-key: #0284c7;
   --code-str: #16a34a;
   --code-num: #dc2626;
@@ -17,20 +18,6 @@ export const ATLAS_CODE_HIGHLIGHT_CSS = `
   --code-flag: #f59e0b;
   --code-url: #0284c7;
   --code-punct: #64748b;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --code-key: #38bdf8;
-    --code-str: #4ade80;
-    --code-num: #fb7185;
-    --code-bool: #a78bfa;
-    --code-null: #94a3b8;
-    --code-cmd: #22d3ee;
-    --code-flag: #fbbf24;
-    --code-url: #38bdf8;
-    --code-punct: #94a3b8;
-  }
 }
 
 html[data-theme="light"] {
