@@ -29,6 +29,12 @@ import { featureVotesRouter } from './routes/feature-votes';
 import { linearFeaturesRouter } from './routes/linear-features';
 import { scenarioConfigRouter } from './routes/scenario-config';
 import { contactRouter } from './routes/contact';
+import {
+  buildHtmlForRoute,
+  buildNotFoundHtml,
+  getHtmlRoutes,
+  resolvePrerenderedHtmlPath,
+} from './lib/seo-html';
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -568,8 +574,9 @@ app.use((req, res, next) => {
   }
 });
 
-// Known HTML routes (for prerendered content)
-const HTML_ROUTES = [
+// Known HTML routes — prefer seo-manifest.json (written by prerender), with a
+// static fallback so local/dev without prerender still recognizes pages.
+const HTML_ROUTES_FALLBACK = [
   '/',
   '/getting-started',
   '/date-config',
@@ -590,9 +597,13 @@ const HTML_ROUTES = [
   '/guides/browser-record-replay',
 ];
 
-// Fallback to index.html for SPA routing (GET requests only)
+function getKnownHtmlRoutes(): string[] {
+  const fromManifest = getHtmlRoutes();
+  return fromManifest.length > 0 ? fromManifest : HTML_ROUTES_FALLBACK;
+}
+
+// SPA / prerendered HTML fallback (GET requests only)
 app.get('*', (req, res) => {
-  // Don't serve index.html for API routes or asset requests
   if (req.path.startsWith('/api/')) {
     return res.status(404).json({ error: 'API endpoint not found', path: req.path });
   }
@@ -600,28 +611,33 @@ app.get('*', (req, res) => {
     return res.status(404).send('Asset not found');
   }
 
-  // Check if this is a known route
-  const isKnownRoute = HTML_ROUTES.includes(req.path);
-  
-  // Check for prerendered HTML file
-  const htmlPath = req.path === '/' 
-    ? path.join(__dirname, '../public/index.html')
-    : path.join(__dirname, `../public${req.path}.html`);
-  
-  // For known routes, try to serve prerendered HTML if it exists
-  if (isKnownRoute && fs.existsSync(htmlPath) && req.path !== '/') {
-    res.setHeader('Cache-Control', 'no-cache, must-revalidate');
-    return res.sendFile(htmlPath);
-  }
-  
-  // Unknown routes get 404 with the SPA (which will render NotFound component)
-  if (!isKnownRoute) {
-    res.status(404);
-  }
-  
-  // HTML should not be cached (must revalidate)
   res.setHeader('Cache-Control', 'no-cache, must-revalidate');
-  res.sendFile(path.join(__dirname, '../public/index.html'));
+  res.type('html');
+
+  const isKnownRoute = getKnownHtmlRoutes().includes(req.path);
+
+  if (isKnownRoute) {
+    // Prefer on-disk prerendered file (sendFile for correct etag/range)
+    const prerenderedPath = resolvePrerenderedHtmlPath(req.path);
+    if (prerenderedPath) {
+      return res.sendFile(prerenderedPath);
+    }
+
+    // Serve-time injection fallback if prerender output is missing
+    const built = buildHtmlForRoute(req.path);
+    if (built) {
+      return res.status(built.status).send(built.html);
+    }
+
+    // Last resort for local/dev without public assets
+    const indexPath = path.join(__dirname, '../public/index.html');
+    if (fs.existsSync(indexPath)) {
+      return res.sendFile(indexPath);
+    }
+  }
+
+  // Unknown routes: 404 with dedicated head (noindex), not the homepage shell
+  return res.status(404).send(buildNotFoundHtml());
 });
 
 // Error handling middleware

@@ -37,8 +37,8 @@ async function globalSetup() {
 
   console.log('\n=== Prerendering per-route HTML for SEO ===\n');
   try {
-    console.log('Running prerender-static...');
-    execSync('node scripts/prerender-static.js', {
+    console.log('Running build:seo (prerender + sitemap + verify)...');
+    execSync('npm run build:seo', {
       stdio: 'inherit',
       cwd: mockifyerWebDir,
     });

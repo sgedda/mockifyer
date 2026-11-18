@@ -31,6 +31,14 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // scripts/prerender-static.ts
 var prerender_static_exports = {};
 __export(prerender_static_exports, {
+  HOMEPAGE_CANONICAL: () => HOMEPAGE_CANONICAL,
+  NOT_FOUND_SEO: () => NOT_FOUND_SEO,
+  PAGE_SEO: () => PAGE_SEO,
+  SITE_NAME: () => SITE_NAME,
+  SITE_URL: () => SITE_URL,
+  formatPageTitle: () => formatPageTitle,
+  generateHtml: () => generateHtml,
+  normalizeShellHtml: () => normalizeShellHtml,
   prerender: () => prerender
 });
 module.exports = __toCommonJS(prerender_static_exports);
@@ -98,12 +106,6 @@ var PAGE_SEO = {
     description: "Hand-written mocks drift from real APIs. Record real responses, re-record when APIs change, and git diff to catch breaking changes.",
     path: "/guides/mock-drift"
   },
-  "/guides/mockifyer-atlas": {
-    title: "Visualize Architecture with Mockifyer Atlas | Mockifyer",
-    description:
-      "Generate interactive traffic maps from recorded HTTP hops. See hosts, request chains, search payloads, and trace multi-service flows.",
-    path: "/guides/mockifyer-atlas"
-  },
   "/guides/react-native-without-msw": {
     title: "MSW vs Recording in React Native",
     description: "Compare MSW and Mockifyer for React Native. Recording works on device with no service worker, supports Expo and bare React Native.",
@@ -113,6 +115,11 @@ var PAGE_SEO = {
     title: "Record and Replay HTTP in the Browser",
     description: "Use Mockifyer to record and replay HTTP fetch calls in browser environments, Expo web builds, and Vite projects with the memory provider.",
     path: "/guides/browser-record-replay"
+  },
+  "/guides/mockifyer-atlas": {
+    title: "Visualize Architecture with Mockifyer Atlas",
+    description: "Generate interactive traffic maps from recorded HTTP hops. See hosts, request chains, search payloads, and trace multi-service flows.",
+    path: "/guides/mockifyer-atlas"
   },
   "/features": {
     title: "Mockifyer Features: Record, Replay, Scenarios",
@@ -146,54 +153,81 @@ function formatPageTitle(title) {
 }
 
 // scripts/prerender-static.ts
+var NOT_FOUND_SEO = {
+  title: "Page Not Found",
+  description: "The page you are looking for does not exist.",
+  path: "/404",
+  noIndex: true
+};
+var HOMEPAGE_CANONICAL = `${SITE_URL}/`;
+function normalizeShellHtml(html) {
+  return html.replace(/<div id="root">[\s\S]*?<\/div>/, '<div id="root"></div>');
+}
 function generateHtml(routePath, seoConfig, baseHtml) {
   const title = formatPageTitle(seoConfig.title);
-  const canonical = `${SITE_URL}${routePath}`;
-  let html = baseHtml.replace(
-    /<title>.*?<\/title>/,
-    `<title>${title}</title>`
-  );
+  const canonical = routePath === "/" ? HOMEPAGE_CANONICAL : `${SITE_URL}${routePath}`;
+  let html = baseHtml.replace(/<title>.*?<\/title>/, `<title>${escapeHtml(title)}</title>`);
   html = html.replace(
     /<meta name="description"[\s\S]*?content=".*?"[\s\S]*?\/>/,
-    `<meta name="description" content="${seoConfig.description}" />`
+    `<meta name="description" content="${escapeAttr(seoConfig.description)}" />`
+  );
+  const robotsContent = seoConfig.noIndex ? "noindex, nofollow" : "index, follow";
+  html = html.replace(
+    /<meta name="robots" content=".*?"(\s*\/)?>/,
+    `<meta name="robots" content="${robotsContent}" />`
   );
   html = html.replace(
-    /<link rel="canonical" href=".*?"(\s*\/)>/,
+    /<link rel="canonical" href=".*?"(\s*\/)?>/,
     `<link rel="canonical" href="${canonical}" />`
   );
   html = html.replace(
-    /<meta property="og:title" content=".*?"(\s*\/)>/,
-    `<meta property="og:title" content="${title}" />`
+    /<meta property="og:title" content=".*?"(\s*\/)?>/,
+    `<meta property="og:title" content="${escapeAttr(title)}" />`
   );
   html = html.replace(
     /<meta property="og:description"[\s\S]*?content=".*?"[\s\S]*?\/>/,
-    `<meta property="og:description" content="${seoConfig.description}" />`
+    `<meta property="og:description" content="${escapeAttr(seoConfig.description)}" />`
   );
   html = html.replace(
-    /<meta property="og:url" content=".*?"(\s*\/)>/,
+    /<meta property="og:url" content=".*?"(\s*\/)?>/,
     `<meta property="og:url" content="${canonical}" />`
   );
   html = html.replace(
-    /<meta name="twitter:title" content=".*?"(\s*\/)>/,
-    `<meta name="twitter:title" content="${title}" />`
+    /<meta name="twitter:title" content=".*?"(\s*\/)?>/,
+    `<meta name="twitter:title" content="${escapeAttr(title)}" />`
   );
   html = html.replace(
     /<meta name="twitter:description"[\s\S]*?content=".*?"[\s\S]*?\/>/,
-    `<meta name="twitter:description" content="${seoConfig.description}" />`
+    `<meta name="twitter:description" content="${escapeAttr(seoConfig.description)}" />`
   );
   if (routePath !== "/") {
-    html = html.replace(
-      /<script type="application\/ld\+json">[\s\S]*?<\/script>/,
-      ""
-    );
+    html = html.replace(/<script type="application\/ld\+json">[\s\S]*?<\/script>/, "");
   }
-  const h1Text = seoConfig.title.replace(" | Mockifyer", "").replace(" | " + SITE_NAME, "").replace(" - Testing Guide", "").replace(" - ", ": ");
-  const seoContent = `<div id="root"><div style="max-width:1200px;margin:0 auto;padding:2rem"><h1>${h1Text}</h1><p>${seoConfig.description}</p><noscript><p>This site requires JavaScript to be enabled.</p></noscript></div></div>`;
-  html = html.replace(
-    /<div id="root"><\/div>/,
-    seoContent
-  );
+  const h1Text = seoConfig.title.replace(` | ${SITE_NAME}`, "").replace(" - Testing Guide", "").replace(" - ", ": ");
+  const seoContent = `<div id="root"><div style="max-width:1200px;margin:0 auto;padding:2rem"><h1>${escapeHtml(h1Text)}</h1><p>${escapeHtml(seoConfig.description)}</p><noscript><p>This site requires JavaScript to be enabled.</p></noscript></div></div>`;
+  html = html.replace(/<div id="root"><\/div>/, seoContent);
   return html;
+}
+function escapeHtml(value) {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function escapeAttr(value) {
+  return escapeHtml(value).replace(/"/g, "&quot;");
+}
+function writeRouteHtml(publicDir, routePath, html) {
+  if (routePath === "/") {
+    const indexPath = import_path.default.join(publicDir, "index.html");
+    import_fs.default.writeFileSync(indexPath, html, "utf-8");
+    return "index.html";
+  }
+  const routePathClean = routePath.replace(/^\//, "");
+  const routeDir = import_path.default.dirname(routePathClean);
+  if (routeDir && routeDir !== ".") {
+    import_fs.default.mkdirSync(import_path.default.join(publicDir, routeDir), { recursive: true });
+  }
+  const relativePath = `${routePathClean}.html`;
+  import_fs.default.writeFileSync(import_path.default.join(publicDir, relativePath), html, "utf-8");
+  return relativePath;
 }
 async function prerender() {
   const publicDir = import_path.default.join(__dirname, "../public");
@@ -203,27 +237,37 @@ async function prerender() {
     process.exit(1);
   }
   console.log("\u{1F4C4} Starting static HTML generation for SEO...");
-  const baseHtml = import_fs.default.readFileSync(indexPath, "utf-8");
+  const shellHtml = normalizeShellHtml(import_fs.default.readFileSync(indexPath, "utf-8"));
+  import_fs.default.writeFileSync(import_path.default.join(publicDir, "_shell.html"), shellHtml, "utf-8");
+  const manifest = {};
   let count = 0;
   for (const [routePath, seoConfig] of Object.entries(PAGE_SEO)) {
-    const generatedHtml = generateHtml(routePath, seoConfig, baseHtml);
-    if (routePath === "/") {
-      import_fs.default.writeFileSync(indexPath, generatedHtml, "utf-8");
-      console.log(`  \u2713 / \u2192 index.html`);
-      count++;
-      continue;
-    }
-    const routePathClean = routePath.substring(1);
-    const routeDir = import_path.default.dirname(routePathClean);
-    if (routeDir && routeDir !== ".") {
-      const fullDir = import_path.default.join(publicDir, routeDir);
-      import_fs.default.mkdirSync(fullDir, { recursive: true });
-    }
-    const outputPath = import_path.default.join(publicDir, `${routePathClean}.html`);
-    import_fs.default.writeFileSync(outputPath, generatedHtml, "utf-8");
-    console.log(`  \u2713 ${routePath} \u2192 ${routePathClean}.html`);
+    const generatedHtml = generateHtml(routePath, seoConfig, shellHtml);
+    const relativePath = writeRouteHtml(publicDir, routePath, generatedHtml);
+    manifest[routePath] = {
+      title: formatPageTitle(seoConfig.title),
+      description: seoConfig.description,
+      path: routePath,
+      noIndex: seoConfig.noIndex
+    };
+    console.log(`  \u2713 ${routePath} \u2192 ${relativePath}`);
     count++;
   }
+  const notFoundHtml = generateHtml("/404", NOT_FOUND_SEO, shellHtml);
+  import_fs.default.writeFileSync(import_path.default.join(publicDir, "404.html"), notFoundHtml, "utf-8");
+  manifest["/404"] = {
+    title: formatPageTitle(NOT_FOUND_SEO.title),
+    description: NOT_FOUND_SEO.description,
+    path: "/404",
+    noIndex: true
+  };
+  console.log("  \u2713 /404 \u2192 404.html");
+  count++;
+  import_fs.default.writeFileSync(
+    import_path.default.join(publicDir, "seo-manifest.json"),
+    JSON.stringify({ siteUrl: SITE_URL, routes: manifest }, null, 2),
+    "utf-8"
+  );
   console.log(`
 \u2705 Generated ${count} static HTML files for SEO`);
 }
@@ -235,5 +279,13 @@ if (require.main === module) {
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
+  HOMEPAGE_CANONICAL,
+  NOT_FOUND_SEO,
+  PAGE_SEO,
+  SITE_NAME,
+  SITE_URL,
+  formatPageTitle,
+  generateHtml,
+  normalizeShellHtml,
   prerender
 });

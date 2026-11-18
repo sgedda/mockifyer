@@ -46,3 +46,4 @@ persisted/
 feature-votes.json
 user-votes.json
 ip-votes.json
+.test-public-backup/

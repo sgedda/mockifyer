@@ -1,3 +1,4 @@
+#!/usr/bin/env ts-node
 "use strict";
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -107,6 +108,11 @@ var PAGE_SEO = {
     description: "Use Mockifyer to record and replay HTTP fetch calls in browser environments, Expo web builds, and Vite projects with the memory provider.",
     path: "/guides/browser-record-replay"
   },
+  "/guides/mockifyer-atlas": {
+    title: "Visualize Architecture with Mockifyer Atlas",
+    description: "Generate interactive traffic maps from recorded HTTP hops. See hosts, request chains, search payloads, and trace multi-service flows.",
+    path: "/guides/mockifyer-atlas"
+  },
   "/features": {
     title: "Mockifyer Features: Record, Replay, Scenarios",
     description: "Selective recording, scenario switching, date freezing, React Native support, GraphQL matching, and a local dashboard for editing mocks.",
@@ -150,17 +156,42 @@ var ROUTE_CONFIG = {
   "/guides/browser-record-replay": { priority: "0.7", changefreq: "monthly" },
   "/contact": { priority: "0.5", changefreq: "yearly" }
 };
-var ROUTES = Object.keys(PAGE_SEO).map((loc) => ({
-  loc,
-  priority: ROUTE_CONFIG[loc]?.priority || "0.5",
-  changefreq: ROUTE_CONFIG[loc]?.changefreq || "monthly"
-}));
-function generateSitemap() {
-  const lastmod = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
-  const urls = ROUTES.map(
+var STATIC_CONTENT_ROUTES = [
+  { loc: "/getting-started.md", priority: "0.6", changefreq: "monthly" },
+  { loc: "/overview.md", priority: "0.6", changefreq: "monthly" },
+  { loc: "/config-reference.md", priority: "0.6", changefreq: "monthly" },
+  { loc: "/llms.txt", priority: "0.6", changefreq: "monthly" },
+  { loc: "/llms-full.txt", priority: "0.6", changefreq: "monthly" }
+];
+function fileLastmod(publicDir, loc) {
+  const candidates = loc === "/" ? [import_path.default.join(publicDir, "index.html")] : [
+    import_path.default.join(publicDir, `${loc.replace(/^\//, "")}.html`),
+    import_path.default.join(publicDir, loc.replace(/^\//, ""))
+  ];
+  for (const candidate of candidates) {
+    if (import_fs.default.existsSync(candidate)) {
+      return import_fs.default.statSync(candidate).mtime.toISOString().split("T")[0];
+    }
+  }
+  return null;
+}
+function generateSitemap(publicDir = import_path.default.join(__dirname, "../public")) {
+  const buildDate = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
+  const htmlRoutes = Object.keys(PAGE_SEO).map((loc) => ({
+    loc,
+    priority: ROUTE_CONFIG[loc]?.priority || "0.5",
+    changefreq: ROUTE_CONFIG[loc]?.changefreq || "monthly",
+    lastmod: fileLastmod(publicDir, loc) || buildDate
+  }));
+  const staticRoutes = STATIC_CONTENT_ROUTES.map((route) => ({
+    ...route,
+    lastmod: fileLastmod(publicDir, route.loc) || buildDate
+  }));
+  const routes = [...htmlRoutes, ...staticRoutes];
+  const urls = routes.map(
     (route) => `  <url>
-    <loc>${SITE_URL}${route.loc}</loc>
-    <lastmod>${lastmod}</lastmod>
+    <loc>${SITE_URL}${route.loc === "/" ? "/" : route.loc}</loc>
+    <lastmod>${route.lastmod}</lastmod>
     <changefreq>${route.changefreq}</changefreq>
     <priority>${route.priority}</priority>
   </url>`
@@ -172,9 +203,15 @@ ${urls}
 `;
 }
 function writeSitemap() {
-  const sitemap = generateSitemap();
-  const outputPath = import_path.default.join(__dirname, "../public/sitemap.xml");
+  const publicDir = import_path.default.join(__dirname, "../public");
+  import_fs.default.mkdirSync(publicDir, { recursive: true });
+  const sitemap = generateSitemap(publicDir);
+  const outputPath = import_path.default.join(publicDir, "sitemap.xml");
   import_fs.default.writeFileSync(outputPath, sitemap, "utf-8");
+  const frontendPublic = import_path.default.join(__dirname, "../frontend/public/sitemap.xml");
+  if (import_fs.default.existsSync(import_path.default.dirname(frontendPublic))) {
+    import_fs.default.writeFileSync(frontendPublic, sitemap, "utf-8");
+  }
   console.log(`\u2713 Sitemap generated: ${outputPath}`);
 }
 if (require.main === module) {
