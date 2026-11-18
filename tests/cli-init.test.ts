@@ -74,6 +74,7 @@ describe('mockifyer init CLI', () => {
     expect(output).toContain('Detected: axios');
     expect(output).toContain('mockifyer.config.json');
     expect(output).toContain('@sgedda/mockifyer-axios');
+    expect(output).toContain('useGlobalAxios: true');
 
     const config = JSON.parse(fs.readFileSync('mockifyer.config.json', 'utf-8'));
     expect(config.mockDataPath).toBe('./mock-data');

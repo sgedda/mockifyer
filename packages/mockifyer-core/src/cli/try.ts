@@ -139,7 +139,30 @@ function makeHttpRequest(url: string): Promise<{ body: any; status: number }> {
   });
 }
 
-async function runDemo(keep: boolean) {
+/**
+ * Run the demo without the caller's scenario selection.
+ *
+ * `save({ scenario: '_scratch' })` always writes the sample under `_scratch`, but
+ * `findExactMatch` follows `getCurrentScenario()`. A set `MOCKIFYER_SCENARIO` makes
+ * replay look in that folder, miss the sample, and exit 1.
+ */
+function withoutCallerScenario<T>(run: () => Promise<T>): Promise<T> {
+  const previousScenario = process.env.MOCKIFYER_SCENARIO;
+  delete process.env.MOCKIFYER_SCENARIO;
+  return run().finally(() => {
+    if (previousScenario === undefined) {
+      delete process.env.MOCKIFYER_SCENARIO;
+    } else {
+      process.env.MOCKIFYER_SCENARIO = previousScenario;
+    }
+  });
+}
+
+async function runDemo(keep: boolean): Promise<void> {
+  await withoutCallerScenario(() => runIsolatedDemo(keep));
+}
+
+async function runIsolatedDemo(keep: boolean) {
   console.log('');
   console.log(bold('Mockifyer Try - Self-contained demo'));
   console.log('');
