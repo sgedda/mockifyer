@@ -50,6 +50,15 @@ import {
   shouldApplyMockifyer,
   isScenarioLaunchFromNativeArguments,
   getCurrentScenario,
+  tryGetClientIdFromLaunchArguments,
+  MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY,
+  checkRequestLimit,
+  ensureOverrideGroupRuntimeForScenarioPath,
+  configureFlightRecorder,
+  resolveFlightRecorderConfig,
+  configureAtlas,
+  logMockifyerInitSummary,
+  resolveProxyUpstreamTlsInsecure,
   unwrapAndMergeInlineTraceEnvelope,
   unwrapInlineTraceEnvelopeEmittingNetworkEvents,
   applyOutboundRequestCorrelation,
@@ -472,13 +481,24 @@ export class MockifyerClass {
         config.useSimilarMatch = true;
       }
     }
+
+    let launchClientId: string | undefined;
+    if (config.useLaunchArgumentsClientId) {
+      const key = config.launchArgumentClientIdKey ?? MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY;
+      launchClientId = tryGetClientIdFromLaunchArguments(key);
+      if (launchClientId) {
+        logger.info(`[Mockifyer-Fetch] clientId from launch arguments (${key}): ${launchClientId}`);
+      }
+    }
     
     // Store config BEFORE any modifications
     this.config = { ...config }; // Create a copy to avoid mutations
 
-    // Resolve client ID
+    // Launch arg wins over MOCKIFYER_CLIENT_ID / config.clientId when present (E2E).
     // Strict proxy: no auto lane until explicit clientId / setClientId (devtools show real URLs).
-    if (
+    if (launchClientId) {
+      this.config.clientId = launchClientId;
+    } else if (
       resolveStrictScenarioResolution(this.config) &&
       Boolean(this.config.proxy?.baseUrl?.trim())
     ) {
@@ -516,7 +536,25 @@ export class MockifyerClass {
       logger.info(
         `[Mockifyer-Fetch] Starting with Mockifyer DISABLED (${reason}). Call enableMockifyer() to activate.`
       );
+    } else if (isScenarioLaunchFromNativeArguments()) {
+      logger.info(
+        '[Mockifyer-Fetch] Starting with Mockifyer ENABLED (native launch scenario argument).'
+      );
+    } else if (typeof config.initialRuntimeEnabled === 'boolean' && config.initialRuntimeEnabled) {
+      logger.info(
+        '[Mockifyer-Fetch] Starting with Mockifyer ENABLED (restored from persisted preference).'
+      );
     }
+
+    configureFlightRecorder(resolveFlightRecorderConfig(this.config));
+    configureAtlas(this.config, {
+      scenario: this.capabilities.getCurrentScenario(this.config.mockDataPath, this.config.clientId),
+      clientId: this.config.clientId ?? null,
+    });
+    setFlightRecorderRuntimeContext({
+      clientId: this.config.clientId,
+      scenario: this.capabilities.getCurrentScenario(this.config.mockDataPath, this.config.clientId),
+    });
 
     if (this.config.proxy?.baseUrl && this.config.proxy.mirrorRecordedMocksToClient === undefined) {
       const raw =
@@ -566,7 +604,7 @@ export class MockifyerClass {
       clientId: this.config.clientId,
       getClientId: () => this.config.clientId,
       getStrictLaneScenario: () => resolveProxyStrictLaneScenario(this.config),
-      getUpstreamTlsInsecure: () => false, // Browser-safe: no TLS insecure
+      getUpstreamTlsInsecure: () => resolveProxyUpstreamTlsInsecure(this.config),
       getExplicitProxyScenarioContext: () => isExplicitProxyScenarioContext(this.config),
       deviceId: (this.config as any).deviceId,
     });
@@ -580,7 +618,10 @@ export class MockifyerClass {
     // Set up response interceptor to save responses when recordMode is enabled
     this.setupResponseInterceptor();
 
-    logger.info('[Mockifyer] Initialized');
+    logMockifyerInitSummary(this.config, {
+      runtimeMode: this.config.runtimeMode,
+      headline: this.config.initLog?.headline,
+    });
   }
 
   private ensureMockDataDirectory(): void {
@@ -708,6 +749,7 @@ export class MockifyerClass {
 
     const currentScenario = this.capabilities.getCurrentScenario(resolvedMockDataPath, this.config.clientId);
     const scenarioPath = this.capabilities.getScenarioFolderPath(resolvedMockDataPath, currentScenario);
+    ensureOverrideGroupRuntimeForScenarioPath(scenarioPath, { clientId: this.config.clientId });
     
     if (!fs.existsSync(scenarioPath)) {
       logger.warn('[Mockifyer-Fetch] ⚠️ Scenario path does not exist:', scenarioPath);
@@ -943,6 +985,9 @@ export class MockifyerClass {
                 this.capabilities.getCurrentScenario(path.resolve(this.config.mockDataPath), this.config.clientId)
               )
             : undefined;
+          if (hitScenarioPath) {
+            ensureOverrideGroupRuntimeForScenarioPath(hitScenarioPath, { clientId: this.config.clientId });
+          }
 
           if (mockData.responseDelayMs && mockData.responseDelayMs > 0) {
             await new Promise(resolve => setTimeout(resolve, mockData.responseDelayMs));
@@ -996,7 +1041,37 @@ export class MockifyerClass {
 
       // Check request limit BEFORE making real API call (only if no mock found and in record mode)
       if (this.config.recordMode) {
-        // Browser: skip request limit check (needs fs)
+        const limitCheck = checkRequestLimit(this.config.mockDataPath);
+        if (limitCheck.limitReached && limitCheck.error) {
+          console.warn(`[Mockifyer] ⚠️ ${limitCheck.error.message}`);
+
+          const responseHeaders = {
+            'x-mockifyer': 'true',
+            'x-mockifyer-limit-reached': 'true',
+            'content-type': 'application/json'
+          };
+
+          const mockErrorResponse = {
+            data: {
+              error: limitCheck.error.message,
+              message: limitCheck.error.message,
+              limitReached: true,
+              maxRequests: limitCheck.error.maxRequests,
+              currentScenario: limitCheck.error.currentScenario
+            },
+            status: 429,
+            statusText: 'Too Many Requests',
+            headers: responseHeaders,
+            config: config as any
+          };
+
+          return {
+            ...config,
+            __mockResponse: Promise.resolve(mockErrorResponse),
+            __mockifyer_requestKey: requestKey,
+            __mockifyer_limit_reached: true
+          } as any;
+        }
       }
 
       if (this.config.failOnMissingMock) {
@@ -1124,6 +1199,9 @@ export class MockifyerClass {
                 this.capabilities.getCurrentScenario(path.resolve(this.config.mockDataPath), this.config.clientId)
               )
             : undefined;
+          if (liveScenarioPath) {
+            ensureOverrideGroupRuntimeForScenarioPath(liveScenarioPath, { clientId: this.config.clientId });
+          }
           const clientResponse = buildClientResponseFromLiveCapture(
             matchedMock.mockData,
             capturedResponse,
@@ -1427,6 +1505,12 @@ export class MockifyerClass {
           const currentScenario = this.capabilities.getCurrentScenario(this.config.mockDataPath, this.config.clientId);
           const scenarioPath = this.capabilities.getScenarioFolderPath(this.config.mockDataPath, currentScenario);
           this.capabilities.ensureScenarioFolder(this.config.mockDataPath, currentScenario);
+
+          const limitCheck = checkRequestLimit(this.config.mockDataPath);
+          if (limitCheck.limitReached && limitCheck.error) {
+            console.warn(`[Mockifyer] ⚠️ ${limitCheck.error.message}`);
+            return;
+          }
 
           if (saveDecision.action === 'overwrite' && existingMock?.filePath) {
             fs.writeFileSync(existingMock.filePath, JSON.stringify(mockData, null, 2));
