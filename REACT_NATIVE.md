@@ -2,6 +2,8 @@
 
 Mockifyer works with **Expo** and **React Native** via `@sgedda/mockifyer-fetch` (patches `global.fetch`) and `@sgedda/mockifyer-core` providers.
 
+**Expo web / React Native web:** Metro picks up the browser entry of `@sgedda/mockifyer-fetch` automatically (tested with `npx expo export --platform web`). Web builds use the memory provider with preloaded fixtures, or the dashboard proxy. See [docs/BROWSER_USAGE.md](./docs/BROWSER_USAGE.md) and `example-projects/expo-web-demo`.
+
 ## Recommended: `setupMockifyerForReactNative`
 
 Use **`setupMockifyerForReactNative`** from `@sgedda/mockifyer-fetch` (same entry as `setupMockifyer` path-wise; you can import from `@sgedda/mockifyer-fetch` or `@sgedda/mockifyer-fetch/react-native` depending on your bundler resolution).

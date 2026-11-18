@@ -141,12 +141,14 @@ Mockifyer uses package.json `browser` field mappings to automatically resolve br
 
 ### Limitations in Browser
 
-- No filesystem access (no recording, no file-based mocks)
+- **No local filesystem recording**. Record through the dashboard proxy or in Node.
 - No Redis/SQLite support
 - All fixtures must be preloaded at initialization
 - Request correlation is simplified (header-only)
 - No Atlas HTML generation
 - No screenshot capture
+
+**Dashboard proxy in the browser:** Set `proxy.baseUrl` (for example `http://localhost:3002`) in `setupMockifyer`. The browser build sends requests to the dashboard's `/api/proxy` using `fetch`, so you can record and replay through the dashboard without Node. `initMockifyerForDashboardProxy` and `initMockifyerForDashboardProxyClients` are not available in browser builds, so use `setupMockifyer` from the browser entry.
 
 ### See Also
 
