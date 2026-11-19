@@ -15,12 +15,13 @@ export const SITE_NAME = 'Mockifyer'
 
 export const DEFAULT_TITLE = 'Mockifyer — Record & Replay HTTP API Mocks'
 export const DEFAULT_DESCRIPTION =
-  'Open-source API mocking for JavaScript and React Native. Record and replay HTTP calls, tweak fields in a dashboard, catch API drift in CI. Mocks stay in your repo.'
+  'Open-source API mocking for JavaScript and React Native. Record and replay HTTP, edit mocks in a dashboard, catch API drift in CI. Mocks stay in your repo.'
 
 /**
  * SEO configuration for all routes.
  * To add a new route: add one entry here with title (without ' | Mockifyer' suffix),
- * description (<=155 chars), and path. The title suffix is added automatically by formatPageTitle.
+ * description (<=155 chars), and path. The title suffix is added automatically by formatPageTitle
+ * unless the title already includes "Mockifyer".
  */
 export const PAGE_SEO: Record<string, PageSeoConfig> = {
   '/': {
@@ -64,10 +65,16 @@ export const PAGE_SEO: Record<string, PageSeoConfig> = {
       'End-to-end walkthrough using the WanderWeird demo: a multi-service Expo app with scenarios, dashboard control, and nested request tracing.',
     path: '/e2e-tutorial',
   },
+  '/guides': {
+    title: 'Mockifyer Guides',
+    description:
+      'Practical guides for record-replay API mocking: network-edge testing, React Native E2E, mock drift, Atlas maps, and browser record-replay.',
+    path: '/guides',
+  },
   '/guides/mock-at-the-network-edge': {
     title: 'Mock at the Network Edge - Testing Guide',
     description:
-      'Stop mocking hooks and components. Mock HTTP at the network edge to test what users see. Real response shapes, survive refactors, catch breaking API changes.',
+      'Stop mocking hooks and components. Mock HTTP at the network edge to test what users see. Real shapes, survive refactors, catch API breaks.',
     path: '/guides/mock-at-the-network-edge',
   },
   '/guides/reproduce-tester-bugs': {
@@ -77,7 +84,7 @@ export const PAGE_SEO: Record<string, PageSeoConfig> = {
     path: '/guides/reproduce-tester-bugs',
   },
   '/guides/stable-react-native-e2e': {
-    title: 'Stable React Native E2E Tests - Detox, Appium, Maestro',
+    title: 'Stable React Native E2E: Detox & Maestro',
     description:
       'Stop Detox, Appium, and Maestro flakes. Lock scenarios with launch arguments, freeze dates, and make the backend deterministic.',
     path: '/guides/stable-react-native-e2e',
@@ -134,17 +141,14 @@ export const PAGE_SEO: Record<string, PageSeoConfig> = {
 
 /**
  * Helper to format page title with site name suffix.
- * Only adds suffix if it's not already present as " | Mockifyer" or uses the em dash.
+ * Skips the suffix when the title already names Mockifyer (or uses the homepage em dash).
  */
 export function formatPageTitle(title: string): string {
-  // Homepage uses em dash, don't add suffix
-  if (title.includes('—')) {
+  if (title.includes('—') || title.includes(SITE_NAME)) {
     return title
   }
-  // Already has the suffix pattern, return as-is
   if (title.endsWith(` | ${SITE_NAME}`)) {
     return title
   }
-  // Add suffix
   return `${title} | ${SITE_NAME}`
 }

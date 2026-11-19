@@ -5,11 +5,20 @@ import {
   DEFAULT_TITLE,
   DEFAULT_DESCRIPTION,
   PAGE_SEO,
+  formatPageTitle,
   type PageSeoConfig,
 } from './seo-config'
 
 // Re-export for use by other modules
-export { SITE_URL, SITE_NAME, DEFAULT_TITLE, DEFAULT_DESCRIPTION, PAGE_SEO, type PageSeoConfig }
+export {
+  SITE_URL,
+  SITE_NAME,
+  DEFAULT_TITLE,
+  DEFAULT_DESCRIPTION,
+  PAGE_SEO,
+  formatPageTitle,
+  type PageSeoConfig,
+}
 
 export const DEFAULT_KEYWORDS = [
   'API mocking',
@@ -44,13 +53,6 @@ export const NOT_FOUND_SEO: PageSeoConfig = {
 export function getPageSeo(pathname: string): PageSeoConfig | undefined {
   const normalized = pathname.replace(/\/index\.html$/, '').replace(/\/$/, '') || '/'
   return PAGE_SEO[normalized]
-}
-
-export function formatPageTitle(title: string): string {
-  if (title === DEFAULT_TITLE || title.includes(SITE_NAME)) {
-    return title
-  }
-  return `${title} | ${SITE_NAME}`
 }
 
 export function absoluteUrl(path = '/'): string {
@@ -100,5 +102,27 @@ export function buildFaqPageJsonLd(
         text: item.answer,
       },
     })),
+  }
+}
+
+/** TechArticle schema for guide pages. */
+export function buildTechArticleJsonLd(config: PageSeoConfig): Record<string, unknown> {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'TechArticle',
+    headline: config.title,
+    description: config.description,
+    url: absoluteUrl(config.path),
+    author: {
+      '@type': 'Person',
+      name: 'Sebastian Gedda',
+      url: 'https://github.com/sgedda',
+    },
+    publisher: {
+      '@type': 'Organization',
+      name: SITE_NAME,
+      url: SITE_URL,
+    },
+    mainEntityOfPage: absoluteUrl(config.path),
   }
 }

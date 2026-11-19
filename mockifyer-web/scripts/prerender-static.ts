@@ -13,12 +13,19 @@ import {
   formatPageTitle,
   type PageSeoConfig,
 } from '../frontend/src/lib/seo-config';
+import {
+  getPrerenderBodyContent,
+  getRouteJsonLd,
+  renderPrerenderBodyHtml,
+} from '../frontend/src/lib/prerender-content';
 
 export interface SeoManifestEntry {
   title: string;
   description: string;
   path: string;
   noIndex?: boolean;
+  bodyHtml?: string;
+  jsonLd?: Record<string, unknown>;
 }
 
 export const NOT_FOUND_SEO: PageSeoConfig = {
@@ -38,8 +45,33 @@ export function normalizeShellHtml(html: string): string {
   return html.replace(/<div id="root">[\s\S]*?<\/div>/, '<div id="root"></div>');
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function escapeAttr(value: string): string {
+  return escapeHtml(value).replace(/"/g, '&quot;');
+}
+
+function buildRootInnerHtml(routePath: string, seoConfig: PageSeoConfig): string {
+  const fullBody = getPrerenderBodyContent(routePath);
+  if (fullBody) {
+    return renderPrerenderBodyHtml(fullBody);
+  }
+
+  const h1Text = seoConfig.title
+    .replace(` | ${SITE_NAME}`, '')
+    .replace(' - Testing Guide', '')
+    .replace(' - ', ': ');
+
+  return `<div style="max-width:1200px;margin:0 auto;padding:2rem"><h1>${escapeHtml(h1Text)}</h1><p>${escapeHtml(seoConfig.description)}</p><noscript><p>This site requires JavaScript to be enabled.</p></noscript></div>`;
+}
+
 /**
- * Inject per-route SEO head tags and visible H1/body into the SPA shell.
+ * Inject per-route SEO head tags and visible body into the SPA shell.
  */
 export function generateHtml(
   routePath: string,
@@ -47,6 +79,7 @@ export function generateHtml(
   baseHtml: string
 ): string {
   const title = formatPageTitle(seoConfig.title);
+  const isNotFound = Boolean(seoConfig.noIndex) || routePath === '/404';
   const canonical =
     routePath === '/' ? HOMEPAGE_CANONICAL : `${SITE_URL}${routePath}`;
 
@@ -57,16 +90,25 @@ export function generateHtml(
     `<meta name="description" content="${escapeAttr(seoConfig.description)}" />`
   );
 
-  const robotsContent = seoConfig.noIndex ? 'noindex, nofollow' : 'index, follow';
+  const robotsContent = isNotFound ? 'noindex, nofollow' : 'index, follow';
   html = html.replace(
     /<meta name="robots" content=".*?"(\s*\/)?>/,
     `<meta name="robots" content="${robotsContent}" />`
   );
 
-  html = html.replace(
-    /<link rel="canonical" href=".*?"(\s*\/)?>/,
-    `<link rel="canonical" href="${canonical}" />`
-  );
+  if (isNotFound) {
+    html = html.replace(/<link rel="canonical" href=".*?"(\s*\/)?>\s*/i, '');
+    html = html.replace(/<meta property="og:url" content=".*?"(\s*\/)?>\s*/i, '');
+  } else {
+    html = html.replace(
+      /<link rel="canonical" href=".*?"(\s*\/)?>/,
+      `<link rel="canonical" href="${canonical}" />`
+    );
+    html = html.replace(
+      /<meta property="og:url" content=".*?"(\s*\/)?>/,
+      `<meta property="og:url" content="${canonical}" />`
+    );
+  }
 
   html = html.replace(
     /<meta property="og:title" content=".*?"(\s*\/)?>/,
@@ -75,10 +117,6 @@ export function generateHtml(
   html = html.replace(
     /<meta property="og:description"[\s\S]*?content=".*?"[\s\S]*?\/>/,
     `<meta property="og:description" content="${escapeAttr(seoConfig.description)}" />`
-  );
-  html = html.replace(
-    /<meta property="og:url" content=".*?"(\s*\/)?>/,
-    `<meta property="og:url" content="${canonical}" />`
   );
 
   html = html.replace(
@@ -90,32 +128,23 @@ export function generateHtml(
     `<meta name="twitter:description" content="${escapeAttr(seoConfig.description)}" />`
   );
 
-  // Homepage keeps SoftwareApplication JSON-LD; other routes strip it
-  if (routePath !== '/') {
+  // Homepage keeps SoftwareApplication JSON-LD; other routes replace or strip it
+  const routeJsonLd = getRouteJsonLd(routePath);
+  if (routePath === '/') {
+    // keep shell SoftwareApplication
+  } else if (routeJsonLd) {
+    html = html.replace(
+      /<script type="application\/ld\+json">[\s\S]*?<\/script>/,
+      `<script type="application/ld+json">${JSON.stringify(routeJsonLd)}</script>`
+    );
+  } else {
     html = html.replace(/<script type="application\/ld\+json">[\s\S]*?<\/script>/, '');
   }
 
-  const h1Text = seoConfig.title
-    .replace(` | ${SITE_NAME}`, '')
-    .replace(' - Testing Guide', '')
-    .replace(' - ', ': ');
-
-  const seoContent = `<div id="root"><div style="max-width:1200px;margin:0 auto;padding:2rem"><h1>${escapeHtml(h1Text)}</h1><p>${escapeHtml(seoConfig.description)}</p><noscript><p>This site requires JavaScript to be enabled.</p></noscript></div></div>`;
-
+  const seoContent = `<div id="root">${buildRootInnerHtml(routePath, seoConfig)}</div>`;
   html = html.replace(/<div id="root"><\/div>/, seoContent);
 
   return html;
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
-
-function escapeAttr(value: string): string {
-  return escapeHtml(value).replace(/"/g, '&quot;');
 }
 
 function writeRouteHtml(publicDir: string, routePath: string, html: string): string {
@@ -154,11 +183,15 @@ async function prerender(): Promise<void> {
   for (const [routePath, seoConfig] of Object.entries(PAGE_SEO)) {
     const generatedHtml = generateHtml(routePath, seoConfig, shellHtml);
     const relativePath = writeRouteHtml(publicDir, routePath, generatedHtml);
+    const bodyContent = getPrerenderBodyContent(routePath);
+    const jsonLd = getRouteJsonLd(routePath);
     manifest[routePath] = {
       title: formatPageTitle(seoConfig.title),
       description: seoConfig.description,
       path: routePath,
       noIndex: seoConfig.noIndex,
+      bodyHtml: bodyContent ? renderPrerenderBodyHtml(bodyContent) : undefined,
+      jsonLd: jsonLd ?? undefined,
     };
     console.log(`  ✓ ${routePath} → ${relativePath}`);
     count++;

@@ -22,6 +22,7 @@ const Features = lazy(() => import('./pages/Features'))
 const FAQ = lazy(() => import('./pages/FAQ'))
 const Packages = lazy(() => import('./pages/Packages'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
+const Guides = lazy(() => import('./pages/Guides'))
 const MockAtTheNetworkEdge = lazy(() => import('./pages/guides/MockAtTheNetworkEdge'))
 const ReproduceTesterBugs = lazy(() => import('./pages/guides/ReproduceTesterBugs'))
 const StableReactNativeE2E = lazy(() => import('./pages/guides/StableReactNativeE2E'))
@@ -98,6 +99,7 @@ function App() {
               <Route path="/dashboard" element={<Dashboard />} />
               
               {/* Guides */}
+              <Route path="/guides" element={<Guides />} />
               <Route path="/guides/mock-at-the-network-edge" element={<MockAtTheNetworkEdge />} />
               <Route path="/guides/reproduce-tester-bugs" element={<ReproduceTesterBugs />} />
               <Route path="/guides/stable-react-native-e2e" element={<StableReactNativeE2E />} />

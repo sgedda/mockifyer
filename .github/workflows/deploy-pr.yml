@@ -76,6 +76,7 @@ jobs:
                   echo "Verifying per-route HTML files..."
                   test -f public/features.html
                   test -f public/faq.html
+                  test -f public/guides.html
                   test -f public/guides/react-native-without-msw.html
                   test -f public/guides/mock-drift.html
                   test -f public/404.html

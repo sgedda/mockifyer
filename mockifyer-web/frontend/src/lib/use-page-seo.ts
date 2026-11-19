@@ -13,12 +13,14 @@ import {
   absoluteUrl,
   buildFaqPageJsonLd,
   buildSoftwareApplicationJsonLd,
+  buildTechArticleJsonLd,
   formatPageTitle,
   type PageSeoConfig,
 } from './seo'
 
 const JSON_LD_ID = 'mockifyer-json-ld'
 const FAQ_JSON_LD_ID = 'mockifyer-faq-json-ld'
+const ARTICLE_JSON_LD_ID = 'mockifyer-article-json-ld'
 
 function upsertMeta(name: string, content: string, attribute: 'name' | 'property' = 'name'): void {
   let element = document.head.querySelector<HTMLMetaElement>(
@@ -108,8 +110,10 @@ export function usePageSeo(config: PageSeoConfig | undefined): void {
 
     const isHome = config.path === '/'
     const isFaq = config.path === '/faq'
+    const isGuideArticle = Boolean(config.path?.startsWith('/guides/'))
     upsertJsonLd(JSON_LD_ID, isHome ? buildSoftwareApplicationJsonLd() : null)
     upsertJsonLd(FAQ_JSON_LD_ID, isFaq ? buildFaqPageJsonLd(HOME_FAQ) : null)
+    upsertJsonLd(ARTICLE_JSON_LD_ID, isGuideArticle ? buildTechArticleJsonLd(config) : null)
 
     return () => {
       document.title = DEFAULT_TITLE
@@ -124,6 +128,7 @@ export function usePageSeo(config: PageSeoConfig | undefined): void {
       upsertMeta('twitter:image', OG_IMAGE_URL)
       upsertJsonLd(JSON_LD_ID, buildSoftwareApplicationJsonLd())
       upsertJsonLd(FAQ_JSON_LD_ID, null)
+      upsertJsonLd(ARTICLE_JSON_LD_ID, null)
     }
   }, [config])
 }

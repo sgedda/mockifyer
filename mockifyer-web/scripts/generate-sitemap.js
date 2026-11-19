@@ -41,7 +41,7 @@ var import_path = __toESM(require("path"));
 // frontend/src/lib/seo-config.ts
 var SITE_URL = "https://mockifyer.dev";
 var DEFAULT_TITLE = "Mockifyer \u2014 Record & Replay HTTP API Mocks";
-var DEFAULT_DESCRIPTION = "Open-source API mocking for JavaScript and React Native. Record and replay HTTP calls, tweak fields in a dashboard, catch API drift in CI. Mocks stay in your repo.";
+var DEFAULT_DESCRIPTION = "Open-source API mocking for JavaScript and React Native. Record and replay HTTP, edit mocks in a dashboard, catch API drift in CI. Mocks stay in your repo.";
 var PAGE_SEO = {
   "/": {
     title: DEFAULT_TITLE,
@@ -78,9 +78,14 @@ var PAGE_SEO = {
     description: "End-to-end walkthrough using the WanderWeird demo: a multi-service Expo app with scenarios, dashboard control, and nested request tracing.",
     path: "/e2e-tutorial"
   },
+  "/guides": {
+    title: "Mockifyer Guides",
+    description: "Practical guides for record-replay API mocking: network-edge testing, React Native E2E, mock drift, Atlas maps, and browser record-replay.",
+    path: "/guides"
+  },
   "/guides/mock-at-the-network-edge": {
     title: "Mock at the Network Edge - Testing Guide",
-    description: "Stop mocking hooks and components. Mock HTTP at the network edge to test what users see. Real response shapes, survive refactors, catch breaking API changes.",
+    description: "Stop mocking hooks and components. Mock HTTP at the network edge to test what users see. Real shapes, survive refactors, catch API breaks.",
     path: "/guides/mock-at-the-network-edge"
   },
   "/guides/reproduce-tester-bugs": {
@@ -89,7 +94,7 @@ var PAGE_SEO = {
     path: "/guides/reproduce-tester-bugs"
   },
   "/guides/stable-react-native-e2e": {
-    title: "Stable React Native E2E Tests - Detox, Appium, Maestro",
+    title: "Stable React Native E2E: Detox & Maestro",
     description: "Stop Detox, Appium, and Maestro flakes. Lock scenarios with launch arguments, freeze dates, and make the backend deterministic.",
     path: "/guides/stable-react-native-e2e"
   },
@@ -147,6 +152,7 @@ var ROUTE_CONFIG = {
   "/comparisons": { priority: "0.7", changefreq: "monthly" },
   "/config-reference": { priority: "0.7", changefreq: "monthly" },
   "/date-config": { priority: "0.7", changefreq: "monthly" },
+  "/guides": { priority: "0.8", changefreq: "monthly" },
   "/guides/mock-at-the-network-edge": { priority: "0.7", changefreq: "monthly" },
   "/guides/mock-drift": { priority: "0.7", changefreq: "monthly" },
   "/guides/mockifyer-atlas": { priority: "0.7", changefreq: "monthly" },
@@ -157,9 +163,6 @@ var ROUTE_CONFIG = {
   "/contact": { priority: "0.5", changefreq: "yearly" }
 };
 var STATIC_CONTENT_ROUTES = [
-  { loc: "/getting-started.md", priority: "0.6", changefreq: "monthly" },
-  { loc: "/overview.md", priority: "0.6", changefreq: "monthly" },
-  { loc: "/config-reference.md", priority: "0.6", changefreq: "monthly" },
   { loc: "/llms.txt", priority: "0.6", changefreq: "monthly" },
   { loc: "/llms-full.txt", priority: "0.6", changefreq: "monthly" }
 ];

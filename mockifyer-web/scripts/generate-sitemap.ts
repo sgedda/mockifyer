@@ -24,6 +24,7 @@ const ROUTE_CONFIG: Record<string, RouteMeta> = {
   '/comparisons': { priority: '0.7', changefreq: 'monthly' },
   '/config-reference': { priority: '0.7', changefreq: 'monthly' },
   '/date-config': { priority: '0.7', changefreq: 'monthly' },
+  '/guides': { priority: '0.8', changefreq: 'monthly' },
   '/guides/mock-at-the-network-edge': { priority: '0.7', changefreq: 'monthly' },
   '/guides/mock-drift': { priority: '0.7', changefreq: 'monthly' },
   '/guides/mockifyer-atlas': { priority: '0.7', changefreq: 'monthly' },
@@ -34,11 +35,12 @@ const ROUTE_CONFIG: Record<string, RouteMeta> = {
   '/contact': { priority: '0.5', changefreq: 'yearly' },
 };
 
-/** Non-HTML content URLs that should stay in the sitemap. */
+/**
+ * Non-HTML content URLs that should stay in the sitemap.
+ * Raw .md mirrors stay reachable and listed in llms.txt, but are omitted here
+ * so they do not compete with the HTML pages in search.
+ */
 const STATIC_CONTENT_ROUTES: Array<{ loc: string } & RouteMeta> = [
-  { loc: '/getting-started.md', priority: '0.6', changefreq: 'monthly' },
-  { loc: '/overview.md', priority: '0.6', changefreq: 'monthly' },
-  { loc: '/config-reference.md', priority: '0.6', changefreq: 'monthly' },
   { loc: '/llms.txt', priority: '0.6', changefreq: 'monthly' },
   { loc: '/llms-full.txt', priority: '0.6', changefreq: 'monthly' },
 ];

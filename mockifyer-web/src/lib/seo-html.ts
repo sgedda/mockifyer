@@ -13,6 +13,8 @@ export interface SeoRouteConfig {
   description: string;
   path: string;
   noIndex?: boolean;
+  bodyHtml?: string;
+  jsonLd?: Record<string, unknown>;
 }
 
 interface SeoManifest {
@@ -96,6 +98,19 @@ function escapeAttr(value: string): string {
   return escapeHtml(value).replace(/"/g, '&quot;');
 }
 
+function buildFallbackRootHtml(routePath: string, seoConfig: SeoRouteConfig): string {
+  if (seoConfig.bodyHtml) {
+    return seoConfig.bodyHtml;
+  }
+
+  const h1Text = seoConfig.title
+    .replace(/ \| Mockifyer$/, '')
+    .replace(' - Testing Guide', '')
+    .replace(' - ', ': ');
+
+  return `<div style="max-width:1200px;margin:0 auto;padding:2rem"><h1>${escapeHtml(h1Text)}</h1><p>${escapeHtml(seoConfig.description)}</p><noscript><p>This site requires JavaScript to be enabled.</p></noscript></div>`;
+}
+
 /**
  * Inject route SEO into an SPA shell (same transforms as scripts/prerender-static).
  */
@@ -106,9 +121,10 @@ export function injectSeoHtml(
   siteUrl: string
 ): string {
   const title = seoConfig.title;
+  const isNotFound = Boolean(seoConfig.noIndex) || routePath === '/404';
   const canonical =
-    routePath === '/' || routePath === '/404'
-      ? `${siteUrl}${routePath === '/' ? HOMEPAGE_CANONICAL_SUFFIX : routePath}`
+    routePath === '/'
+      ? `${siteUrl}${HOMEPAGE_CANONICAL_SUFFIX}`
       : `${siteUrl}${routePath}`;
 
   let html = baseHtml.replace(/<title>.*?<\/title>/, `<title>${escapeHtml(title)}</title>`);
@@ -118,16 +134,25 @@ export function injectSeoHtml(
     `<meta name="description" content="${escapeAttr(seoConfig.description)}" />`
   );
 
-  const robotsContent = seoConfig.noIndex ? 'noindex, nofollow' : 'index, follow';
+  const robotsContent = isNotFound ? 'noindex, nofollow' : 'index, follow';
   html = html.replace(
     /<meta name="robots" content=".*?"(\s*\/)?>/,
     `<meta name="robots" content="${robotsContent}" />`
   );
 
-  html = html.replace(
-    /<link rel="canonical" href=".*?"(\s*\/)?>/,
-    `<link rel="canonical" href="${canonical}" />`
-  );
+  if (isNotFound) {
+    html = html.replace(/<link rel="canonical" href=".*?"(\s*\/)?>\s*/i, '');
+    html = html.replace(/<meta property="og:url" content=".*?"(\s*\/)?>\s*/i, '');
+  } else {
+    html = html.replace(
+      /<link rel="canonical" href=".*?"(\s*\/)?>/,
+      `<link rel="canonical" href="${canonical}" />`
+    );
+    html = html.replace(
+      /<meta property="og:url" content=".*?"(\s*\/)?>/,
+      `<meta property="og:url" content="${canonical}" />`
+    );
+  }
 
   html = html.replace(
     /<meta property="og:title" content=".*?"(\s*\/)?>/,
@@ -136,10 +161,6 @@ export function injectSeoHtml(
   html = html.replace(
     /<meta property="og:description"[\s\S]*?content=".*?"[\s\S]*?\/>/,
     `<meta property="og:description" content="${escapeAttr(seoConfig.description)}" />`
-  );
-  html = html.replace(
-    /<meta property="og:url" content=".*?"(\s*\/)?>/,
-    `<meta property="og:url" content="${canonical}" />`
   );
 
   html = html.replace(
@@ -151,16 +172,18 @@ export function injectSeoHtml(
     `<meta name="twitter:description" content="${escapeAttr(seoConfig.description)}" />`
   );
 
-  if (routePath !== '/') {
+  if (routePath === '/') {
+    // keep shell SoftwareApplication JSON-LD
+  } else if (seoConfig.jsonLd) {
+    html = html.replace(
+      /<script type="application\/ld\+json">[\s\S]*?<\/script>/,
+      `<script type="application/ld+json">${JSON.stringify(seoConfig.jsonLd)}</script>`
+    );
+  } else {
     html = html.replace(/<script type="application\/ld\+json">[\s\S]*?<\/script>/, '');
   }
 
-  const h1Text = title
-    .replace(/ \| Mockifyer$/, '')
-    .replace(' - Testing Guide', '')
-    .replace(' - ', ': ');
-
-  const seoContent = `<div id="root"><div style="max-width:1200px;margin:0 auto;padding:2rem"><h1>${escapeHtml(h1Text)}</h1><p>${escapeHtml(seoConfig.description)}</p><noscript><p>This site requires JavaScript to be enabled.</p></noscript></div></div>`;
+  const seoContent = `<div id="root">${buildFallbackRootHtml(routePath, seoConfig)}</div>`;
   html = html.replace(/<div id="root"><\/div>/, seoContent);
 
   return html;
@@ -224,7 +247,6 @@ export function buildNotFoundHtml(): string {
   <title>Page Not Found | Mockifyer</title>
   <meta name="description" content="The page you are looking for does not exist." />
   <meta name="robots" content="noindex, nofollow" />
-  <link rel="canonical" href="https://mockifyer.dev/404" />
 </head>
 <body>
   <h1>Page Not Found</h1>
