@@ -66,12 +66,12 @@ app.use((req, res, next) => {
 });
 
 // Trailing slash redirect (301) - must be before other routes
-// Only redirect GET/HEAD requests, exclude /guides directory to prevent redirect loop
+// Only redirect GET/HEAD requests. Pair with express.static({ redirect: false })
+// so directory-backed paths like /guides cannot loop with /guides/.
 app.use((req, res, next) => {
   if (
     (req.method === 'GET' || req.method === 'HEAD') &&
     req.path !== '/' &&
-    req.path !== '/guides' && // Exclude /guides directory to prevent loop with express.static
     req.path.endsWith('/')
   ) {
     const query = req.url.slice(req.path.length);
@@ -564,11 +564,13 @@ app.use((req, res, next) => {
   next();
 });
 
-// Serve static files from public directory (but not for API routes)
+// Serve static files from public directory (but not for API routes).
+// redirect: false prevents express.static from 301'ing /guides → /guides/
+// when public/guides/ exists for nested guide HTML files.
 app.use((req, res, next) => {
   // Only serve static files for GET/HEAD requests that aren't API routes
   if ((req.method === 'GET' || req.method === 'HEAD') && !req.path.startsWith('/api/')) {
-    express.static(path.join(__dirname, '../public'))(req, res, next);
+    express.static(path.join(__dirname, '../public'), { redirect: false })(req, res, next);
   } else {
     next();
   }
@@ -588,6 +590,7 @@ const HTML_ROUTES_FALLBACK = [
   '/packages',
   '/dashboard',
   '/comparisons',
+  '/guides',
   '/guides/mock-at-the-network-edge',
   '/guides/reproduce-tester-bugs',
   '/guides/stable-react-native-e2e',
@@ -637,6 +640,7 @@ app.get('*', (req, res) => {
   }
 
   // Unknown routes: 404 with dedicated head (noindex), not the homepage shell
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
   return res.status(404).send(buildNotFoundHtml());
 });
 

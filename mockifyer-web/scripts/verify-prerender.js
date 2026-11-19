@@ -39,8 +39,9 @@ var import_path = __toESM(require("path"));
 
 // frontend/src/lib/seo-config.ts
 var SITE_URL = "https://mockifyer.dev";
+var SITE_NAME = "Mockifyer";
 var DEFAULT_TITLE = "Mockifyer \u2014 Record & Replay HTTP API Mocks";
-var DEFAULT_DESCRIPTION = "Open-source API mocking for JavaScript and React Native. Record and replay HTTP calls, tweak fields in a dashboard, catch API drift in CI. Mocks stay in your repo.";
+var DEFAULT_DESCRIPTION = "Open-source API mocking for JavaScript and React Native. Record and replay HTTP, edit mocks in a dashboard, catch API drift in CI. Mocks stay in your repo.";
 var PAGE_SEO = {
   "/": {
     title: DEFAULT_TITLE,
@@ -77,9 +78,14 @@ var PAGE_SEO = {
     description: "End-to-end walkthrough using the WanderWeird demo: a multi-service Expo app with scenarios, dashboard control, and nested request tracing.",
     path: "/e2e-tutorial"
   },
+  "/guides": {
+    title: "Mockifyer Guides",
+    description: "Practical guides for record-replay API mocking: network-edge testing, React Native E2E, mock drift, Atlas maps, and browser record-replay.",
+    path: "/guides"
+  },
   "/guides/mock-at-the-network-edge": {
     title: "Mock at the Network Edge - Testing Guide",
-    description: "Stop mocking hooks and components. Mock HTTP at the network edge to test what users see. Real response shapes, survive refactors, catch breaking API changes.",
+    description: "Stop mocking hooks and components. Mock HTTP at the network edge to test what users see. Real shapes, survive refactors, catch API breaks.",
     path: "/guides/mock-at-the-network-edge"
   },
   "/guides/reproduce-tester-bugs": {
@@ -88,7 +94,7 @@ var PAGE_SEO = {
     path: "/guides/reproduce-tester-bugs"
   },
   "/guides/stable-react-native-e2e": {
-    title: "Stable React Native E2E Tests - Detox, Appium, Maestro",
+    title: "Stable React Native E2E: Detox & Maestro",
     description: "Stop Detox, Appium, and Maestro flakes. Lock scenarios with launch arguments, freeze dates, and make the backend deterministic.",
     path: "/guides/stable-react-native-e2e"
   },
@@ -133,14 +139,63 @@ var PAGE_SEO = {
     path: "/comparisons"
   }
 };
+function formatPageTitle(title) {
+  if (title.includes("\u2014") || title.includes(SITE_NAME)) {
+    return title;
+  }
+  if (title.endsWith(` | ${SITE_NAME}`)) {
+    return title;
+  }
+  return `${title} | ${SITE_NAME}`;
+}
+
+// frontend/src/lib/prerender-content.ts
+var CONTENT_ROUTES_WITH_FULL_BODY = /* @__PURE__ */ new Set([
+  "/guides",
+  "/guides/mock-at-the-network-edge",
+  "/guides/reproduce-tester-bugs",
+  "/guides/stable-react-native-e2e",
+  "/guides/mock-drift",
+  "/guides/react-native-without-msw",
+  "/guides/browser-record-replay",
+  "/guides/mockifyer-atlas",
+  "/comparisons",
+  "/faq",
+  "/getting-started",
+  "/e2e-tutorial"
+]);
 
 // scripts/verify-prerender.ts
 var HOMEPAGE_CANONICAL = `${SITE_URL}/`;
+var MAX_TITLE_LENGTH = 60;
+var MAX_DESCRIPTION_LENGTH = 155;
+var MIN_CONTENT_WORDS = 80;
+var MIN_INTERNAL_LINKS = 3;
 function htmlPathForRoute(publicDir, routePath) {
   if (routePath === "/") {
     return import_path.default.join(publicDir, "index.html");
   }
   return import_path.default.join(publicDir, `${routePath.replace(/^\//, "")}.html`);
+}
+function extractRootHtml(html) {
+  const rootMatch = html.match(/<div id="root">([\s\S]*)<\/div>\s*<\/body>/i) ?? html.match(/<div id="root">([\s\S]*)<\/div>\s*<script/i);
+  return rootMatch?.[1] ?? "";
+}
+function decodeBasicEntities(value) {
+  return value.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+}
+function countWordsInRoot(html) {
+  const rootHtml = extractRootHtml(html);
+  const text = rootHtml.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  if (!text) {
+    return 0;
+  }
+  return text.split(" ").filter(Boolean).length;
+}
+function countInternalLinksInRoot(html) {
+  const rootHtml = extractRootHtml(html);
+  const links = rootHtml.match(/<a\s+[^>]*href="(\/[^"]*)"/gi) ?? [];
+  return links.length;
 }
 function verify() {
   const publicDir = import_path.default.join(__dirname, "../public");
@@ -160,8 +215,32 @@ function verify() {
     if (!/<h1[\s>]/.test(notFoundHtml)) {
       failures.push({ route: "/404", reason: "missing <h1>" });
     }
+    if (/<link rel="canonical"/i.test(notFoundHtml)) {
+      failures.push({ route: "/404", reason: "404 HTML must not include canonical" });
+    }
+    if (/property="og:url"/i.test(notFoundHtml)) {
+      failures.push({ route: "/404", reason: "404 HTML must not include og:url" });
+    }
   }
-  for (const routePath of Object.keys(PAGE_SEO)) {
+  if (!import_fs.default.existsSync(import_path.default.join(publicDir, "guides.html"))) {
+    failures.push({ route: "/guides", reason: "guides.html missing (hub page)" });
+  }
+  const sitemapPath = import_path.default.join(publicDir, "sitemap.xml");
+  if (import_fs.default.existsSync(sitemapPath)) {
+    const sitemap = import_fs.default.readFileSync(sitemapPath, "utf-8");
+    if (!sitemap.includes(`${SITE_URL}/guides<`) && !sitemap.includes(`${SITE_URL}/guides</loc>`)) {
+      failures.push({ route: "/guides", reason: "sitemap.xml missing /guides" });
+    }
+    for (const mdRoute of ["/getting-started.md", "/overview.md", "/config-reference.md"]) {
+      if (sitemap.includes(mdRoute)) {
+        failures.push({
+          route: mdRoute,
+          reason: "raw .md URL must not appear in sitemap.xml"
+        });
+      }
+    }
+  }
+  for (const [routePath, seo] of Object.entries(PAGE_SEO)) {
     const filePath = htmlPathForRoute(publicDir, routePath);
     if (!import_fs.default.existsSync(filePath)) {
       failures.push({ route: routePath, reason: `missing file ${import_path.default.relative(publicDir, filePath)}` });
@@ -169,13 +248,27 @@ function verify() {
     }
     const html = import_fs.default.readFileSync(filePath, "utf-8");
     const titleMatch = html.match(/<title>(.*?)<\/title>/i);
+    const descriptionMatch = html.match(/<meta name="description"[^>]*content="([^"]*)"/i);
     const canonicalMatch = html.match(/<link rel="canonical" href="([^"]+)"/i);
     const h1Match = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
     const expectedCanonical = routePath === "/" ? HOMEPAGE_CANONICAL : `${SITE_URL}${routePath}`;
+    const expectedTitle = formatPageTitle(seo.title);
     if (!titleMatch?.[1]?.trim()) {
       failures.push({ route: routePath, reason: "missing <title>" });
     } else {
-      const title = titleMatch[1];
+      const title = decodeBasicEntities(titleMatch[1]);
+      if (title !== expectedTitle) {
+        failures.push({
+          route: routePath,
+          reason: `title is "${title}", expected "${expectedTitle}"`
+        });
+      }
+      if (title.length > MAX_TITLE_LENGTH) {
+        failures.push({
+          route: routePath,
+          reason: `title length ${title.length} exceeds ${MAX_TITLE_LENGTH}`
+        });
+      }
       const previous = titles.get(title);
       if (previous && previous !== routePath) {
         failures.push({
@@ -184,6 +277,14 @@ function verify() {
         });
       }
       titles.set(title, routePath);
+    }
+    if (!descriptionMatch?.[1]) {
+      failures.push({ route: routePath, reason: "missing meta description" });
+    } else if (descriptionMatch[1].length > MAX_DESCRIPTION_LENGTH) {
+      failures.push({
+        route: routePath,
+        reason: `description length ${descriptionMatch[1].length} exceeds ${MAX_DESCRIPTION_LENGTH}`
+      });
     }
     if (!canonicalMatch?.[1]) {
       failures.push({ route: routePath, reason: "missing canonical" });
@@ -203,6 +304,28 @@ function verify() {
     }
     if (routePath !== "/" && /id="root"><\/div>/.test(html)) {
       failures.push({ route: routePath, reason: "empty #root (SPA shell only)" });
+    }
+    if (CONTENT_ROUTES_WITH_FULL_BODY.has(routePath)) {
+      const wordCount = countWordsInRoot(html);
+      const linkCount = countInternalLinksInRoot(html);
+      if (wordCount < MIN_CONTENT_WORDS) {
+        failures.push({
+          route: routePath,
+          reason: `content body has ${wordCount} words, expected >= ${MIN_CONTENT_WORDS}`
+        });
+      }
+      if (linkCount < MIN_INTERNAL_LINKS) {
+        failures.push({
+          route: routePath,
+          reason: `content body has ${linkCount} internal links, expected >= ${MIN_INTERNAL_LINKS}`
+        });
+      }
+    }
+    if (routePath === "/faq" && !/"@type"\s*:\s*"FAQPage"/.test(html)) {
+      failures.push({ route: routePath, reason: "missing FAQPage JSON-LD" });
+    }
+    if (routePath.startsWith("/guides/") && !/"@type"\s*:\s*"TechArticle"/.test(html)) {
+      failures.push({ route: routePath, reason: "missing TechArticle JSON-LD" });
     }
   }
   if (failures.length > 0) {

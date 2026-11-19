@@ -3,12 +3,13 @@ import { test, expect } from '@playwright/test';
 // Routes that should have unique SEO
 const ROUTES = [
   { path: '/', title: 'Mockifyer — Record & Replay HTTP API Mocks', h1: /Mockifyer/ },
-  { path: '/getting-started', title: 'Getting Started with Mockifyer | Mockifyer', h1: /Getting Started/i },
-  { path: '/features', title: 'Mockifyer Features: Record, Replay, Scenarios | Mockifyer', h1: /Mockifyer Features/i },
-  { path: '/faq', title: 'Mockifyer FAQ: Record-Replay API Mocks | Mockifyer', h1: /FAQ/i },
-  { path: '/packages', title: 'Mockifyer npm Packages for Axios and Fetch | Mockifyer', h1: /Packages/i },
-  { path: '/dashboard', title: 'Mockifyer Dashboard and MCP Tools | Mockifyer', h1: /Dashboard/i },
-  { path: '/comparisons', title: 'Mockifyer vs MSW, Polly.js, and Nock | Mockifyer', h1: /Mockifyer vs/i },
+  { path: '/getting-started', title: 'Getting Started with Mockifyer', h1: /Getting Started/i },
+  { path: '/features', title: 'Mockifyer Features: Record, Replay, Scenarios', h1: /Mockifyer Features/i },
+  { path: '/faq', title: 'Mockifyer FAQ: Record-Replay API Mocks', h1: /FAQ/i },
+  { path: '/packages', title: 'Mockifyer npm Packages for Axios and Fetch', h1: /Packages/i },
+  { path: '/dashboard', title: 'Mockifyer Dashboard and MCP Tools', h1: /Dashboard/i },
+  { path: '/comparisons', title: 'Mockifyer vs MSW, Polly.js, and Nock', h1: /Mockifyer vs/i },
+  { path: '/guides', title: 'Mockifyer Guides', h1: /Guides/i },
   { path: '/guides/react-native-without-msw', title: 'MSW vs Recording in React Native | Mockifyer', h1: /MSW/i },
 ];
 
@@ -91,6 +92,7 @@ test.describe('SEO: Trailing slash handling', () => {
     '/getting-started/',
     '/features/',
     '/faq/',
+    '/guides/',
   ];
 
   for (const path of PATHS_WITH_TRAILING_SLASH) {
@@ -181,27 +183,34 @@ test.describe('SEO: Meta tags and JSON-LD', () => {
     // This test only verifies prerendered HTML doesn't copy homepage schema
   });
 
-  test('FAQ page has FAQPage JSON-LD', async ({ page }) => {
-    await page.goto('/faq');
+  test('FAQ page has FAQPage JSON-LD in raw HTML', async ({ page }) => {
+    const response = await page.goto('/faq');
+    const html = await response?.text();
+    expect(html).toMatch(/"@type"\s*:\s*"FAQPage"/);
+
     await page.waitForLoadState('networkidle');
-    
-    // Wait a bit for client-side SEO to update
     await page.waitForTimeout(500);
-    
+
     const jsonLdScripts = await page.locator('script[type="application/ld+json"]').all();
     const jsonLdTexts = await Promise.all(jsonLdScripts.map(script => script.textContent()));
-    
+
     const faqJsonLd = jsonLdTexts.find(text => {
       if (!text) return false;
       const data = JSON.parse(text);
       return data['@type'] === 'FAQPage';
     });
-    
+
     expect(faqJsonLd).toBeTruthy();
     const faqData = JSON.parse(faqJsonLd!);
     expect(faqData.mainEntity).toBeTruthy();
     expect(Array.isArray(faqData.mainEntity)).toBe(true);
     expect(faqData.mainEntity.length).toBeGreaterThan(0);
+  });
+
+  test('Guide pages have TechArticle JSON-LD in raw HTML', async ({ page }) => {
+    const response = await page.goto('/guides/mock-drift');
+    const html = await response?.text();
+    expect(html).toMatch(/"@type"\s*:\s*"TechArticle"/);
   });
 
   test('All routes have OG and Twitter meta tags', async ({ page }) => {

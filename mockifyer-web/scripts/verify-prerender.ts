@@ -2,13 +2,19 @@
 /**
  * Build-time check: every PAGE_SEO route must have prerendered HTML with a
  * self-referencing canonical (not the homepage), unique title, and an H1.
+ * Content routes must also ship full body HTML with internal <a> links.
  */
 
 import fs from 'fs';
 import path from 'path';
-import { PAGE_SEO, SITE_URL } from '../frontend/src/lib/seo-config';
+import { PAGE_SEO, SITE_URL, formatPageTitle } from '../frontend/src/lib/seo-config';
+import { CONTENT_ROUTES_WITH_FULL_BODY } from '../frontend/src/lib/prerender-content';
 
 const HOMEPAGE_CANONICAL = `${SITE_URL}/`;
+const MAX_TITLE_LENGTH = 60;
+const MAX_DESCRIPTION_LENGTH = 155;
+const MIN_CONTENT_WORDS = 80;
+const MIN_INTERNAL_LINKS = 3;
 
 interface CheckFailure {
   route: string;
@@ -20,6 +26,37 @@ function htmlPathForRoute(publicDir: string, routePath: string): string {
     return path.join(publicDir, 'index.html');
   }
   return path.join(publicDir, `${routePath.replace(/^\//, '')}.html`);
+}
+
+function extractRootHtml(html: string): string {
+  const rootMatch =
+    html.match(/<div id="root">([\s\S]*)<\/div>\s*<\/body>/i) ??
+    html.match(/<div id="root">([\s\S]*)<\/div>\s*<script/i);
+  return rootMatch?.[1] ?? '';
+}
+
+function decodeBasicEntities(value: string): string {
+  return value
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+}
+
+function countWordsInRoot(html: string): number {
+  const rootHtml = extractRootHtml(html);
+  const text = rootHtml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!text) {
+    return 0;
+  }
+  return text.split(' ').filter(Boolean).length;
+}
+
+function countInternalLinksInRoot(html: string): number {
+  const rootHtml = extractRootHtml(html);
+  const links = rootHtml.match(/<a\s+[^>]*href="(\/[^"]*)"/gi) ?? [];
+  return links.length;
 }
 
 function verify(): void {
@@ -42,9 +79,35 @@ function verify(): void {
     if (!/<h1[\s>]/.test(notFoundHtml)) {
       failures.push({ route: '/404', reason: 'missing <h1>' });
     }
+    if (/<link rel="canonical"/i.test(notFoundHtml)) {
+      failures.push({ route: '/404', reason: '404 HTML must not include canonical' });
+    }
+    if (/property="og:url"/i.test(notFoundHtml)) {
+      failures.push({ route: '/404', reason: '404 HTML must not include og:url' });
+    }
   }
 
-  for (const routePath of Object.keys(PAGE_SEO)) {
+  if (!fs.existsSync(path.join(publicDir, 'guides.html'))) {
+    failures.push({ route: '/guides', reason: 'guides.html missing (hub page)' });
+  }
+
+  const sitemapPath = path.join(publicDir, 'sitemap.xml');
+  if (fs.existsSync(sitemapPath)) {
+    const sitemap = fs.readFileSync(sitemapPath, 'utf-8');
+    if (!sitemap.includes(`${SITE_URL}/guides<`) && !sitemap.includes(`${SITE_URL}/guides</loc>`)) {
+      failures.push({ route: '/guides', reason: 'sitemap.xml missing /guides' });
+    }
+    for (const mdRoute of ['/getting-started.md', '/overview.md', '/config-reference.md']) {
+      if (sitemap.includes(mdRoute)) {
+        failures.push({
+          route: mdRoute,
+          reason: 'raw .md URL must not appear in sitemap.xml',
+        });
+      }
+    }
+  }
+
+  for (const [routePath, seo] of Object.entries(PAGE_SEO)) {
     const filePath = htmlPathForRoute(publicDir, routePath);
     if (!fs.existsSync(filePath)) {
       failures.push({ route: routePath, reason: `missing file ${path.relative(publicDir, filePath)}` });
@@ -53,15 +116,29 @@ function verify(): void {
 
     const html = fs.readFileSync(filePath, 'utf-8');
     const titleMatch = html.match(/<title>(.*?)<\/title>/i);
+    const descriptionMatch = html.match(/<meta name="description"[^>]*content="([^"]*)"/i);
     const canonicalMatch = html.match(/<link rel="canonical" href="([^"]+)"/i);
     const h1Match = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
     const expectedCanonical =
       routePath === '/' ? HOMEPAGE_CANONICAL : `${SITE_URL}${routePath}`;
+    const expectedTitle = formatPageTitle(seo.title);
 
     if (!titleMatch?.[1]?.trim()) {
       failures.push({ route: routePath, reason: 'missing <title>' });
     } else {
-      const title = titleMatch[1];
+      const title = decodeBasicEntities(titleMatch[1]);
+      if (title !== expectedTitle) {
+        failures.push({
+          route: routePath,
+          reason: `title is "${title}", expected "${expectedTitle}"`,
+        });
+      }
+      if (title.length > MAX_TITLE_LENGTH) {
+        failures.push({
+          route: routePath,
+          reason: `title length ${title.length} exceeds ${MAX_TITLE_LENGTH}`,
+        });
+      }
       const previous = titles.get(title);
       if (previous && previous !== routePath) {
         failures.push({
@@ -70,6 +147,15 @@ function verify(): void {
         });
       }
       titles.set(title, routePath);
+    }
+
+    if (!descriptionMatch?.[1]) {
+      failures.push({ route: routePath, reason: 'missing meta description' });
+    } else if (descriptionMatch[1].length > MAX_DESCRIPTION_LENGTH) {
+      failures.push({
+        route: routePath,
+        reason: `description length ${descriptionMatch[1].length} exceeds ${MAX_DESCRIPTION_LENGTH}`,
+      });
     }
 
     if (!canonicalMatch?.[1]) {
@@ -92,6 +178,33 @@ function verify(): void {
 
     if (routePath !== '/' && /id="root"><\/div>/.test(html)) {
       failures.push({ route: routePath, reason: 'empty #root (SPA shell only)' });
+    }
+
+    if (CONTENT_ROUTES_WITH_FULL_BODY.has(routePath)) {
+      const wordCount = countWordsInRoot(html);
+      const linkCount = countInternalLinksInRoot(html);
+      if (wordCount < MIN_CONTENT_WORDS) {
+        failures.push({
+          route: routePath,
+          reason: `content body has ${wordCount} words, expected >= ${MIN_CONTENT_WORDS}`,
+        });
+      }
+      if (linkCount < MIN_INTERNAL_LINKS) {
+        failures.push({
+          route: routePath,
+          reason: `content body has ${linkCount} internal links, expected >= ${MIN_INTERNAL_LINKS}`,
+        });
+      }
+    }
+
+    if (routePath === '/faq' && !/"@type"\s*:\s*"FAQPage"/.test(html)) {
+      failures.push({ route: routePath, reason: 'missing FAQPage JSON-LD' });
+    }
+    if (
+      routePath.startsWith('/guides/') &&
+      !/"@type"\s*:\s*"TechArticle"/.test(html)
+    ) {
+      failures.push({ route: routePath, reason: 'missing TechArticle JSON-LD' });
     }
   }
 
