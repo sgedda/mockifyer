@@ -1,0 +1,37 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "http://localhost:3003/places",
+    "headers": {
+      "x-mockifyer-request-id": "d4c3cf94-8a7f-4e60-800d-4eba051a5169",
+      "x-mockifyer-parent-request-id": "demo-record-001"
+    },
+    "queryParams": {
+      "city": "London"
+    }
+  },
+  "response": {
+    "status": 200,
+    "data": {
+      "name": "London",
+      "place_id": "12345"
+    },
+    "headers": {
+      "connection": "keep-alive",
+      "content-length": "36",
+      "content-type": "application/json; charset=utf-8",
+      "date": "Tue, 10 Nov 2026 19:18:16 GMT",
+      "etag": "W/\"24-CURlhtgW3K6nzGEEbz70rqGQ0fE\"",
+      "keep-alive": "timeout=5",
+      "x-powered-by": "Express"
+    }
+  },
+  "timestamp": "2026-11-10T19:18:16.134Z",
+  "duration": 5,
+  "sessionId": "session-1794338295625-ycc4zrshc",
+  "requestId": "d4c3cf94-8a7f-4e60-800d-4eba051a5169",
+  "parentRequestId": "demo-record-001",
+  "parentRequestIds": [
+    "demo-record-001"
+  ]
+}
