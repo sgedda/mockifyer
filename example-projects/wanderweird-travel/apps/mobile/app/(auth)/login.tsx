@@ -36,6 +36,7 @@ export default function LoginScreen() {
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.wrap}
+        testID="login-screen"
       >
         <View>
           <BrandMark />
@@ -47,6 +48,7 @@ export default function LoginScreen() {
           <View style={styles.form}>
             <Text style={styles.label}>Username</Text>
             <TextInput
+              testID="login-username"
               autoCapitalize="none"
               autoCorrect={false}
               value={username}
@@ -57,6 +59,7 @@ export default function LoginScreen() {
             />
             <Text style={styles.label}>Password</Text>
             <TextInput
+              testID="login-password"
               secureTextEntry
               value={password}
               onChangeText={setPassword}
@@ -64,8 +67,13 @@ export default function LoginScreen() {
               placeholderTextColor={colors.slate}
               placeholder="password"
             />
-            <Button label={busy ? 'Signing in…' : 'Sign in'} onPress={onSubmit} disabled={busy} />
-            {error ? <Text style={styles.error}>{error}</Text> : null}
+            <Button
+              testID="login-sign-in"
+              label={busy ? 'Signing in…' : 'Sign in'}
+              onPress={onSubmit}
+              disabled={busy}
+            />
+            {error ? <Text testID="login-error" style={styles.error}>{error}</Text> : null}
           </View>
         </View>
 

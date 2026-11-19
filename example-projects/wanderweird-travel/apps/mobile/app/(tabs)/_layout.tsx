@@ -47,6 +47,7 @@ export default function TabsLayout() {
           name={tab.screenKey}
           options={{
             title: tab.title,
+            tabBarButtonTestID: `tab-${tab.screenKey}`,
             href: (`/(tabs)/${tab.screenKey}` as unknown) as `/(tabs)/trips`,
             tabBarIcon: ({ focused }) => <TabIcon label={tab.iconGlyph} focused={focused} />,
           }}
