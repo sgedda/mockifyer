@@ -229,10 +229,9 @@ export default function Drift({ scenario }: DriftProps) {
   async function handleAcceptDrift(endpoint: MockDriftReportWithHistory) {
     try {
       setActionPending(true)
-      const url = new URL(endpoint.url)
       const result = await apiAcceptDrift({
         method: endpoint.method,
-        path: url.pathname + url.search,
+        path: endpoint.url,
         scenario,
       })
 
@@ -296,7 +295,6 @@ export default function Drift({ scenario }: DriftProps) {
 
     try {
       setActionPending(true)
-      const url = new URL(selectedEndpoint.url)
       const days = parseInt(snoozeDays, 10)
 
       if (isNaN(days) || days < 1) {
@@ -310,7 +308,7 @@ export default function Drift({ scenario }: DriftProps) {
 
       const result = await apiSnoozeDrift({
         method: selectedEndpoint.method,
-        path: url.pathname + url.search,
+        path: selectedEndpoint.url,
         days,
         scenario,
       })

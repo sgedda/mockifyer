@@ -57,9 +57,7 @@ export async function acceptDrift(options: {
   if (mockFile.status === 'ambiguous') {
     return {
       success: false,
-      message:
-        `Multiple mocks match ${method} ${urlPath}. ` +
-        'Include the query string so the correct mock is updated.',
+      message: ambiguousMatchMessage('mock', method, urlPath),
     };
   }
 
@@ -203,15 +201,14 @@ export async function acceptAllWarnings(options: {
   let failed = 0;
 
   for (const mockReport of warningsOnly) {
-    const requestPath = requestPathFromUrl(mockReport.url);
-    if (!requestPath) {
+    if (!requestPathFromUrl(mockReport.url)) {
       failed++;
       messages.push(`✗ Cannot accept ${mockReport.method} ${mockReport.url}: invalid URL`);
       continue;
     }
     const result = await acceptDrift({
       method: mockReport.method,
-      path: requestPath,
+      path: mockReport.url,
       mockDataPath,
       scenario,
       driftOptions,
@@ -278,9 +275,7 @@ export async function snoozeEndpoint(options: {
   if (selected.status === 'ambiguous') {
     return {
       success: false,
-      message:
-        `Multiple endpoints match ${method} ${urlPath}. ` +
-        'Include the query string so the correct endpoint is snoozed.',
+      message: ambiguousMatchMessage('endpoint', method, urlPath),
       expiresAt,
     };
   }
@@ -487,6 +482,21 @@ export function enhanceReportWithHistory(
 
 type PathMatchQuality = 'exact' | 'pathname';
 
+const ABSOLUTE_HTTP_URL = /^https?:\/\//i;
+
+function ambiguousMatchMessage(
+  kind: 'mock' | 'endpoint',
+  method: string,
+  urlPath: string
+): string {
+  const noun = kind === 'mock' ? 'mocks' : 'endpoints';
+  const action = kind === 'mock' ? 'updated' : 'snoozed';
+  return (
+    `Multiple ${noun} match ${method} ${urlPath}. ` +
+    `Pass the full request URL so the correct host and query string are ${action}.`
+  );
+}
+
 interface FoundPathMatch<T> {
   status: 'found';
   value: T;
@@ -504,26 +514,49 @@ type RejectedPathMatch = AmbiguousPathMatch | MissingPathMatch;
 
 type PathMatchSelection<T> = FoundPathMatch<T> | RejectedPathMatch;
 
+interface ClassifiedRequestPath {
+  quality: PathMatchQuality;
+  /** Origin + pathname + query. Distinguishes the same path on two hosts. */
+  identity: string;
+}
+
 /**
  * Classify a recorded URL against the path the caller asked to update.
- * An exact pathname+query match wins over a pathname-only fallback.
- * The fallback applies only when the caller omitted the query string,
- * so `GET /trips` cannot select `GET /trips?date=1` ahead of `GET /trips`.
+ * An absolute URL matches only that origin, pathname, and query.
+ * A path-only request matches pathname+query, with a pathname fallback when
+ * the caller omitted the query string.
  */
-function classifyMockRequestPath(mockUrl: string, requestedPath: string): PathMatchQuality | null {
+function classifyMockRequestPath(
+  mockUrl: string,
+  requestedPath: string
+): ClassifiedRequestPath | null {
+  let parsed: URL;
   try {
-    const parsed = new URL(mockUrl);
-    const pathWithQuery = parsed.pathname + parsed.search;
-    if (pathWithQuery === requestedPath) {
-      return 'exact';
-    }
-    if (!requestedPath.includes('?') && parsed.pathname === requestedPath) {
-      return 'pathname';
-    }
-    return null;
+    parsed = new URL(mockUrl);
   } catch {
     return null;
   }
+
+  const pathWithQuery = parsed.pathname + parsed.search;
+  const identity = `${parsed.origin}${pathWithQuery}`;
+
+  if (ABSOLUTE_HTTP_URL.test(requestedPath)) {
+    try {
+      const requested = new URL(requestedPath);
+      const requestedIdentity = `${requested.origin}${requested.pathname}${requested.search}`;
+      return requestedIdentity === identity ? { quality: 'exact', identity } : null;
+    } catch {
+      return null;
+    }
+  }
+
+  if (pathWithQuery === requestedPath) {
+    return { quality: 'exact', identity };
+  }
+  if (!requestedPath.includes('?') && parsed.pathname === requestedPath) {
+    return { quality: 'pathname', identity };
+  }
+  return null;
 }
 
 function requestPathFromUrl(rawUrl: string): string | null {
@@ -536,15 +569,20 @@ function requestPathFromUrl(rawUrl: string): string | null {
 }
 
 /**
- * Prefer an exact path match. A pathname-only match is used only when it is unique.
- * Several query variants for the same pathname is ambiguous: writing the first
- * file readdir returns would replace a different contract than the one requested.
+ * Prefer one exact match. Several contracts for that path — different hosts or
+ * different query strings — is ambiguous: writing the first file readdir
+ * returns would replace a different mock than the one requested.
+ * Duplicate files of the same origin and query still resolve to one contract.
  */
 function selectBestPathMatch<T>(
-  candidates: Array<{ quality: PathMatchQuality; value: T }>
+  candidates: Array<{ quality: PathMatchQuality; identity: string; value: T }>
 ): PathMatchSelection<T> {
   const exact = candidates.filter((candidate) => candidate.quality === 'exact');
   if (exact.length > 0) {
+    const identities = new Set(exact.map((candidate) => candidate.identity));
+    if (identities.size > 1) {
+      return { status: 'ambiguous' };
+    }
     return { status: 'found', value: exact[0].value };
   }
   const pathnameMatches = candidates.filter((candidate) => candidate.quality === 'pathname');
@@ -564,8 +602,8 @@ interface MockFileMatch {
 
 /**
  * Find the mock file for method + path.
- * Returns ambiguous when more than one query variant shares the pathname
- * and the caller did not include a query string.
+ * Returns ambiguous when more than one host or query variant matches
+ * and the caller did not pass a full URL.
  */
 function findMockFile(
   mockDataPath: string,
@@ -574,7 +612,7 @@ function findMockFile(
   urlPath: string
 ): MockFileMatch | RejectedPathMatch {
   const scenarioPath = path.join(mockDataPath, requireSafeScenarioName(scenario));
-  const candidates: Array<{ quality: PathMatchQuality; value: string }> = [];
+  const candidates: Array<{ quality: PathMatchQuality; identity: string; value: string }> = [];
 
   function walkDir(dirPath: string): void {
     if (!fs.existsSync(dirPath)) {
@@ -596,9 +634,9 @@ function findMockFile(
           if (!mock.request || !mock.response || mock.request.method !== method) {
             continue;
           }
-          const quality = classifyMockRequestPath(mock.request.url, urlPath);
-          if (quality) {
-            candidates.push({ quality, value: fullPath });
+          const classified = classifyMockRequestPath(mock.request.url, urlPath);
+          if (classified) {
+            candidates.push({ ...classified, value: fullPath });
           }
         } catch {
           // Skip invalid files
@@ -620,14 +658,18 @@ function selectHistoryReport(
   method: string,
   urlPath: string
 ): PathMatchSelection<MockDriftReportWithHistory> {
-  const candidates: Array<{ quality: PathMatchQuality; value: MockDriftReportWithHistory }> = [];
+  const candidates: Array<{
+    quality: PathMatchQuality;
+    identity: string;
+    value: MockDriftReportWithHistory;
+  }> = [];
   for (const report of history.mockReports) {
     if (report.method !== method) {
       continue;
     }
-    const quality = classifyMockRequestPath(report.url, urlPath);
-    if (quality) {
-      candidates.push({ quality, value: report });
+    const classified = classifyMockRequestPath(report.url, urlPath);
+    if (classified) {
+      candidates.push({ ...classified, value: report });
     }
   }
   return selectBestPathMatch(candidates);
