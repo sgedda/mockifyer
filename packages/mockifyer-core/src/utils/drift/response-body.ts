@@ -5,24 +5,9 @@
  * break and, on accept, replaces the mock object with a string.
  */
 
-const JSON_MEDIA_TYPE = 'application/json';
-const JSON_STRUCTURED_SUFFIX = '+json';
-const UTF8_BOM = '\uFEFF';
+import { isJsonResponseContentType, parseUpstreamResponseBody } from '../json-response-body';
 
-/**
- * True for `application/json` and any `*+json` media type (RFC 6839),
- * ignoring parameters such as charset.
- */
-export function isJsonResponseContentType(contentType: string | null | undefined): boolean {
-  if (!contentType) {
-    return false;
-  }
-  const mediaType = contentType.split(';')[0]?.trim().toLowerCase() ?? '';
-  if (!mediaType) {
-    return false;
-  }
-  return mediaType === JSON_MEDIA_TYPE || mediaType.endsWith(JSON_STRUCTURED_SUFFIX);
-}
+export { isJsonResponseContentType, parseUpstreamResponseBody };
 
 interface DriftResponseLike {
   headers: { get(name: string): string | null };
@@ -35,13 +20,5 @@ interface DriftResponseLike {
  */
 export async function readDriftResponseBody(response: DriftResponseLike): Promise<unknown> {
   const text = await response.text();
-  if (!isJsonResponseContentType(response.headers.get('content-type'))) {
-    return text;
-  }
-  const normalized = text.startsWith(UTF8_BOM) ? text.slice(UTF8_BOM.length) : text;
-  try {
-    return JSON.parse(normalized);
-  } catch {
-    return text;
-  }
+  return parseUpstreamResponseBody(response.headers.get('content-type'), text);
 }

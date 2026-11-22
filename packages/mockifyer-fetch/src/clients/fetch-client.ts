@@ -9,6 +9,7 @@ import {
   MOCKIFYER_CLIENT_ID_HEADER,
   MOCKIFYER_DEVICE_ID_HEADER,
   resolveMockifyerTraceFromHeaders,
+  parseUpstreamResponseBody,
 } from '@sgedda/mockifyer-core';
 
 function headerContentType(headers: Headers): string | undefined {
@@ -231,16 +232,8 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
     }
 
     const response = await fetchFn(url, requestConfig);
-    const contentType = response.headers.get('content-type') || '';
     const rawText = await response.text();
-    let data: any = rawText;
-    if (contentType.includes('application/json')) {
-      try {
-        data = JSON.parse(rawText);
-      } catch {
-        data = rawText;
-      }
-    }
+    const data = parseUpstreamResponseBody(response.headers.get('content-type'), rawText);
 
     const responseHeaders: Record<string, string> = {};
     response.headers.forEach((value: string, key: string) => {
