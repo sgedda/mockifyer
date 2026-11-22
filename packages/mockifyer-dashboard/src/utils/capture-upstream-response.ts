@@ -1,6 +1,7 @@
 import {
   MOCKIFYER_CLIENT_ID_HEADER,
   isOmittedProxyUpstreamRequestHeader,
+  parseUpstreamResponseBody,
   type MockData,
   type StoredRequest,
 } from '@sgedda/mockifyer-core';
@@ -49,16 +50,8 @@ export async function fetchUpstreamResponse(
 
   const started = Date.now();
   const upstreamRes = await fetch(request.url, init);
-  const contentType = upstreamRes.headers.get('content-type') || '';
   const rawText = await upstreamRes.text();
-  let data: unknown = rawText;
-  if (contentType.includes('application/json')) {
-    try {
-      data = JSON.parse(rawText);
-    } catch {
-      data = rawText;
-    }
-  }
+  const data = parseUpstreamResponseBody(upstreamRes.headers.get('content-type'), rawText);
 
   const responseHeaders: Record<string, string> = {};
   upstreamRes.headers.forEach((value, key) => {

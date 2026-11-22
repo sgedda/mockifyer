@@ -49,6 +49,7 @@ export * from './utils/proxy-record-on-miss-env';
 export * from './utils/join-proxy-dashboard-api-url';
 export * from './utils/dashboard-central-proxy-health';
 export * from './utils/dashboard-proxy-envelope';
+export * from './utils/json-response-body';
 // perform-dashboard-proxy-request imports request-correlation + serialize-proxy-request-body - EXCLUDED
 // export * from './utils/perform-dashboard-proxy-request';
 export * from './utils/apply-proxy-record-on-miss-env';

@@ -33,6 +33,7 @@ import {
   resolveAllowUpstreamForRequest,
   toNetworkLogBodyPreview,
   buildProxyUpstreamBodyInit,
+  parseUpstreamResponseBody,
   normalizeProxyBodyForRequestKey,
   resolveProxyUpstreamTlsInsecureForRequest,
   createServeTimePoolResponseLoader,
@@ -310,16 +311,7 @@ router.post('/', async (req: Request, res: Response) => {
         init,
         upstreamTlsInsecure
       );
-      const contentType = upstreamRes.headers.get('content-type') || '';
-
-      let data: any = rawText;
-      if (contentType.includes('application/json')) {
-        try {
-          data = JSON.parse(rawText);
-        } catch {
-          data = rawText;
-        }
-      }
+      const data = parseUpstreamResponseBody(upstreamRes.headers.get('content-type'), rawText);
 
       const responseHeaders: Record<string, string> = {};
       upstreamRes.headers.forEach((value, key) => {
@@ -592,16 +584,7 @@ router.post('/', async (req: Request, res: Response) => {
       init,
       upstreamTlsInsecure
     );
-    const contentType = upstreamRes.headers.get('content-type') || '';
-
-    let data: any = rawText;
-    if (contentType.includes('application/json')) {
-      try {
-        data = JSON.parse(rawText);
-      } catch {
-        data = rawText;
-      }
-    }
+    const data = parseUpstreamResponseBody(upstreamRes.headers.get('content-type'), rawText);
 
     const responseHeaders: Record<string, string> = {};
     upstreamRes.headers.forEach((value, key) => {

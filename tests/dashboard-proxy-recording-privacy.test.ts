@@ -82,4 +82,21 @@ describe('refresh-from-live with redacted proxy headers', () => {
     expect(result.response.status).toBe(200);
     expect(result.response.data).toEqual({ ok: true });
   });
+
+  it('parses +json upstream bodies into objects so refresh does not store a string', async () => {
+    global.fetch = jest.fn(async () =>
+      new Response(JSON.stringify({ items: [{ id: 'a' }] }), {
+        status: 200,
+        headers: { 'content-type': 'application/vnd.api+json' },
+      })
+    ) as unknown as typeof fetch;
+
+    const result = await fetchUpstreamResponse({
+      method: 'GET',
+      url: 'https://api.example.com/items',
+      headers: { Accept: 'application/vnd.api+json' },
+    });
+
+    expect(result.response.data).toEqual({ items: [{ id: 'a' }] });
+  });
 });
