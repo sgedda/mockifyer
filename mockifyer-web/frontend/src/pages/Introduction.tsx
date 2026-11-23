@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Github, ArrowRight, PlayCircle, Database, Code2, Sparkles, Construction, Target, Zap, GitBranch, Terminal, Play, Radio, LayoutDashboard, TrendingUp, CheckCircle2 } from 'lucide-react'
 import CodeBlock from '@/components/CodeBlock'
 import RunItButton from '@/components/RunItButton'
+import AtlasShowcase from '@/components/AtlasShowcase'
 
 interface MediaItem {
   src: string
@@ -214,6 +215,8 @@ export default function Introduction() {
           </div>
         </div>
       </section>
+
+      <AtlasShowcase />
 
       {/* See It In Action Showcase */}
       <section className="mx-auto max-w-[1200px] px-5 py-16 border-b border-border">

@@ -14,6 +14,7 @@
     "build:seo": "npm run prerender && npm run generate:sitemap && npm run verify:prerender",
     "prerender": "node scripts/prerender-static.js",
     "generate:sitemap": "node scripts/generate-sitemap.js",
+    "regenerate:atlas": "node scripts/regenerate-wanderweird-atlas.mjs",
     "verify:prerender": "node scripts/verify-prerender.js",
     "build:backend": "tsc",
     "start": "node dist/index.js",

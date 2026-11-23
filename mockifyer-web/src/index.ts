@@ -564,6 +564,12 @@ app.use((req, res, next) => {
   next();
 });
 
+// Atlas showcase is a directory with index.html. With redirect:false on the
+// static middleware below, /atlas/wanderweird would 404 — send browsers to the slash form.
+app.get('/atlas/wanderweird', (req, res) => {
+  res.redirect(301, '/atlas/wanderweird/');
+});
+
 // Serve static files from public directory (but not for API routes).
 // redirect: false prevents express.static from 301'ing /guides → /guides/
 // when public/guides/ exists for nested guide HTML files.

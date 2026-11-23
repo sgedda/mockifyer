@@ -37,15 +37,21 @@ export default function MockifyerAtlas() {
         <p className="text-blue-900 dark:text-blue-200 text-sm">
           <strong>Try it live:</strong> View the{' '}
           <a 
-            href="https://sgedda.github.io/mockifyer/atlas/" 
-            target="_blank" 
-            rel="noopener noreferrer"
+            href="/atlas/wanderweird/"
             className="text-primary hover:underline font-medium"
           >
             WanderWeird Atlas
           </a>
-          {' '}generated from the example app's recorded traffic (available from{' '}
-          <code className="bg-muted px-1 py-0.5 rounded">@sgedda/mockifyer-core</code> ≥1.10.196).
+          {' '}generated from the example app&apos;s recorded traffic (also mirrored on{' '}
+          <a
+            href="https://sgedda.github.io/mockifyer/atlas/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary hover:underline font-medium"
+          >
+            GitHub Pages
+          </a>
+          ).
         </p>
       </div>
 
@@ -456,16 +462,20 @@ npm list @sgedda/mockifyer-core
 npm install --save-dev @sgedda/mockifyer-core@latest`} />
 
             <p className="text-sm text-muted-foreground mt-3">
-              The live WanderWeird Atlas at{' '}
+              The showcase Atlas at{' '}
+              <a href="/atlas/wanderweird/" className="text-primary hover:underline">
+                /atlas/wanderweird/
+              </a>
+              {' '}(and the nightly{' '}
               <a 
                 href="https://sgedda.github.io/mockifyer/atlas/" 
                 target="_blank" 
                 rel="noopener noreferrer"
                 className="text-primary hover:underline"
               >
-                https://sgedda.github.io/mockifyer/atlas/
+                GitHub Pages
               </a>
-              {' '}is regenerated nightly by the e2e workflow on the main branch.
+              {' '}mirror) is regenerated from scrubbed e2e traffic on main.
             </p>
           </CardContent>
         </Card>
@@ -518,11 +528,7 @@ npm install --save-dev @sgedda/mockifyer-core@latest`} />
             </Card>
           </Link>
 
-          <a 
-            href="https://sgedda.github.io/mockifyer/atlas/" 
-            target="_blank" 
-            rel="noopener noreferrer"
-          >
+          <a href="/atlas/wanderweird/">
             <Card className="hover:bg-accent transition-colors cursor-pointer">
               <CardContent className="p-6">
                 <h3 className="font-semibold mb-2">Live WanderWeird Atlas</h3>

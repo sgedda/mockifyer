@@ -164,7 +164,8 @@ var ROUTE_CONFIG = {
 };
 var STATIC_CONTENT_ROUTES = [
   { loc: "/llms.txt", priority: "0.6", changefreq: "monthly" },
-  { loc: "/llms-full.txt", priority: "0.6", changefreq: "monthly" }
+  { loc: "/llms-full.txt", priority: "0.6", changefreq: "monthly" },
+  { loc: "/atlas/wanderweird/", priority: "0.7", changefreq: "monthly" }
 ];
 function fileLastmod(publicDir, loc) {
   const candidates = loc === "/" ? [import_path.default.join(publicDir, "index.html")] : [

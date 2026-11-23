@@ -337,7 +337,8 @@ var GUIDE_BODIES = {
         heading: "Atlas Traffic Maps",
         paragraphs: [
           "Atlas turns recorded hops into an interactive map of hosts and request chains. Search payloads, follow nested calls, and export HTML docs for architecture reviews.",
-          "In Metro, press t to start live hop capture while you exercise the app. Combine with x-mockifyer-request-id to understand multi-service graphs end to end."
+          "In Metro, press t to start live hop capture while you exercise the app. Combine with x-mockifyer-request-id to understand multi-service graphs end to end.",
+          "Explore a real-traffic WanderWeird example at /atlas/wanderweird/ — generated from scrubbed e2e recordings with observed requests, mocked vs live hops, and multi-host flows."
         ]
       }
     ]

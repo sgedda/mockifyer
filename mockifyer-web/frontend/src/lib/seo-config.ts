@@ -18,6 +18,13 @@ export const DEFAULT_DESCRIPTION =
   'Open-source API mocking for JavaScript and React Native. Record and replay HTTP, edit mocks in a dashboard, catch API drift in CI. Mocks stay in your repo.'
 
 /**
+ * Static Atlas HTML (not a React route). Hosted under frontend/public/atlas/wanderweird/
+ * and listed in sitemap STATIC_CONTENT_ROUTES. Do not add to PAGE_SEO — prerender would
+ * emit an SPA shell that shadows the interactive Atlas index.html.
+ */
+export const WANDERWEIRD_ATLAS_PATH = '/atlas/wanderweird/'
+
+/**
  * SEO configuration for all routes.
  * To add a new route: add one entry here with title (without ' | Mockifyer' suffix),
  * description (<=155 chars), and path. The title suffix is added automatically by formatPageTitle

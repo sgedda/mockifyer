@@ -43,6 +43,8 @@ const ROUTE_CONFIG: Record<string, RouteMeta> = {
 const STATIC_CONTENT_ROUTES: Array<{ loc: string } & RouteMeta> = [
   { loc: '/llms.txt', priority: '0.6', changefreq: 'monthly' },
   { loc: '/llms-full.txt', priority: '0.6', changefreq: 'monthly' },
+  // Interactive Atlas HTML (vendored under frontend/public/atlas/wanderweird/)
+  { loc: '/atlas/wanderweird/', priority: '0.7', changefreq: 'monthly' },
 ];
 
 function fileLastmod(publicDir: string, loc: string): string | null {
