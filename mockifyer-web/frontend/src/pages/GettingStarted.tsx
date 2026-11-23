@@ -49,6 +49,23 @@ export default function GettingStarted() {
         <CardContent className="space-y-6">
           <div className="space-y-6">
             <div className="flex items-start gap-4">
+              <div className="flex-shrink-0 w-10 h-10 rounded-full border-2 border-primary/40 bg-background text-primary flex items-center justify-center font-bold text-lg">
+                0
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-lg mb-2 flex items-center gap-2">
+                  <Terminal className="h-5 w-5" />
+                  Try the demo
+                  <Badge variant="outline" className="font-normal text-xs">Optional</Badge>
+                </h3>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Self-contained record/replay in ~10 seconds: records one call to a local server, then replays with 0 network calls.
+                </p>
+                <CodeBlock code="npx -p @sgedda/mockifyer-core mockifyer try" language="bash" />
+              </div>
+            </div>
+
+            <div className="flex items-start gap-4">
               <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold text-lg">
                 1
               </div>

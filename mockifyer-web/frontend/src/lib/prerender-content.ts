@@ -249,8 +249,8 @@ function buildGettingStartedBody(): PrerenderBodyContent {
       {
         heading: 'Quick Start',
         paragraphs: [
-          'Install @sgedda/mockifyer-axios or @sgedda/mockifyer-fetch, then call setupMockifyer with selective defaults (recordNewMocksAsPassthrough: true, recordResponses: false). Or run npx -p @sgedda/mockifyer-core mockifyer init.',
-          'Run your app with recording on. Requests land as request-only stubs in mock-data/_scratch/ and stay on the live API until you activate a mock in the dashboard (untick Always use live API) or via domain-path rules. Capture-all settings are an optional heavy shortcut for tiny demos.',
+          'Optional: run npx -p @sgedda/mockifyer-core mockifyer try for a self-contained record/replay in about 10 seconds (one local call, then replay with 0 network calls).',
+          'Install @sgedda/mockifyer-axios or @sgedda/mockifyer-fetch, then call setupMockifyer with selective defaults (recordNewMocksAsPassthrough: true, recordResponses: false). Or run npx -p @sgedda/mockifyer-core mockifyer init. Run your app with recording on. Requests land as request-only stubs in mock-data/_scratch/ and stay on the live API until you activate a mock in the dashboard (untick Always use live API) or via domain-path rules. Capture-all settings are an optional heavy shortcut for tiny demos.',
         ],
       },
       {
