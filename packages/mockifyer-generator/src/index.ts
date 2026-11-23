@@ -53,8 +53,9 @@ export {
 } from './chaos';
 export type { ChaosLevel, ChaosLevelName, VariantKind } from './chaos';
 
-export { variants } from './variants';
+export { variants, resolveScrambleIds } from './variants';
 export type { NamedVariant, VariantsOptions } from './variants';
+export { isIdentifierField, isIdentifierKeyName } from './identifiers';
 
 export {
   isMockDataLike,

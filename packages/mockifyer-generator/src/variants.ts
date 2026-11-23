@@ -1,10 +1,12 @@
 import {
   ALL_VARIANT_KINDS,
   VARIANT_KIND_SLUGS,
+  resolveChaosLevel,
   selectVariantKinds,
   type ChaosLevel,
   type VariantKind,
 } from './chaos';
+import { isIdentifierField } from './identifiers';
 import {
   deepClone,
   normalizeToMockData,
@@ -34,6 +36,12 @@ export interface VariantsOptions {
   scenario?: string;
   /** Scrub secrets/PII from sample before mutating (default `true`). */
   scrubSecrets?: boolean;
+  /**
+   * When true, value-mutating variants may alter identifier fields (`id`, `*Id`,
+   * `uuid`, `slug`, …). Default: only at `chaosLevel: 'nightmare'` (intensity 1).
+   * Set `false` to keep ids stable even at nightmare.
+   */
+  scrambleIds?: boolean;
 }
 
 /** One named edge-case mock ready to save as a scenario. */
@@ -43,9 +51,6 @@ export interface NamedVariant {
   name: string;
   mock: GeneratedMockData;
 }
-
-const REQUIRED_KEY_RE =
-  /^(id|ids|uuid|guid|status|type|kind|method|url|path|code|name|title|key)$/i;
 
 const OPTIONAL_KEY_RE =
   /^(optional|description|note|notes|middle|suffix|prefix|meta|comment|hint|bio|about|nickname|alias)/i;
@@ -60,10 +65,21 @@ const ERROR_BODIES: Record<400 | 401 | 404 | 500, { error: string; message: stri
 };
 
 /**
+ * Whether identifier fields may be mutated by value-changing variants.
+ * Default: only at nightmare (intensity ≥ 1). Explicit `scrambleIds` wins.
+ */
+export function resolveScrambleIds(options: Pick<VariantsOptions, 'chaosLevel' | 'scrambleIds'>): boolean {
+  if (options.scrambleIds === true) return true;
+  if (options.scrambleIds === false) return false;
+  return resolveChaosLevel(options.chaosLevel) >= 1;
+}
+
+/**
  * Generate named edge-case variants from a recorded mock or bare JSON sample.
  *
  * Deterministic: same `sample` + `seed` + `chaosLevel` (+ `kinds`) ⇒ identical output.
  * Every mock is marked `generated: true`. Secrets/PII from the sample are scrubbed.
+ * Identifier fields stay unchanged unless {@link resolveScrambleIds} is true.
  *
  * @example
  * ```ts
@@ -78,6 +94,7 @@ export function variants(sample: unknown, options: VariantsOptions = {}): NamedV
   const scrub = options.scrubSecrets !== false;
   const baseScenario = options.scenario ?? 'generated';
   const seedKey = `${typeof seed === 'string' ? seed : seed >>> 0}`;
+  const scrambleIds = resolveScrambleIds(options);
 
   const forbidden = collectSensitiveLiterals(sample);
   const base = normalizeToMockData(sample, { seedKey, scenario: baseScenario });
@@ -99,7 +116,8 @@ export function variants(sample: unknown, options: VariantsOptions = {}): NamedV
       scrubbedBase,
       kind,
       rng,
-      `${baseScenario}-${VARIANT_KIND_SLUGS[kind]}`
+      `${baseScenario}-${VARIANT_KIND_SLUGS[kind]}`,
+      scrambleIds
     );
     mock.generated = true;
 
@@ -126,7 +144,8 @@ function applyVariant(
   base: GeneratedMockData,
   kind: VariantKind,
   rng: Prng,
-  scenario: string
+  scenario: string,
+  scrambleIds: boolean
 ): GeneratedMockData {
   const mock = deepClone(base);
   mock.scenario = scenario;
@@ -138,16 +157,16 @@ function applyVariant(
       mock.response.data = emptyLists(mock.response.data);
       break;
     case 'missingOptional':
-      mock.response.data = removeOptionalFields(mock.response.data, rng);
+      mock.response.data = removeOptionalFields(mock.response.data, rng, scrambleIds);
       break;
     case 'nulls':
-      mock.response.data = nullifyFields(mock.response.data, rng);
+      mock.response.data = nullifyFields(mock.response.data, rng, scrambleIds);
       break;
     case 'longStrings':
-      mock.response.data = lengthenStrings(mock.response.data, rng);
+      mock.response.data = lengthenStrings(mock.response.data, rng, scrambleIds);
       break;
     case 'unicode':
-      mock.response.data = injectUnicode(mock.response.data, rng);
+      mock.response.data = injectUnicode(mock.response.data, rng, scrambleIds);
       break;
     case 'http400':
       applyHttpError(mock, 400);
@@ -204,46 +223,56 @@ function emptyLists(value: unknown): unknown {
   return value;
 }
 
-function removeOptionalFields(value: unknown, rng: Prng): unknown {
+function removeOptionalFields(
+  value: unknown,
+  rng: Prng,
+  scrambleIds: boolean
+): unknown {
   if (Array.isArray(value)) {
-    return value.map((item) => removeOptionalFields(item, rng));
+    return value.map((item) => removeOptionalFields(item, rng, scrambleIds));
   }
   if (value !== null && typeof value === 'object') {
     const entries = Object.entries(value as Record<string, unknown>);
     const out: Record<string, unknown> = {};
     for (const [k, v] of entries) {
+      if (!scrambleIds && isIdentifierField(k, v)) {
+        out[k] = removeOptionalFields(v, rng, scrambleIds);
+        continue;
+      }
       if (v === null || OPTIONAL_KEY_RE.test(k)) {
         continue;
       }
-      if (!REQUIRED_KEY_RE.test(k) && typeof v !== 'object' && rng.next() < 0.45) {
+      if (typeof v !== 'object' && rng.next() < 0.45) {
         continue;
       }
-      out[k] = removeOptionalFields(v, rng);
+      out[k] = removeOptionalFields(v, rng, scrambleIds);
     }
     if (Object.keys(out).length === 0 && entries.length > 0) {
-      const [k, v] = entries[0]!;
-      out[k] = removeOptionalFields(v, rng);
+      // Prefer keeping an identifier key when present
+      const idEntry = entries.find(([k, v]) => isIdentifierField(k, v));
+      const [k, v] = idEntry ?? entries[0]!;
+      out[k] = removeOptionalFields(v, rng, scrambleIds);
     }
     return out;
   }
   return value;
 }
 
-function nullifyFields(value: unknown, rng: Prng): unknown {
+function nullifyFields(value: unknown, rng: Prng, scrambleIds: boolean): unknown {
   if (Array.isArray(value)) {
-    return value.map((item) => nullifyFields(item, rng));
+    return value.map((item) => nullifyFields(item, rng, scrambleIds));
   }
   if (value !== null && typeof value === 'object') {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      if (REQUIRED_KEY_RE.test(k)) {
-        out[k] = nullifyFields(v, rng);
+      if (!scrambleIds && isIdentifierField(k, v)) {
+        out[k] = nullifyFields(v, rng, scrambleIds);
         continue;
       }
       if (v === null || rng.next() < 0.55) {
         out[k] = null;
       } else {
-        out[k] = nullifyFields(v, rng);
+        out[k] = nullifyFields(v, rng, scrambleIds);
       }
     }
     return out;
@@ -251,19 +280,23 @@ function nullifyFields(value: unknown, rng: Prng): unknown {
   return value;
 }
 
-function lengthenStrings(value: unknown, rng: Prng): unknown {
-  if (typeof value === 'string') {
-    return buildLongString(rng);
-  }
+function lengthenStrings(value: unknown, rng: Prng, scrambleIds: boolean): unknown {
   if (Array.isArray(value)) {
-    return value.map((item) => lengthenStrings(item, rng));
+    return value.map((item) => lengthenStrings(item, rng, scrambleIds));
   }
   if (value !== null && typeof value === 'object') {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      out[k] = lengthenStrings(v, rng);
+      if (!scrambleIds && isIdentifierField(k, v)) {
+        out[k] = v;
+        continue;
+      }
+      out[k] = lengthenStrings(v, rng, scrambleIds);
     }
     return out;
+  }
+  if (typeof value === 'string') {
+    return buildLongString(rng);
   }
   return value;
 }
@@ -280,9 +313,22 @@ function buildLongString(rng: Prng): string {
   return (prefix + body).slice(0, LONG_STRING_LENGTH);
 }
 
-function injectUnicode(value: unknown, rng: Prng): unknown {
+function injectUnicode(value: unknown, rng: Prng, scrambleIds: boolean): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => injectUnicode(item, rng, scrambleIds));
+  }
+  if (value !== null && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (!scrambleIds && isIdentifierField(k, v)) {
+        out[k] = v;
+        continue;
+      }
+      out[k] = injectUnicode(v, rng, scrambleIds);
+    }
+    return out;
+  }
   if (typeof value === 'string') {
-    // Replace rather than wrap sample text so PII emails cannot survive via concatenation
     const glyphs = ['你好', 'مرحبا', '🎉', '🚀', 'Ω', 'ß', 'ñ', '東京', '✨', 'Ü'];
     const parts: string[] = [];
     const count = 4 + rng.int(0, 4);
@@ -290,16 +336,6 @@ function injectUnicode(value: unknown, rng: Prng): unknown {
       parts.push(rng.pick(glyphs));
     }
     return parts.join(' ');
-  }
-  if (Array.isArray(value)) {
-    return value.map((item) => injectUnicode(item, rng));
-  }
-  if (value !== null && typeof value === 'object') {
-    const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      out[k] = injectUnicode(v, rng);
-    }
-    return out;
   }
   return value;
 }

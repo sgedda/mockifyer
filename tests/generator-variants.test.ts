@@ -5,7 +5,9 @@ import {
   ALL_VARIANT_KINDS,
   collectSensitiveLiterals,
   findSecretLeaks,
+  isIdentifierKeyName,
   resolveChaosLevel,
+  resolveScrambleIds,
   selectVariantKinds,
   serializeMock,
   toScenarioMap,
@@ -142,7 +144,7 @@ describe('generator variants — each kind', () => {
     const data = map.missingOptional!.mock.response.data as Record<string, unknown>;
     expect(data.description).toBeUndefined();
     expect(data.nickname).toBeUndefined();
-    expect(data.id).toBeDefined();
+    // At nightmare, ids may be dropped (scrambleIds); preservation is covered below at wild.
   });
 
   it('nulls sets some fields to null', () => {
@@ -204,6 +206,123 @@ describe('generator variants — each kind', () => {
       kinds: ['truncatedStream'],
     });
     expect(out).toHaveLength(0);
+  });
+});
+
+describe('generator variants — preserve identifier fields', () => {
+  const tripsSample = {
+    request: {
+      method: 'GET',
+      url: 'http://localhost:4100/api/trips',
+      headers: {},
+    },
+    response: {
+      status: 200,
+      data: {
+        trips: [
+          {
+            id: 'TRP-001',
+            orderId: 'ORD-9',
+            user_id: 'u-1',
+            slug: 'paris-weekend',
+            destination: 'Paris',
+            duration: 5,
+          },
+          {
+            id: 'TRP-002',
+            orderId: 'ORD-10',
+            user_id: 'u-2',
+            slug: 'tokyo-sprint',
+            destination: 'Tokyo',
+            duration: 10,
+          },
+        ],
+        timestamp: '2026-11-10T12:00:00Z',
+      },
+      headers: { 'content-type': 'application/json' },
+    },
+    timestamp: '2026-11-10T12:00:00Z',
+  };
+
+  it('recognizes id / *Id / *_id / uuid / slug key names', () => {
+    expect(isIdentifierKeyName('id')).toBe(true);
+    expect(isIdentifierKeyName('orderId')).toBe(true);
+    expect(isIdentifierKeyName('user_id')).toBe(true);
+    expect(isIdentifierKeyName('uuid')).toBe(true);
+    expect(isIdentifierKeyName('slug')).toBe(true);
+    expect(isIdentifierKeyName('destination')).toBe(false);
+  });
+
+  it('resolveScrambleIds is false below nightmare unless scrambleIds: true', () => {
+    expect(resolveScrambleIds({ chaosLevel: 'wild' })).toBe(false);
+    expect(resolveScrambleIds({ chaosLevel: 'nightmare' })).toBe(true);
+    expect(resolveScrambleIds({ chaosLevel: 'mild', scrambleIds: true })).toBe(true);
+    expect(resolveScrambleIds({ chaosLevel: 'nightmare', scrambleIds: false })).toBe(false);
+  });
+
+  it('keeps trip ids stable in longStrings and unicode at wild', () => {
+    const out = variants(tripsSample, {
+      seed: 42,
+      chaosLevel: 'wild',
+      kinds: ['longStrings', 'unicode', 'nulls', 'missingOptional'],
+    });
+    const map = byKind(out);
+
+    for (const kind of ['longStrings', 'unicode', 'nulls', 'missingOptional'] as const) {
+      const data = map[kind]!.mock.response.data as {
+        trips: Array<Record<string, unknown>>;
+      };
+      expect(data.trips.map((t) => t.id)).toEqual(['TRP-001', 'TRP-002']);
+      expect(data.trips.map((t) => t.orderId)).toEqual(['ORD-9', 'ORD-10']);
+      expect(data.trips.map((t) => t.user_id)).toEqual(['u-1', 'u-2']);
+      expect(data.trips.map((t) => t.slug)).toEqual(['paris-weekend', 'tokyo-sprint']);
+    }
+
+    const longDest = (map.longStrings!.mock.response.data as { trips: Array<{ destination: string }> })
+      .trips[0]!.destination;
+    expect(longDest.startsWith('LONG:')).toBe(true);
+    expect(longDest.length).toBeGreaterThan(4_000);
+
+    const uniDest = (map.unicode!.mock.response.data as { trips: Array<{ destination: string }> })
+      .trips[0]!.destination;
+    expect(/[^\u0000-\u007f]/.test(uniDest)).toBe(true);
+  });
+
+  it('may scramble ids at nightmare (or scrambleIds: true)', () => {
+    const atNightmare = variants(tripsSample, {
+      seed: 42,
+      chaosLevel: 'nightmare',
+      kinds: ['longStrings'],
+    });
+    const long = atNightmare[0]!.mock.response.data as {
+      trips: Array<{ id: string; destination: string }>;
+    };
+    expect(long.trips[0]!.id).not.toBe('TRP-001');
+    expect(long.trips[0]!.id.startsWith('LONG:')).toBe(true);
+
+    const forced = variants(tripsSample, {
+      seed: 42,
+      chaosLevel: 'wild',
+      scrambleIds: true,
+      kinds: ['unicode'],
+    });
+    const uni = forced[0]!.mock.response.data as {
+      trips: Array<{ id: string }>;
+    };
+    expect(uni.trips[0]!.id).not.toBe('TRP-001');
+  });
+
+  it('scrambleIds: false keeps ids even at nightmare', () => {
+    const out = variants(tripsSample, {
+      seed: 42,
+      chaosLevel: 'nightmare',
+      scrambleIds: false,
+      kinds: ['longStrings', 'unicode'],
+    });
+    for (const v of out) {
+      const data = v.mock.response.data as { trips: Array<{ id: string }> };
+      expect(data.trips.map((t) => t.id)).toEqual(['TRP-001', 'TRP-002']);
+    }
   });
 });
 

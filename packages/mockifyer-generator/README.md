@@ -96,6 +96,8 @@ const scenarios = toScenarioMap(named); // { 'generated-empty-lists': mock, ... 
 
 Same `seed` + `chaosLevel` ⇒ identical named set and mock bodies.
 
+Identifier fields (`id`, `*Id`, `*_id`, `uuid`, `slug`, and inferred Uuid/IntegerId kinds) stay unchanged at `realistic` / `mild` / `wild`. They are only scrambled at `nightmare`, or when `scrambleIds: true` is set (use `scrambleIds: false` to keep ids even at nightmare).
+
 ### Secret scrub
 
 Variants scrub Authorization / api keys / tokens / cookies (Atlas rules) and guarantee sample emails and other collected PII literals never appear in output.
