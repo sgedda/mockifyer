@@ -451,6 +451,7 @@ npm run report        # Playwright HTML report`} language="bash" />
                   playsInline 
                   poster="/videos/e2e-tutorial/mock-editor-body-edit_bd79.jpg"
                   className="w-full rounded border"
+                  style={{ aspectRatio: '1662/800' }}
                 >
                   <source src="/videos/e2e-tutorial/mock-editor-body-edit_7064.mp4" type="video/mp4" />
                   Your browser does not support the video tag.{' '}
@@ -479,6 +480,7 @@ npm run report        # Playwright HTML report`} language="bash" />
                   playsInline 
                   poster="/videos/e2e-tutorial/overrides-field-override_d0ea.jpg"
                   className="w-full rounded border"
+                  style={{ aspectRatio: '1662/800' }}
                 >
                   <source src="/videos/e2e-tutorial/overrides-field-override_2f53.mp4" type="video/mp4" />
                   Your browser does not support the video tag.{' '}
@@ -505,6 +507,7 @@ npm run report        # Playwright HTML report`} language="bash" />
                   playsInline 
                   poster="/videos/e2e-tutorial/status-override-503_76a6.jpg"
                   className="w-full rounded border"
+                  style={{ aspectRatio: '1662/800' }}
                 >
                   <source src="/videos/e2e-tutorial/status-override-503_5fa0.mp4" type="video/mp4" />
                   Your browser does not support the video tag.{' '}
@@ -532,6 +535,7 @@ npm run report        # Playwright HTML report`} language="bash" />
                   playsInline 
                   poster="/videos/e2e-tutorial/settings-client-lane_57a0.jpg"
                   className="w-full rounded border"
+                  style={{ aspectRatio: '1662/800' }}
                 >
                   <source src="/videos/e2e-tutorial/settings-client-lane_9642.mp4" type="video/mp4" />
                   Your browser does not support the video tag.{' '}
@@ -561,6 +565,7 @@ npm run report        # Playwright HTML report`} language="bash" />
                   playsInline 
                   poster="/videos/e2e-tutorial/header-scenario-picker_bdbe.jpg"
                   className="w-full rounded border"
+                  style={{ aspectRatio: '1662/800' }}
                 >
                   <source src="/videos/e2e-tutorial/header-scenario-picker_4de8.mp4" type="video/mp4" />
                   Your browser does not support the video tag.{' '}
@@ -589,6 +594,7 @@ npm run report        # Playwright HTML report`} language="bash" />
                   playsInline 
                   poster="/videos/e2e-tutorial/network-view_be10.jpg"
                   className="w-full rounded border"
+                  style={{ aspectRatio: '1662/800' }}
                 >
                   <source src="/videos/e2e-tutorial/network-view_06c0.mp4" type="video/mp4" />
                   Your browser does not support the video tag.{' '}
@@ -652,6 +658,7 @@ npm run report        # Playwright HTML report`} language="bash" />
                   playsInline 
                   poster="/videos/e2e-tutorial/from-scratch_c4f2.jpg"
                   className="w-full rounded border"
+                  style={{ aspectRatio: '1662/800' }}
                 >
                   <source src="/videos/e2e-tutorial/from-scratch_f345.mp4" type="video/mp4" />
                   Your browser does not support the video tag.{' '}
@@ -663,10 +670,10 @@ npm run report        # Playwright HTML report`} language="bash" />
               </div>
             </div>
 
-            <div className="p-4 border rounded-lg">
+            <div id="tracing-walkthrough" className="p-4 border rounded-lg">
               <h4 className="font-semibold mb-2">6.8 Tracing walkthrough</h4>
               <p className="text-sm text-muted-foreground mb-3">
-                4 min 23 s in presentation mode.
+                4 min 23 s in presentation mode. Multi-hop request tracing links requests through <code className="bg-muted px-1 rounded text-xs">x-mockifyer-request-id</code> headers. Persistent tracing requires the SQLite or Redis provider; the filesystem provider supports in-memory (ephemeral) tracing.
               </p>
               <div className="text-sm text-muted-foreground space-y-2 mb-3">
                 <p>
