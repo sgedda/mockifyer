@@ -28,7 +28,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-// scripts/generate-sitemap.ts
+// mockifyer-web/scripts/generate-sitemap.ts
 var generate_sitemap_exports = {};
 __export(generate_sitemap_exports, {
   generateSitemap: () => generateSitemap,
@@ -38,7 +38,7 @@ module.exports = __toCommonJS(generate_sitemap_exports);
 var import_fs = __toESM(require("fs"));
 var import_path = __toESM(require("path"));
 
-// frontend/src/lib/seo-config.ts
+// mockifyer-web/frontend/src/lib/seo-config.ts
 var SITE_URL = "https://mockifyer.dev";
 var DEFAULT_TITLE = "Mockifyer \u2014 Record & Replay HTTP API Mocks";
 var DEFAULT_DESCRIPTION = "Open-source API mocking for JavaScript and React Native. Record and replay HTTP, edit mocks in a dashboard, catch API drift in CI. Mocks stay in your repo.";
@@ -80,7 +80,7 @@ var PAGE_SEO = {
   },
   "/guides": {
     title: "Mockifyer Guides",
-    description: "Practical guides for record-replay API mocking: network-edge testing, React Native E2E, mock drift, Atlas maps, and browser record-replay.",
+    description: "Practical guides for record-replay API mocking: network-edge testing, React Native E2E, mock drift, SSE/streaming, Atlas maps, and browser record-replay.",
     path: "/guides"
   },
   "/guides/mock-at-the-network-edge": {
@@ -118,6 +118,11 @@ var PAGE_SEO = {
     description: "Generate interactive traffic maps from recorded HTTP hops. See hosts, request chains, search payloads, and trace multi-service flows.",
     path: "/guides/mockifyer-atlas"
   },
+  "/guides/streaming": {
+    title: "Mocking SSE and Streaming APIs with Mockifyer",
+    description: "Record and replay SSE and chunked HTTP streams: tee on record, paced ReadableStream replay, drift caps, and dashboard chunk timelines.",
+    path: "/guides/streaming"
+  },
   "/features": {
     title: "Mockifyer Features: Record, Replay, Scenarios",
     description: "Selective recording, scenario switching, date freezing, React Native support, GraphQL matching, and a local dashboard for editing mocks.",
@@ -140,7 +145,7 @@ var PAGE_SEO = {
   }
 };
 
-// scripts/generate-sitemap.ts
+// mockifyer-web/scripts/generate-sitemap.ts
 var ROUTE_CONFIG = {
   "/": { priority: "1.0", changefreq: "weekly" },
   "/getting-started": { priority: "0.9", changefreq: "monthly" },
@@ -160,6 +165,7 @@ var ROUTE_CONFIG = {
   "/guides/reproduce-tester-bugs": { priority: "0.7", changefreq: "monthly" },
   "/guides/stable-react-native-e2e": { priority: "0.7", changefreq: "monthly" },
   "/guides/browser-record-replay": { priority: "0.7", changefreq: "monthly" },
+  "/guides/streaming": { priority: "0.7", changefreq: "monthly" },
   "/contact": { priority: "0.5", changefreq: "yearly" }
 };
 var STATIC_CONTENT_ROUTES = [

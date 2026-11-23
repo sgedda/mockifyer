@@ -11,6 +11,11 @@ const ROUTES = [
   { path: '/comparisons', title: 'Mockifyer vs MSW, Polly.js, and Nock', h1: /Mockifyer vs/i },
   { path: '/guides', title: 'Mockifyer Guides', h1: /Guides/i },
   { path: '/guides/react-native-without-msw', title: 'MSW vs Recording in React Native | Mockifyer', h1: /MSW/i },
+  {
+    path: '/guides/streaming',
+    title: 'Mocking SSE and Streaming APIs with Mockifyer',
+    h1: /Mocking SSE and Streaming APIs/i,
+  },
 ];
 
 test.describe('SEO: Per-route HTML metadata', () => {
