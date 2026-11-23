@@ -33,6 +33,11 @@ jobs:
       - name: Install generator dependencies
         run: npm --prefix packages/mockifyer-generator ci
 
+      # Replay integration imports @sgedda/mockifyer-fetch → core source; core needs
+      # its own node_modules (@dagrejs/dagre) for ts-jest typecheck.
+      - name: Install core dependencies
+        run: npm --prefix packages/mockifyer-core ci --ignore-scripts
+
       - name: Build generator
         run: npm --prefix packages/mockifyer-generator run build
 
