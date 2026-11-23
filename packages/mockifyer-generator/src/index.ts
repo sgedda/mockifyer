@@ -4,8 +4,9 @@
  * Import from `@sgedda/mockifyer-generator` — no Node-only APIs
  * (fs, path, Node crypto, Node buffer) and no network.
  *
- * Values come from a seeded `@faker-js/faker` instance (selected locales only:
- * en, sv, de, fr, es). Structure (counts, picks, shuffles) uses Mulberry32.
+ * Values come from seeded `@faker-js/faker` locale entry points: `en` is
+ * statically bundled; `sv` / `de` / `fr` / `es` load on demand via
+ * {@link loadLocale} / {@link generateAsync}. Structure uses Mulberry32.
  * Related-field consistency and free-text context parsing are offline (SGE-71).
  *
  * @packageDocumentation
@@ -24,11 +25,16 @@ export type {
 } from './types';
 
 export { createMulberry32, hashSeed } from './prng';
-export { createSeededFaker } from './faker';
+export {
+  createSeededFaker,
+  loadLocale,
+  isLocaleLoaded,
+  __resetLoadedLocalesForTests,
+} from './faker';
 export { inferFieldKind, inferFields, normalizeOverridePath } from './infer';
 export { generateValueForKind, weightedPick } from './values';
 export type { ValueHints } from './values';
-export { generate, infer, resolveGenerateSettings } from './generate';
+export { generate, generateAsync, infer, resolveGenerateSettings } from './generate';
 export {
   parseContext,
   resolveLocaleCode,

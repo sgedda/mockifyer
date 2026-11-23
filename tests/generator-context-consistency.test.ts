@@ -2,10 +2,14 @@ import {
   applyRelatedFieldConsistency,
   createSeededFaker,
   generate,
+  generateAsync,
+  loadLocale,
+  isLocaleLoaded,
   parseContext,
   resolveLocaleCode,
   weightedPick,
   createMulberry32,
+  __resetLoadedLocalesForTests,
 } from '@sgedda/mockifyer-generator';
 
 describe('parseContext', () => {
@@ -44,6 +48,45 @@ describe('parseContext', () => {
   });
 });
 
+describe('generator — lazy locales', () => {
+  beforeEach(() => {
+    __resetLoadedLocalesForTests();
+  });
+  afterEach(() => {
+    __resetLoadedLocalesForTests();
+  });
+
+  it('en is always loaded; sync generate works without preload', () => {
+    expect(isLocaleLoaded('en')).toBe(true);
+    const out = generate({ firstName: 'Ada' }, { count: 1, seed: 1, locale: 'en' });
+    expect(typeof (out[0] as { firstName: string }).firstName).toBe('string');
+  });
+
+  it('throws a clear error when sync generate uses an unloaded locale', () => {
+    expect(isLocaleLoaded('sv')).toBe(false);
+    expect(() =>
+      generate({ firstName: 'Ada' }, { count: 1, seed: 1, locale: 'sv' })
+    ).toThrow(/Locale "sv" is not loaded/);
+    expect(() => createSeededFaker(1, 'de')).toThrow(/Locale "de" is not loaded/);
+  });
+
+  it('sync generate works after loadLocale', async () => {
+    await loadLocale('sv');
+    expect(isLocaleLoaded('sv')).toBe(true);
+    const a = generate({ firstName: 'Ada' }, { count: 1, seed: 42, locale: 'sv' });
+    const b = generate({ firstName: 'Ada' }, { count: 1, seed: 42, locale: 'sv' });
+    expect(a).toEqual(b);
+  });
+
+  it('generateAsync loads locale then matches sync output', async () => {
+    const sample = { firstName: 'Ada', city: 'X' };
+    const asyncOut = await generateAsync(sample, { count: 1, seed: 7, locale: 'fr' });
+    // fr is now loaded — sync path should match
+    const syncOut = generate(sample, { count: 1, seed: 7, locale: 'fr' });
+    expect(syncOut).toEqual(asyncOut);
+  });
+});
+
 describe('generator — context options change output', () => {
   const sample = {
     id: 1,
@@ -53,12 +96,15 @@ describe('generator — context options change output', () => {
     city: 'Austin',
   };
 
-  it('locale from context changes faker values vs English', () => {
+  beforeAll(async () => {
+    await Promise.all(['sv', 'de', 'fr', 'es'].map((l) => loadLocale(l)));
+  });
+
+  it('locale from context changes faker values vs English', async () => {
     const en = generate(sample, { count: 1, seed: 42, locale: 'en' });
-    const sv = generate(sample, { count: 1, seed: 42, locale: 'sv' });
+    const sv = await generateAsync(sample, { count: 1, seed: 42, locale: 'sv' });
     expect(JSON.stringify(en)).not.toBe(JSON.stringify(sv));
-    // Same seed + locale still stable
-    expect(generate(sample, { count: 1, seed: 42, locale: 'sv' })).toEqual(sv);
+    expect(await generateAsync(sample, { count: 1, seed: 42, locale: 'sv' })).toEqual(sv);
   });
 
   it('currency option forces currency fields', () => {
@@ -79,16 +125,21 @@ describe('generator — context options change output', () => {
     expect(record.currency).toBe('NOK');
   });
 
-  it('explicit options override parsed context', () => {
-    const [record] = generate(sample, {
+  it('explicit options override parsed context', async () => {
+    const [record] = (await generateAsync(sample, {
       count: 1,
       seed: 1,
       context: 'Swedish users, prices in SEK',
       locale: 'de',
       currency: 'EUR',
-    }) as Array<typeof sample>;
+    })) as Array<typeof sample>;
     expect(record.currency).toBe('EUR');
-    const fromDe = generate(sample, { count: 1, seed: 1, locale: 'de', currency: 'EUR' });
+    const fromDe = await generateAsync(sample, {
+      count: 1,
+      seed: 1,
+      locale: 'de',
+      currency: 'EUR',
+    });
     expect(record).toEqual(fromDe[0]);
   });
 
@@ -246,14 +297,15 @@ describe('generator — determinism with context', () => {
     context: 'Swedish users, prices in SEK, 3 orders, mix of paid/refunded/failed',
   };
 
-  it('same sample+seed+context => identical JSON', () => {
-    const a = generate(sample, opts);
-    const b = generate(sample, opts);
+  it('same sample+seed+context => identical JSON', async () => {
+    const a = await generateAsync(sample, opts);
+    const b = await generateAsync(sample, opts);
     expect(JSON.stringify(a)).toBe(JSON.stringify(b));
     expect(a).toHaveLength(3);
   });
 
-  it('createSeededFaker respects locale deterministically', () => {
+  it('createSeededFaker respects locale deterministically', async () => {
+    await loadLocale('sv');
     expect(createSeededFaker(99, 'sv').person.firstName()).toBe(
       createSeededFaker(99, 'sv').person.firstName()
     );

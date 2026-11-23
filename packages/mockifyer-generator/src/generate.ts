@@ -5,7 +5,7 @@ import {
   type EnumMix,
   type ParsedContext,
 } from './context';
-import { createSeededFaker } from './faker';
+import { createSeededFaker, loadLocale } from './faker';
 import { inferFields, normalizeOverridePath } from './infer';
 import { createMulberry32 } from './prng';
 import {
@@ -184,18 +184,23 @@ export function infer(sample: unknown, overrides?: FieldKindOverrides): InferRes
  * produce byte-identical JSON across Node and browsers. Browser-safe (no
  * `fs` / `path` / Node crypto). Fully offline — no network or AI.
  *
+ * Locale: sync `generate` supports `en` always, and any locale already loaded
+ * via {@link loadLocale}. For other locales use {@link generateAsync} (or
+ * `await loadLocale(...)` first). Unloaded non-`en` locales throw.
+ *
  * Structure (array lengths, enum picks, shuffles) uses Mulberry32.
- * Field values use a per-record `@faker-js/faker` instance seeded from the same seed.
+ * Field values use a seeded `@faker-js/faker` locale singleton.
  * Related-field consistency (totals, ids, dates, currency) runs after synthesis.
  *
  * @example
  * ```ts
- * import { generate, FieldKind } from '@sgedda/mockifyer-generator';
+ * import { generate, generateAsync } from '@sgedda/mockifyer-generator';
  *
- * const records = generate(
- *   { id: 1, email: 'a@b.com', status: 'shipped', currency: 'USD', total: 10, items: [{ qty: 1, price: 10 }] },
- *   { seed: 42, context: 'Swedish users, prices in SEK, 5 orders, mix of paid/refunded/failed' }
- * );
+ * generate(sample, { seed: 42 }); // en
+ * await generateAsync(sample, {
+ *   seed: 42,
+ *   context: 'Swedish users, prices in SEK, 5 orders, mix of paid/refunded/failed',
+ * });
  * ```
  */
 export function generate(sample: unknown, options: GenerateOptions = {}): unknown[] {
@@ -208,6 +213,9 @@ export function generate(sample: unknown, options: GenerateOptions = {}): unknow
   if (count === 0) {
     return [];
   }
+
+  // Fail fast before synthesizing if locale is missing (createSeededFaker would throw too).
+  createSeededFaker(seed, locale);
 
   const inferred = inferFields(sample, overrides);
   const map = descriptorMap(inferred.fields);
@@ -240,6 +248,19 @@ export function generate(sample: unknown, options: GenerateOptions = {}): unknow
   }
 
   return records;
+}
+
+/**
+ * Like {@link generate}, but loads the resolved locale first (dynamic import
+ * for non-`en`). Prefer this when `context` / `locale` may request sv/de/fr/es.
+ */
+export async function generateAsync(
+  sample: unknown,
+  options: GenerateOptions = {}
+): Promise<unknown[]> {
+  const settings = resolveGenerateSettings(options);
+  await loadLocale(settings.locale);
+  return generate(sample, options);
 }
 
 /** Mix seed + index into a stable string seed (browser-safe). */

@@ -1,0 +1,40 @@
+name: Generator CI
+
+on:
+  pull_request:
+    paths:
+      - 'packages/mockifyer-generator/**'
+      - 'tests/generator-*.test.ts'
+      - '.github/workflows/generator-ci.yml'
+      - 'jest.config.js'
+      - 'tsconfig.json'
+      - 'package.json'
+      - 'package-lock.json'
+
+concurrency:
+  group: generator-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Generator unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22.x'
+          cache: npm
+
+      - name: Install root dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Install generator dependencies
+        run: npm --prefix packages/mockifyer-generator ci
+
+      - name: Build generator
+        run: npm --prefix packages/mockifyer-generator run build
+
+      - name: Run generator Jest suites
+        run: npx jest --ci tests/generator-engine.test.ts tests/generator-context-consistency.test.ts

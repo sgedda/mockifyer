@@ -2,7 +2,7 @@
 
 Browser-safe, seeded mock-data generator for Mockifyer ([SGE-70](https://linear.app/sgedda/issue/SGE-70/generator-engine-field-kind-inference-seeded-offline-generation) / [SGE-71](https://linear.app/sgedda/issue/SGE-71/generator-context-guided-datasets-and-related-field-consistency)).
 
-Infers field kinds from a JSON sample, then generates N records with the same shape. Uses Mulberry32 for structure (array lengths, enum picks) and a seeded `@faker-js/faker` instance (locales: `en`, `sv`, `de`, `fr`, `es`) for values. Same sample + seed + context ⇒ identical JSON in Node and browsers. No Node-only APIs and no network.
+Infers field kinds from a JSON sample, then generates N records with the same shape. Uses Mulberry32 for structure (array lengths, enum picks) and seeded `@faker-js/faker` locale entry points for values. Same sample + seed + context ⇒ identical JSON in Node and browsers. No Node-only APIs and no network.
 
 ## Install
 
@@ -13,7 +13,13 @@ npm install @sgedda/mockifyer-generator
 ## Usage
 
 ```ts
-import { generate, infer, parseContext, FieldKind } from '@sgedda/mockifyer-generator';
+import {
+  generate,
+  generateAsync,
+  loadLocale,
+  parseContext,
+  FieldKind,
+} from '@sgedda/mockifyer-generator';
 
 const sample = {
   id: 1,
@@ -26,9 +32,14 @@ const sample = {
   updatedAt: '2024-01-02T00:00:00.000Z',
 };
 
-const { fields } = infer(sample);
+// English (default) — sync
+const enRecords = generate(sample, { count: 3, seed: 42 });
 
-const records = generate(sample, {
+// Non-English: load locale first, or use generateAsync
+await loadLocale('sv');
+generate(sample, { seed: 42, locale: 'sv' });
+
+const records = await generateAsync(sample, {
   seed: 42,
   context: 'Swedish users, prices in SEK, 5 orders, mix of paid/refunded/failed',
   // explicit options override parsed context:
@@ -37,6 +48,17 @@ const records = generate(sample, {
 ```
 
 `parseContext(text)` exposes the offline parser for tests and tooling.
+
+### Locales (lazy)
+
+| Locale | Sync without preload? | How to load |
+|--------|----------------------|-------------|
+| `en` | Yes (statically bundled) | — |
+| `sv`, `de`, `fr`, `es` | Only after `loadLocale` | `await loadLocale('sv')` or `generateAsync(...)` |
+
+Sync `generate` / `createSeededFaker` **throw** if a non-`en` locale is requested but not yet loaded (no silent fallback).
+
+Bundlers that support async `import()` can code-split `@faker-js/faker/locale/{sv,de,fr,es}` out of the main entry.
 
 ## Consistency (SGE-71)
 

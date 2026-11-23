@@ -270,31 +270,71 @@ describe('generator engine — browser-safe / no Node globals', () => {
     expect(typeof (out[0] as { email: string }).email).toBe('string');
   });
 
-  it('esbuild-bundles for browser without Node builtins', () => {
+  it('esbuild-bundles for browser without Node builtins (en main + lazy locale chunks)', () => {
     const esbuild = require('esbuild') as typeof import('esbuild');
-    const result = esbuild.buildSync({
-      entryPoints: [path.join(GENERATOR_SRC, 'index.ts')],
-      bundle: true,
-      write: false,
-      platform: 'browser',
-      format: 'esm',
-      target: ['es2020'],
-      minify: true,
-      logLevel: 'silent',
-    });
-    expect(result.errors).toHaveLength(0);
-    const code = result.outputFiles?.[0]?.text ?? '';
-    expect(code.length).toBeGreaterThan(100);
-    expect(code).not.toMatch(/require\(['"](?:fs|path|crypto|buffer)['"]\)/);
-    expect(code).not.toMatch(/from\s+['"]node:/);
-
-    // Report size for humans (also used when updating the PR body)
     const { gzipSync } = require('zlib') as typeof import('zlib');
-    const gzipped = gzipSync(Buffer.from(code, 'utf8'));
-    // eslint-disable-next-line no-console
-    console.log(
-      `[generator bundle] minified=${code.length}B gzipped=${gzipped.length}B`
-    );
+    const os = require('os') as typeof import('os');
+    const outdir = fs.mkdtempSync(path.join(os.tmpdir(), 'mockifyer-generator-bundle-'));
+
+    try {
+      const result = esbuild.buildSync({
+        entryPoints: [path.join(GENERATOR_SRC, 'index.ts')],
+        bundle: true,
+        write: true,
+        splitting: true,
+        outdir,
+        platform: 'browser',
+        format: 'esm',
+        target: ['es2020'],
+        minify: true,
+        logLevel: 'silent',
+      });
+      expect(result.errors).toHaveLength(0);
+
+      const jsFiles = fs.readdirSync(outdir).filter((f) => f.endsWith('.js'));
+      expect(jsFiles.length).toBeGreaterThan(1);
+
+      let mainMin = 0;
+      let mainGz = 0;
+      const localeGz: Record<string, number> = {};
+
+      for (const file of jsFiles) {
+        const code = fs.readFileSync(path.join(outdir, file), 'utf8');
+        expect(code).not.toMatch(/require\(['"](?:fs|path|crypto|buffer)['"]\)/);
+        expect(code).not.toMatch(/from\s+['"]node:/);
+
+        const gz = gzipSync(Buffer.from(code, 'utf8')).length;
+        const base = file.replace(/\.js$/, '');
+        // Entry is index.js; shared en runtime is a chunk-*.js; lazy locales are sv-/de-/fr-/es-*.js
+        if (base === 'index' || base.startsWith('index-')) {
+          mainMin += code.length;
+          mainGz += gz;
+        } else if (/^(sv|de|fr|es)(-|$)/.test(base)) {
+          const loc = base.slice(0, 2);
+          localeGz[loc] = (localeGz[loc] ?? 0) + gz;
+        } else if (base.startsWith('chunk-')) {
+          // Shared en + Faker runtime — count toward main (en) entry cost
+          mainMin += code.length;
+          mainGz += gz;
+        }
+      }
+
+      expect(mainGz).toBeGreaterThan(10_000);
+      // Lazy locale chunks should exist and be smaller than the en main+shared payload
+      expect(Object.keys(localeGz).sort()).toEqual(['de', 'es', 'fr', 'sv']);
+      for (const [loc, gz] of Object.entries(localeGz)) {
+        expect(gz).toBeGreaterThan(100);
+        expect(gz).toBeLessThan(mainGz);
+        // eslint-disable-next-line no-console
+        console.log(`[generator bundle] locale=${loc} gzipped=${gz}B`);
+      }
+      // eslint-disable-next-line no-console
+      console.log(
+        `[generator bundle] main(en) minified=${mainMin}B gzipped=${mainGz}B`
+      );
+    } finally {
+      fs.rmSync(outdir, { recursive: true, force: true });
+    }
   });
 });
 
