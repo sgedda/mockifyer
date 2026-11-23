@@ -1,4 +1,11 @@
-import { createSeededFaker } from './faker';
+import { applyRelatedFieldConsistency } from './consistency';
+import {
+  parseContext,
+  resolveLocaleCode,
+  type EnumMix,
+  type ParsedContext,
+} from './context';
+import { createSeededFaker, loadLocale } from './faker';
 import { inferFields, normalizeOverridePath } from './infer';
 import { createMulberry32 } from './prng';
 import {
@@ -9,7 +16,7 @@ import {
   type InferResult,
   type Prng,
 } from './types';
-import { generateValueForKind } from './values';
+import { generateValueForKind, type ValueHints } from './values';
 import type { Faker } from '@faker-js/faker';
 
 function descriptorMap(fields: FieldDescriptor[]): Map<string, FieldDescriptor> {
@@ -60,18 +67,26 @@ function joinPath(parent: string, key: string | number, arrayItem = false): stri
   return `${parent}.${key}`;
 }
 
+interface SynthEnv {
+  map: Map<string, FieldDescriptor>;
+  rng: Prng;
+  faker: Faker;
+  hints: ValueHints;
+}
+
 function synthesizeValue(
   sample: unknown,
   path: string,
   key: string,
-  map: Map<string, FieldDescriptor>,
-  rng: Prng,
-  faker: Faker
+  env: SynthEnv
 ): unknown {
+  const { map, rng, faker, hints } = env;
+  const fieldHints: ValueHints = { ...hints, fieldKey: key };
+
   if (sample === null) {
     const d = findDescriptor(map, path);
     if (d && d.kind !== FieldKind.Null && d.kind !== FieldKind.Unknown) {
-      return generateValueForKind(d.kind, rng, faker, d.samples, d.enumValues);
+      return generateValueForKind(d.kind, rng, faker, d.samples, d.enumValues, fieldHints);
     }
     return null;
   }
@@ -85,9 +100,7 @@ function synthesizeValue(
     const out: unknown[] = [];
     for (let i = 0; i < len; i++) {
       const itemTemplate = template[i % template.length];
-      out.push(
-        synthesizeValue(itemTemplate, joinPath(path, i, true), key, map, rng, faker)
-      );
+      out.push(synthesizeValue(itemTemplate, joinPath(path, i, true), key, env));
     }
     return out;
   }
@@ -96,38 +109,60 @@ function synthesizeValue(
     const obj = sample as Record<string, unknown>;
     const out: Record<string, unknown> = {};
     for (const [childKey, childVal] of Object.entries(obj)) {
-      out[childKey] = synthesizeValue(
-        childVal,
-        joinPath(path, childKey),
-        childKey,
-        map,
-        rng,
-        faker
-      );
+      out[childKey] = synthesizeValue(childVal, joinPath(path, childKey), childKey, env);
     }
     return out;
   }
 
   const d = findDescriptor(map, path);
   if (d) {
-    return generateValueForKind(d.kind, rng, faker, d.samples, d.enumValues);
+    return generateValueForKind(d.kind, rng, faker, d.samples, d.enumValues, fieldHints);
   }
 
   if (typeof sample === 'string') {
-    return generateValueForKind(FieldKind.FreeText, rng, faker, [sample]);
+    return generateValueForKind(FieldKind.FreeText, rng, faker, [sample], undefined, fieldHints);
   }
   if (typeof sample === 'number') {
     return generateValueForKind(
       Number.isInteger(sample) ? FieldKind.Integer : FieldKind.Number,
       rng,
       faker,
-      [sample]
+      [sample],
+      undefined,
+      fieldHints
     );
   }
   if (typeof sample === 'boolean') {
     return rng.next() < 0.5;
   }
   return sample;
+}
+
+/**
+ * Merge free-text context with explicit options. Explicit fields win.
+ */
+export function resolveGenerateSettings(options: GenerateOptions): {
+  count: number;
+  seed: number | string;
+  locale: string;
+  currency?: string;
+  enumMix?: EnumMix;
+  overrides?: FieldKindOverrides;
+  parsed: ParsedContext;
+} {
+  const parsed = options.context ? parseContext(options.context) : {};
+  const locale = resolveLocaleCode(options.locale ?? parsed.locale);
+  const currency = options.currency ?? parsed.currency;
+  const count = options.count ?? parsed.count ?? 1;
+  return {
+    count,
+    seed: options.seed ?? 0,
+    locale,
+    currency,
+    enumMix: parsed.enumMix,
+    overrides: options.overrides,
+    parsed,
+  };
 }
 
 /**
@@ -145,29 +180,33 @@ export function infer(sample: unknown, overrides?: FieldKindOverrides): InferRes
 /**
  * Generate `count` synthetic records with the same shape as `sample`.
  *
- * Deterministic: identical `sample` + `seed` + options produce byte-identical
- * JSON across Node and browsers. Browser-safe (no `fs` / `path` / Node crypto).
+ * Deterministic: identical `sample` + `seed` + options (including `context`)
+ * produce byte-identical JSON across Node and browsers. Browser-safe (no
+ * `fs` / `path` / Node crypto). Fully offline — no network or AI.
+ *
+ * Locale: sync `generate` supports `en` always, and any locale already loaded
+ * via {@link loadLocale}. For other locales use {@link generateAsync} (or
+ * `await loadLocale(...)` first). Unloaded non-`en` locales throw.
  *
  * Structure (array lengths, enum picks, shuffles) uses Mulberry32.
- * Field values use a per-record `@faker-js/faker` instance seeded from the same seed.
+ * Field values use a seeded `@faker-js/faker` locale singleton.
+ * Related-field consistency (totals, ids, dates, currency) runs after synthesis.
  *
  * @example
  * ```ts
- * import { generate, FieldKind } from '@sgedda/mockifyer-generator';
+ * import { generate, generateAsync } from '@sgedda/mockifyer-generator';
  *
- * const records = generate(
- *   { id: 1, email: 'a@b.com', status: 'shipped' },
- *   { count: 5, seed: 42, overrides: { '$.status': FieldKind.Enum } }
- * );
+ * generate(sample, { seed: 42 }); // en
+ * await generateAsync(sample, {
+ *   seed: 42,
+ *   context: 'Swedish users, prices in SEK, 5 orders, mix of paid/refunded/failed',
+ * });
  * ```
- *
- * @remarks
- * Extension hooks for SGE-71 (`context`, `locale`, `currency`) and SGE-72
- * (`chaosLevel`, `variants`, `markGenerated`, `scrubSecrets`) are accepted on
- * {@link GenerateOptions} but not applied yet.
  */
 export function generate(sample: unknown, options: GenerateOptions = {}): unknown[] {
-  const count = options.count ?? 1;
+  const settings = resolveGenerateSettings(options);
+  const { count, seed, locale, currency, enumMix, overrides } = settings;
+
   if (!Number.isInteger(count) || count < 0) {
     throw new Error(`generate(): count must be a non-negative integer, got ${count}`);
   }
@@ -175,10 +214,13 @@ export function generate(sample: unknown, options: GenerateOptions = {}): unknow
     return [];
   }
 
-  const seed = options.seed ?? 0;
-  const inferred = inferFields(sample, options.overrides);
+  // Fail fast before synthesizing if locale is missing (createSeededFaker would throw too).
+  createSeededFaker(seed, locale);
+
+  const inferred = inferFields(sample, overrides);
   const map = descriptorMap(inferred.fields);
   const rootRng = createMulberry32(seed);
+  const hints: ValueHints = { currency, enumMix };
 
   const records: unknown[] = [];
 
@@ -187,9 +229,10 @@ export function generate(sample: unknown, options: GenerateOptions = {}): unknow
     for (let i = 0; i < count; i++) {
       const recordSeed = hashPair(seed, i);
       const rng = createMulberry32(recordSeed);
-      const faker = createSeededFaker(recordSeed);
+      const faker = createSeededFaker(recordSeed, locale);
       const template = templates[i % templates.length];
-      records.push(synthesizeValue(template, '$[*]', '', map, rng, faker));
+      const raw = synthesizeValue(template, '$[*]', '', { map, rng, faker, hints });
+      records.push(applyRelatedFieldConsistency(raw, { currency }));
       void rootRng.next();
     }
     return records;
@@ -198,12 +241,26 @@ export function generate(sample: unknown, options: GenerateOptions = {}): unknow
   for (let i = 0; i < count; i++) {
     const recordSeed = hashPair(seed, i);
     const rng = createMulberry32(recordSeed);
-    const faker = createSeededFaker(recordSeed);
-    records.push(synthesizeValue(sample, '$', '', map, rng, faker));
+    const faker = createSeededFaker(recordSeed, locale);
+    const raw = synthesizeValue(sample, '$', '', { map, rng, faker, hints });
+    records.push(applyRelatedFieldConsistency(raw, { currency }));
     void rootRng.next();
   }
 
   return records;
+}
+
+/**
+ * Like {@link generate}, but loads the resolved locale first (dynamic import
+ * for non-`en`). Prefer this when `context` / `locale` may request sv/de/fr/es.
+ */
+export async function generateAsync(
+  sample: unknown,
+  options: GenerateOptions = {}
+): Promise<unknown[]> {
+  const settings = resolveGenerateSettings(options);
+  await loadLocale(settings.locale);
+  return generate(sample, options);
 }
 
 /** Mix seed + index into a stable string seed (browser-safe). */
