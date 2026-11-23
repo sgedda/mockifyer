@@ -37,4 +37,4 @@ jobs:
         run: npm --prefix packages/mockifyer-generator run build
 
       - name: Run generator Jest suites
-        run: npx jest --ci tests/generator-engine.test.ts tests/generator-context-consistency.test.ts
+        run: npx jest --ci tests/generator-engine.test.ts tests/generator-context-consistency.test.ts tests/generator-variants.test.ts

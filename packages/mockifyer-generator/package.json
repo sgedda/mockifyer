@@ -1,13 +1,17 @@
 {
   "name": "@sgedda/mockifyer-generator",
   "version": "0.1.0",
-  "description": "Browser-safe mock data generator — field-kind inference and seeded offline generation for Mockifyer",
+  "description": "Browser-safe mock data generator — field-kind inference, seeded offline generation, and edge-case variants for Mockifyer",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./node": {
+      "types": "./dist/node/index.d.ts",
+      "default": "./dist/node/index.js"
     }
   },
   "files": [
@@ -24,7 +28,9 @@
     "faker",
     "generator",
     "testing",
-    "seeded"
+    "seeded",
+    "variants",
+    "chaos"
   ],
   "author": {
     "name": "Sebastian Gedda",
@@ -35,6 +41,7 @@
     "@faker-js/faker": "^9.9.0"
   },
   "devDependencies": {
+    "@types/node": "^20.11.0",
     "typescript": "^5.3.3"
   },
   "publishConfig": {

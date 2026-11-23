@@ -60,8 +60,8 @@ export type FieldKindOverrides = Record<string, FieldKind | string>;
  * related-field consistency. Explicit `locale` / `currency` / `count` override
  * values parsed from `context`.
  *
- * Reserved for SGE-72 (accepted, not yet applied):
- * `chaosLevel`, `variants`, `markGenerated`, `scrubSecrets`.
+ * Edge-case variants live on {@link variants} (SGE-72), not on `generate`.
+ * The fields below remain accepted for forward-compatible option bags.
  */
 export interface GenerateOptions {
   /** Number of root records to produce (default 1; may also come from context). */
@@ -83,14 +83,14 @@ export interface GenerateOptions {
   /** ISO currency code forced on currency fields, e.g. `"SEK"`. */
   currency?: string;
 
-  // --- reserved extension points (SGE-72) ---
-  /** @remarks Reserved for SGE-72 — chaos / nightmare intensity (0–1). */
-  chaosLevel?: number;
-  /** @remarks Reserved for SGE-72 — named edge-case variant ids. */
+  // --- SGE-72 (prefer {@link variants} API) ---
+  /** Chaos intensity hint; applied by {@link variants}, ignored by `generate`. */
+  chaosLevel?: number | string;
+  /** Variant kind allowlist hint; applied by {@link variants}. */
   variants?: string[];
-  /** @remarks Reserved for SGE-72 — mark metadata as generated. */
+  /** When true, callers should mark mocks `generated: true` (see {@link variants}). */
   markGenerated?: boolean;
-  /** @remarks Reserved for SGE-72 — scrub secrets/PII from output. */
+  /** When true, scrub secrets/PII (default for {@link variants}). */
   scrubSecrets?: boolean;
 }
 
