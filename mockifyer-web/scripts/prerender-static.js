@@ -126,6 +126,11 @@ var PAGE_SEO = {
     description: "Generate interactive traffic maps from recorded HTTP hops. See hosts, request chains, search payloads, and trace multi-service flows.",
     path: "/guides/mockifyer-atlas"
   },
+  "/guides/atlas-from-playwright": {
+    title: "Generate Atlas from Playwright E2E",
+    description: "Record traffic during Playwright tests with Mockifyer, build Atlas HTML in global teardown, and upload it as a CI artifact.",
+    path: "/guides/atlas-from-playwright"
+  },
   "/features": {
     title: "Mockifyer Features: Record, Replay, Scenarios",
     description: "Selective recording, scenario switching, date freezing, React Native support, GraphQL matching, and a local dashboard for editing mocks.",
@@ -205,6 +210,7 @@ var GUIDE_ITEMS = [
   { href: "/guides/stable-react-native-e2e", label: "Stable React Native E2E" },
   { href: "/guides/mock-drift", label: "Stop Mock Drift" },
   { href: "/guides/mockifyer-atlas", label: "Mockifyer Atlas: Architecture Visualization" },
+  { href: "/guides/atlas-from-playwright", label: "Generate Atlas from Playwright E2E" },
   { href: "/guides/react-native-without-msw", label: "React Native: Handlers vs Recording" },
   { href: "/guides/browser-record-replay", label: "Record and Replay HTTP in the Browser" }
 ];
@@ -219,6 +225,7 @@ var CONTENT_ROUTES_WITH_FULL_BODY = /* @__PURE__ */ new Set([
   "/guides/react-native-without-msw",
   "/guides/browser-record-replay",
   "/guides/mockifyer-atlas",
+  "/guides/atlas-from-playwright",
   "/comparisons",
   "/faq",
   "/getting-started",
@@ -343,6 +350,19 @@ var GUIDE_BODIES = {
         paragraphs: [
           "Atlas turns recorded hops into an interactive map of hosts and request chains. Search payloads, follow nested calls, and export HTML docs for architecture reviews.",
           "In Metro, press t to start live hop capture while you exercise the app. Combine with x-mockifyer-request-id to understand multi-service graphs end to end."
+        ]
+      }
+    ]
+  },
+  "/guides/atlas-from-playwright": {
+    h1: "Generate Atlas from Playwright E2E",
+    summary: "Record traffic during Playwright tests with Mockifyer, build Atlas HTML in global teardown, and upload it as a CI artifact on every run.",
+    sections: [
+      {
+        heading: "Playwright teardown builds the map",
+        paragraphs: [
+          "Wire globalTeardown in playwright.config.ts. After the suite, fetch dashboard network events, scrub secrets, and call buildAtlasDocHtmlFiles to write e2e/atlas-report/.",
+          "Upload e2e/atlas-report/ with actions/upload-artifact@v4 (name atlas-architecture) so every CI run keeps an interactive architecture artifact."
         ]
       }
     ]
@@ -674,9 +694,11 @@ async function prerender() {
   let count = 0;
   for (const [routePath, seoConfig] of Object.entries(PAGE_SEO)) {
     if (routePath.startsWith("/atlas/")) {
-      const staticIndex = import_path.default.join(publicDir, routePath.replace(/^\//, ""), "index.html");
-      if (!import_fs.default.existsSync(staticIndex)) {
-        console.warn(`  \u26A0 ${routePath} listed in PAGE_SEO but ${staticIndex} is missing`);
+      const atlasDir = import_path.default.join(publicDir, routePath.replace(/^\//, ""));
+      const staticIndex = import_path.default.join(atlasDir, "index.html");
+      const interactive = import_path.default.join(atlasDir, "atlas.html");
+      if (!import_fs.default.existsSync(staticIndex) || !import_fs.default.existsSync(interactive)) {
+        console.warn(`  \u26A0 ${routePath} listed in PAGE_SEO but wrapper/interactive Atlas is missing`);
       } else {
         console.log(`  \u2713 ${routePath} \u2192 atlas static asset (skipped SPA prerender)`);
       }

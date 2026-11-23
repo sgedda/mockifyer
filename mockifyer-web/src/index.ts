@@ -613,6 +613,7 @@ const HTML_ROUTES_FALLBACK = [
   '/guides/stable-react-native-e2e',
   '/guides/mock-drift',
   '/guides/mockifyer-atlas',
+  '/guides/atlas-from-playwright',
   '/guides/react-native-without-msw',
   '/guides/browser-record-replay',
 ];

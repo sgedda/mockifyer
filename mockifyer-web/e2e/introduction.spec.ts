@@ -30,11 +30,18 @@ test.describe('Introduction Page', () => {
     const section = page.locator('#atlas-showcase');
     await expect(section).toBeVisible();
     await expect(page.getByRole('heading', { name: /See what Mockifyer sees/i })).toBeVisible();
+    await expect(section.getByText(/Generated automatically from 1205 requests in our Playwright E2E suite/i)).toBeVisible();
     await expect(section.getByRole('img', { name: /WanderWeird Atlas/i })).toBeVisible();
+    await expect(section.getByText(/Run your Playwright tests with Mockifyer/i)).toBeVisible();
+    await expect(section.getByText(/Atlas artifact \(CI\)/i)).toBeVisible();
 
     const openLink = section.getByRole('link', { name: /Open full Atlas/i });
     await expect(openLink).toBeVisible();
     await expect(openLink).toHaveAttribute('href', '/atlas/wanderweird/');
+
+    const howTo = section.getByRole('link', { name: /How to automate this/i });
+    await expect(howTo).toBeVisible();
+    await expect(howTo).toHaveAttribute('href', '/guides/atlas-from-playwright');
   });
 
   test('should display showcase videos', async ({ page }) => {

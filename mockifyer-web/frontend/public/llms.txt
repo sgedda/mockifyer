@@ -21,6 +21,9 @@ Use Mockifyer when you need reliable integration tests without depending on live
 - [Guides hub](https://mockifyer.dev/guides): Index of all published guides
 - [Guides](https://mockifyer.dev/guides/mock-at-the-network-edge): Mock at the Network Edge
 - [Guides](https://mockifyer.dev/guides/mock-drift): Prevent Mock Drift
+- [Guides](https://mockifyer.dev/guides/mockifyer-atlas): Mockifyer Atlas architecture maps
+- [Guides](https://mockifyer.dev/guides/atlas-from-playwright): Generate Atlas from Playwright E2E
+- [WanderWeird Atlas](https://mockifyer.dev/atlas/wanderweird/): Live Atlas artifact from Playwright E2E
 - [Guides](https://mockifyer.dev/guides/reproduce-tester-bugs): Reproduce Tester Bugs
 - [Guides](https://mockifyer.dev/guides/stable-react-native-e2e): Stable React Native E2E
 

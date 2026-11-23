@@ -118,6 +118,11 @@ var PAGE_SEO = {
     description: "Generate interactive traffic maps from recorded HTTP hops. See hosts, request chains, search payloads, and trace multi-service flows.",
     path: "/guides/mockifyer-atlas"
   },
+  "/guides/atlas-from-playwright": {
+    title: "Generate Atlas from Playwright E2E",
+    description: "Record traffic during Playwright tests with Mockifyer, build Atlas HTML in global teardown, and upload it as a CI artifact.",
+    path: "/guides/atlas-from-playwright"
+  },
   "/features": {
     title: "Mockifyer Features: Record, Replay, Scenarios",
     description: "Selective recording, scenario switching, date freezing, React Native support, GraphQL matching, and a local dashboard for editing mocks.",
@@ -161,6 +166,7 @@ var ROUTE_CONFIG = {
   "/guides/mock-at-the-network-edge": { priority: "0.7", changefreq: "monthly" },
   "/guides/mock-drift": { priority: "0.7", changefreq: "monthly" },
   "/guides/mockifyer-atlas": { priority: "0.7", changefreq: "monthly" },
+  "/guides/atlas-from-playwright": { priority: "0.7", changefreq: "monthly" },
   "/guides/react-native-without-msw": { priority: "0.7", changefreq: "monthly" },
   "/guides/reproduce-tester-bugs": { priority: "0.7", changefreq: "monthly" },
   "/guides/stable-react-native-e2e": { priority: "0.7", changefreq: "monthly" },

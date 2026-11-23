@@ -74,10 +74,20 @@ Dashboard mock API also exposes `/api/mocks/:file/ai-context` for lightweight fi
 
 Outbound headers: `x-mockifyer-request-id`, `x-mockifyer-parent-request-id` for multi-hop tracing.
 
+## Atlas from Playwright E2E
+
+- Playwright config: `e2e/playwright.config.ts` sets `globalTeardown: './global-teardown.ts'`
+- Teardown: fetch `GET /api/network-events?limit=10000`, scrub, `buildAtlasDocHtmlFiles` → `e2e/atlas-report/`
+- CI: `.github/workflows/e2e.yml` uploads `atlas-architecture` from `e2e/atlas-report/`
+- Guide: https://mockifyer.dev/guides/atlas-from-playwright
+- Showcase: https://mockifyer.dev/atlas/wanderweird/
+
 ## Links
 
 - https://mockifyer.dev
 - https://mockifyer.dev/getting-started.md
 - https://mockifyer.dev/config-reference.md
 - https://mockifyer.dev/e2e-tutorial
+- https://mockifyer.dev/guides/atlas-from-playwright
+- https://mockifyer.dev/atlas/wanderweird/
 - https://github.com/sgedda/mockifyer

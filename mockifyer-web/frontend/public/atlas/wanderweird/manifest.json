@@ -3,7 +3,7 @@
   "artifactId": 14808509167,
   "artifactCreatedAt": "2026-11-23T10:37:52Z",
   "workflow": "E2E (WanderWeird + Mockifyer)",
-  "generatedVia": "e2e/global-teardown.ts \u2192 buildAtlasDocHtmlFiles + scrubNetworkEvent",
+  "generatedVia": "Playwright E2E (e2e/global-teardown.ts) \u2192 scrubNetworkEvent + buildAtlasDocHtmlFiles",
   "scenario": "WanderWeird E2E Run",
   "overview": {
     "summary": "Application with 25 endpoints across 15 hosts",
@@ -21,11 +21,17 @@
   "syncedAt": "2026-11-23T10:41:02.870722+00:00",
   "files": {
     "index.html": {
+      "note": "provenance wrapper (banner + iframe to atlas.html)"
+    },
+    "atlas.html": {
       "bytes": 1075230,
       "sha256": "6d3fef0953779f6de2c0f238057385c599bfe7b44391a3b80f39659977f5d539"
     },
     "bodies-search.json": {
       "bytes": 1920
+    },
+    "preview.jpg": {
+      "bytes": 64823
     }
   },
   "omitted": [

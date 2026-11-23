@@ -118,6 +118,11 @@ var PAGE_SEO = {
     description: "Generate interactive traffic maps from recorded HTTP hops. See hosts, request chains, search payloads, and trace multi-service flows.",
     path: "/guides/mockifyer-atlas"
   },
+  "/guides/atlas-from-playwright": {
+    title: "Generate Atlas from Playwright E2E",
+    description: "Record traffic during Playwright tests with Mockifyer, build Atlas HTML in global teardown, and upload it as a CI artifact.",
+    path: "/guides/atlas-from-playwright"
+  },
   "/features": {
     title: "Mockifyer Features: Record, Replay, Scenarios",
     description: "Selective recording, scenario switching, date freezing, React Native support, GraphQL matching, and a local dashboard for editing mocks.",
@@ -164,6 +169,7 @@ var CONTENT_ROUTES_WITH_FULL_BODY = /* @__PURE__ */ new Set([
   "/guides/react-native-without-msw",
   "/guides/browser-record-replay",
   "/guides/mockifyer-atlas",
+  "/guides/atlas-from-playwright",
   "/comparisons",
   "/faq",
   "/getting-started",
@@ -247,14 +253,33 @@ function verify() {
   }
   for (const [routePath, seo] of Object.entries(PAGE_SEO)) {
     if (routePath.startsWith("/atlas/")) {
-      const atlasIndex = import_path.default.join(publicDir, routePath.replace(/^\//, ""), "index.html");
-      if (!import_fs.default.existsSync(atlasIndex)) {
+      const atlasDir = import_path.default.join(publicDir, routePath.replace(/^\//, ""));
+      const wrapper = import_path.default.join(atlasDir, "index.html");
+      const interactive = import_path.default.join(atlasDir, "atlas.html");
+      if (!import_fs.default.existsSync(wrapper)) {
         failures.push({
           route: routePath,
-          reason: `missing static Atlas ${import_path.default.relative(publicDir, atlasIndex)}`
+          reason: `missing Atlas wrapper ${import_path.default.relative(publicDir, wrapper)}`
         });
       } else {
-        const atlasHtml = import_fs.default.readFileSync(atlasIndex, "utf-8");
+        const wrapperHtml = import_fs.default.readFileSync(wrapper, "utf-8");
+        if (!/Playwright E2E/i.test(wrapperHtml)) {
+          failures.push({ route: routePath, reason: "Atlas wrapper missing Playwright E2E provenance" });
+        }
+        if (!/atlas-from-playwright/.test(wrapperHtml)) {
+          failures.push({ route: routePath, reason: "Atlas wrapper missing how-to link" });
+        }
+        if (!/color-scheme:\s*light/.test(wrapperHtml) && !/content="light"/.test(wrapperHtml)) {
+          failures.push({ route: routePath, reason: "Atlas wrapper missing light color-scheme" });
+        }
+      }
+      if (!import_fs.default.existsSync(interactive)) {
+        failures.push({
+          route: routePath,
+          reason: `missing interactive Atlas ${import_path.default.relative(publicDir, interactive)}`
+        });
+      } else {
+        const atlasHtml = import_fs.default.readFileSync(interactive, "utf-8");
         if (!/"totalRequests"\s*:\s*[1-9]/.test(atlasHtml) && !/"observedEndpoints"\s*:\s*[1-9]/.test(atlasHtml)) {
           failures.push({
             route: routePath,

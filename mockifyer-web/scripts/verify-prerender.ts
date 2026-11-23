@@ -109,14 +109,33 @@ function verify(): void {
 
   for (const [routePath, seo] of Object.entries(PAGE_SEO)) {
     if (routePath.startsWith('/atlas/')) {
-      const atlasIndex = path.join(publicDir, routePath.replace(/^\//, ''), 'index.html');
-      if (!fs.existsSync(atlasIndex)) {
+      const atlasDir = path.join(publicDir, routePath.replace(/^\//, ''));
+      const wrapper = path.join(atlasDir, 'index.html');
+      const interactive = path.join(atlasDir, 'atlas.html');
+      if (!fs.existsSync(wrapper)) {
         failures.push({
           route: routePath,
-          reason: `missing static Atlas ${path.relative(publicDir, atlasIndex)}`,
+          reason: `missing Atlas wrapper ${path.relative(publicDir, wrapper)}`,
         });
       } else {
-        const atlasHtml = fs.readFileSync(atlasIndex, 'utf-8');
+        const wrapperHtml = fs.readFileSync(wrapper, 'utf-8');
+        if (!/Playwright E2E/i.test(wrapperHtml)) {
+          failures.push({ route: routePath, reason: 'Atlas wrapper missing Playwright E2E provenance' });
+        }
+        if (!/atlas-from-playwright/.test(wrapperHtml)) {
+          failures.push({ route: routePath, reason: 'Atlas wrapper missing how-to link' });
+        }
+        if (!/color-scheme:\s*light/.test(wrapperHtml) && !/content="light"/.test(wrapperHtml)) {
+          failures.push({ route: routePath, reason: 'Atlas wrapper missing light color-scheme' });
+        }
+      }
+      if (!fs.existsSync(interactive)) {
+        failures.push({
+          route: routePath,
+          reason: `missing interactive Atlas ${path.relative(publicDir, interactive)}`,
+        });
+      } else {
+        const atlasHtml = fs.readFileSync(interactive, 'utf-8');
         if (
           !/"totalRequests"\s*:\s*[1-9]/.test(atlasHtml) &&
           !/"observedEndpoints"\s*:\s*[1-9]/.test(atlasHtml)

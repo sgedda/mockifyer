@@ -1,23 +1,51 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('WanderWeird Atlas static page', () => {
-  test('serves interactive Atlas HTML with observed traffic', async ({ page }) => {
+  test('serves provenance wrapper and interactive Atlas with observed traffic', async ({ page }) => {
     const response = await page.goto('/atlas/wanderweird/');
     expect(response?.status()).toBe(200);
 
     const html = await response?.text();
     expect(html).toBeTruthy();
-    expect(html!).toMatch(/Mockifyer Atlas/i);
-    expect(html!).toMatch(/"totalRequests"\s*:\s*1205|"totalRequests"\s*:\s*[1-9]/);
-    expect(html!).toMatch(/"observedEndpoints"\s*:\s*[1-9]/);
+    expect(html!).toMatch(/Generated automatically from a Playwright E2E run/i);
+    expect(html!).toMatch(/1205 requests/i);
+    expect(html!).toMatch(/21 observed endpoints/i);
+    expect(html!).toMatch(/atlas-from-playwright/);
     expect(html!).toMatch(/color-scheme:\s*light|content="light"/);
+    expect(html!).toMatch(/src="\.\/atlas\.html"/);
 
-    await expect(page.getByRole('heading', { name: /Mockifyer Atlas/i }).first()).toBeVisible();
+    await expect(page.locator('#atlas-origin-banner')).toBeVisible();
+    await expect(
+      page.getByRole('link', { name: /How to generate Atlas from Playwright/i })
+    ).toHaveAttribute('href', '/guides/atlas-from-playwright');
+
+    const atlasResponse = await page.goto('/atlas/wanderweird/atlas.html');
+    expect(atlasResponse?.status()).toBe(200);
+    const atlasHtml = await atlasResponse?.text();
+    expect(atlasHtml!).toMatch(/Mockifyer Atlas/i);
+    expect(atlasHtml!).toMatch(/"totalRequests"\s*:\s*1205|"totalRequests"\s*:\s*[1-9]/);
+    expect(atlasHtml!).toMatch(/"observedEndpoints"\s*:\s*[1-9]/);
   });
 
   test('/atlas/wanderweird redirects to trailing slash', async ({ request }) => {
     const response = await request.get('/atlas/wanderweird', { maxRedirects: 0 });
     expect(response.status()).toBe(301);
     expect(response.headers()['location']).toMatch(/\/atlas\/wanderweird\/?/);
+  });
+});
+
+test.describe('Atlas from Playwright guide', () => {
+  test('explains teardown and CI artifact upload', async ({ page }) => {
+    await page.goto('/guides/atlas-from-playwright');
+    await expect(
+      page.getByRole('heading', { name: /Generate Atlas from Playwright E2E/i })
+    ).toBeVisible();
+    await expect(page.getByText(/global-teardown\.ts/i).first()).toBeVisible();
+    await expect(page.getByText(/atlas-architecture/i).first()).toBeVisible();
+    await expect(page.getByText(/actions\/upload-artifact@v4/i).first()).toBeVisible();
+    await expect(page.getByRole('link', { name: /Open WanderWeird Atlas/i })).toHaveAttribute(
+      'href',
+      '/atlas/wanderweird/'
+    );
   });
 });

@@ -183,9 +183,11 @@ async function prerender(): Promise<void> {
   for (const [routePath, seoConfig] of Object.entries(PAGE_SEO)) {
     // Static Atlas HTML ships under frontend/public/atlas/ — do not overwrite with SPA shell.
     if (routePath.startsWith('/atlas/')) {
-      const staticIndex = path.join(publicDir, routePath.replace(/^\//, ''), 'index.html');
-      if (!fs.existsSync(staticIndex)) {
-        console.warn(`  ⚠ ${routePath} listed in PAGE_SEO but ${staticIndex} is missing`);
+      const atlasDir = path.join(publicDir, routePath.replace(/^\//, ''));
+      const staticIndex = path.join(atlasDir, 'index.html');
+      const interactive = path.join(atlasDir, 'atlas.html');
+      if (!fs.existsSync(staticIndex) || !fs.existsSync(interactive)) {
+        console.warn(`  ⚠ ${routePath} listed in PAGE_SEO but wrapper/interactive Atlas is missing`);
       } else {
         console.log(`  ✓ ${routePath} → atlas static asset (skipped SPA prerender)`);
       }

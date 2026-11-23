@@ -30,8 +30,11 @@ const REPO_ROOT = path.resolve(__dirname, '../..');
 const DEST_DIR = path.resolve(__dirname, '../frontend/public/atlas/wanderweird');
 const E2E_REPORT = path.join(REPO_ROOT, 'e2e/atlas-report');
 
+/** Interactive Atlas from teardown (renamed to atlas.html so index.html can be the provenance wrapper). */
 const REQUIRED_FILES = ['index.html', 'bodies-search.json'];
+const DEST_INTERACTIVE = 'atlas.html';
 const OPTIONAL_OMIT = ['atlas.har', 'atlas-events.json'];
+const WRAPPER_MARKER = 'atlas-origin-banner';
 
 function parseArgs(argv) {
   const args = {
@@ -98,9 +101,18 @@ function copyAtlasFiles(sourceDir) {
     }
   }
   fs.mkdirSync(DEST_DIR, { recursive: true });
-  for (const name of REQUIRED_FILES) {
-    fs.copyFileSync(path.join(sourceDir, name), path.join(DEST_DIR, name));
+  // Preserve marketing wrapper (index.html); write interactive Atlas beside it.
+  const wrapperPath = path.join(DEST_DIR, 'index.html');
+  if (fs.existsSync(wrapperPath)) {
+    const wrapper = fs.readFileSync(wrapperPath, 'utf8');
+    if (!wrapper.includes(WRAPPER_MARKER)) {
+      throw new Error(
+        'Dest index.html is not the provenance wrapper — refusing to overwrite. Restore the wrapper first.'
+      );
+    }
   }
+  fs.copyFileSync(path.join(sourceDir, 'index.html'), path.join(DEST_DIR, DEST_INTERACTIVE));
+  fs.copyFileSync(path.join(sourceDir, 'bodies-search.json'), path.join(DEST_DIR, 'bodies-search.json'));
   for (const name of OPTIONAL_OMIT) {
     const dest = path.join(DEST_DIR, name);
     if (fs.existsSync(dest)) fs.unlinkSync(dest);
@@ -164,7 +176,8 @@ async function capturePreview() {
   try {
     const page = await browser.newPage({ viewport: { width: 1600, height: 1000 }, colorScheme: 'light' });
     await page.emulateMedia({ colorScheme: 'light' });
-    await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: 'networkidle', timeout: 60000 });
+    // Preview the interactive Atlas (not the provenance wrapper).
+    await page.goto(`http://127.0.0.1:${port}/atlas.html`, { waitUntil: 'networkidle', timeout: 60000 });
     await page.waitForTimeout(2000);
     await page.evaluate(() => {
       const overview = [...document.querySelectorAll('h2,h3')].find((n) =>
@@ -201,7 +214,7 @@ async function capturePreview() {
 }
 
 function writeManifest({ source, artifactId, overview, stats }) {
-  const html = fs.readFileSync(path.join(DEST_DIR, 'index.html'));
+  const html = fs.readFileSync(path.join(DEST_DIR, DEST_INTERACTIVE));
   const manifest = {
     source,
     artifactId: artifactId || null,
@@ -212,7 +225,8 @@ function writeManifest({ source, artifactId, overview, stats }) {
     colorScheme: 'light',
     syncedAt: new Date().toISOString(),
     files: {
-      'index.html': { bytes: html.length },
+      'atlas.html': { bytes: html.length },
+      'index.html': { note: 'provenance wrapper (banner + iframe); not overwritten by sync' },
       'bodies-search.json': { bytes: fs.statSync(path.join(DEST_DIR, 'bodies-search.json')).size },
       'preview.jpg': fs.existsSync(path.join(DEST_DIR, 'preview.jpg'))
         ? { bytes: fs.statSync(path.join(DEST_DIR, 'preview.jpg')).size }
@@ -220,7 +234,7 @@ function writeManifest({ source, artifactId, overview, stats }) {
     },
     omitted: OPTIONAL_OMIT,
     omitReason:
-      'Hop events are embedded in index.html; HAR is unused by the interactive page. Keeps the static asset small.',
+      'Hop events are embedded in atlas.html; HAR is unused by the interactive page. Keeps the static asset small.',
   };
   fs.writeFileSync(path.join(DEST_DIR, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
   return manifest;
