@@ -155,6 +155,48 @@ describe('captureReadableStreamChunks', () => {
     expect(liveText).toBe('onetwothree');
     expect(captured.concatenated).toBe('onetwothree');
   });
+
+  it('resolves as truncated when the stream stays idle with no chunks', async () => {
+    const idle = new ReadableStream<Uint8Array>({
+      // Never enqueues and never closes — blocks on read() forever without a budget race.
+      pull() {
+        /* intentionally idle */
+      },
+    });
+    const started = Date.now();
+    const captured = await captureReadableStreamChunks(idle, 'sse', {
+      maxBytes: 1_000_000,
+      maxDurationMs: 80,
+    });
+    expect(Date.now() - started).toBeLessThan(1_500);
+    expect(captured.stream.truncated).toBe(true);
+    expect(captured.concatenated).toBe('');
+    expect(captured.stream.chunks).toEqual([]);
+  });
+
+  it('resolves as truncated when the stream goes quiet after the first chunk', async () => {
+    const encoder = new TextEncoder();
+    let sentFirst = false;
+    const quietAfterFirst = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (!sentFirst) {
+          sentFirst = true;
+          controller.enqueue(encoder.encode('data: only\n\n'));
+          return;
+        }
+        // Stay open with no further chunks (idle SSE without heartbeat).
+      },
+    });
+    const started = Date.now();
+    const captured = await captureReadableStreamChunks(quietAfterFirst, 'sse', {
+      maxBytes: 1_000_000,
+      maxDurationMs: 100,
+    });
+    expect(Date.now() - started).toBeLessThan(1_500);
+    expect(captured.stream.truncated).toBe(true);
+    expect(captured.concatenated).toContain('data: only');
+    expect(captured.stream.chunks.length).toBeGreaterThanOrEqual(1);
+  });
 });
 
 describe('stream replay modes', () => {
@@ -329,5 +371,39 @@ describe('drift capped stream read', () => {
     expect(typeof body).toBe('string');
     expect(String(body).length).toBeGreaterThan(0);
     expect(String(body).length).toBeLessThanOrEqual(40);
+  });
+
+  it('returns within the duration cap for an idle SSE with no further chunks', async () => {
+    const encoder = new TextEncoder();
+    let sent = false;
+    const idleSse = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (!sent) {
+          sent = true;
+          controller.enqueue(encoder.encode('event: hi\ndata: 1\n\n'));
+        }
+      },
+    });
+
+    const response = {
+      headers: {
+        get(name: string) {
+          return name.toLowerCase() === 'content-type' ? 'text/event-stream' : null;
+        },
+      },
+      body: idleSse,
+      text: async () => {
+        throw new Error('text() should not be used for idle capped stream reads');
+      },
+    };
+
+    const started = Date.now();
+    const body = await readDriftResponseBodyMaybeCapped(response, {
+      forceCapped: true,
+      maxBytes: 1_000_000,
+      maxDurationMs: 90,
+    });
+    expect(Date.now() - started).toBeLessThan(1_500);
+    expect(String(body)).toContain('event: hi');
   });
 });

@@ -193,7 +193,8 @@ export async function captureReadableStreamChunks(
   try {
     while (true) {
       const elapsed = Date.now() - startedAt;
-      if (elapsed >= maxDurationMs) {
+      const remainingMs = maxDurationMs - elapsed;
+      if (remainingMs <= 0) {
         truncated = true;
         try {
           await reader.cancel('mockifyer-stream-duration-cap');
@@ -203,7 +204,20 @@ export async function captureReadableStreamChunks(
         break;
       }
 
-      const { done, value } = await reader.read();
+      // Race each read against the remaining duration budget so an idle SSE
+      // (no heartbeat) cannot block forever without resolving the recording.
+      const readResult = await readWithDurationBudget(reader, remainingMs);
+      if (readResult.timedOut) {
+        truncated = true;
+        try {
+          await reader.cancel('mockifyer-stream-duration-cap');
+        } catch {
+          // ignore cancel errors
+        }
+        break;
+      }
+
+      const { done, value } = readResult.result;
       if (done) {
         break;
       }
@@ -286,6 +300,49 @@ export async function captureReadableStreamChunks(
       ...(truncated ? { truncated: true } : {}),
     },
   };
+}
+
+/**
+ * Await `reader.read()` but resolve as timed-out if `budgetMs` elapses first.
+ * Clears the timer on either outcome so nothing leaks. When the budget wins,
+ * the still-pending read is swallowed so a later `cancel()` cannot raise an
+ * unhandled rejection.
+ */
+async function readWithDurationBudget(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  budgetMs: number
+): Promise<
+  | { timedOut: false; result: ReadableStreamReadResult<Uint8Array> }
+  | { timedOut: true; result?: undefined }
+> {
+  if (budgetMs <= 0) {
+    return { timedOut: true };
+  }
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const readPromise = reader.read().then(
+    (result) => ({ timedOut: false as const, result }),
+    () => ({ timedOut: true as const })
+  );
+  try {
+    const timeoutPromise = new Promise<{ timedOut: true }>((resolve) => {
+      timer = setTimeout(() => resolve({ timedOut: true }), budgetMs);
+    });
+    const winner = await Promise.race([readPromise, timeoutPromise]);
+    if (winner.timedOut) {
+      // Prevent unhandled rejection when cancel() settles the outstanding read.
+      void readPromise.then(
+        () => undefined,
+        () => undefined
+      );
+      return { timedOut: true };
+    }
+    return winner;
+  } finally {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
+  }
 }
 
 function sliceUtf8ToMaxBytes(text: string, maxBytes: number): string {
