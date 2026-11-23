@@ -14,6 +14,8 @@ module.exports = {
     '^@sgedda/mockifyer-core$': '<rootDir>/packages/mockifyer-core/src/index.ts',
     '^@sgedda/mockifyer-core/utils/drift$': '<rootDir>/packages/mockifyer-core/src/utils/drift/index.ts',
     '^@sgedda/mockifyer-core/(.*)$': '<rootDir>/packages/mockifyer-core/src/$1',
+    '^@sgedda/mockifyer-generator$': '<rootDir>/packages/mockifyer-generator/src/index.ts',
+    '^@sgedda/mockifyer-generator/(.*)$': '<rootDir>/packages/mockifyer-generator/src/$1',
     '^@sgedda/mockifyer-axios$': '<rootDir>/packages/mockifyer-axios/src/index.ts',
     '^@sgedda/mockifyer-axios/(.*)$': '<rootDir>/packages/mockifyer-axios/src/$1',
     '^@sgedda/mockifyer-fetch$': '<rootDir>/packages/mockifyer-fetch/src/index.ts',

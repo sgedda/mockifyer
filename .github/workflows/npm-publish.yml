@@ -6,6 +6,7 @@ on:
       - "core-v*"
       - "axios-v*"
       - "fetch-v*"
+      - "generator-v*"
 
 jobs:
   quality:
@@ -25,6 +26,7 @@ jobs:
       - name: Install dashboard dependencies (for tests)
         run: |
           npm --prefix packages/mockifyer-core install
+          npm --prefix packages/mockifyer-generator install
           npm --prefix packages/mockifyer-dashboard install
           npm --prefix mockifyer-web install
 
@@ -67,9 +69,10 @@ jobs:
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
           case "$TAG" in
-            core-v*)  echo "PKG_DIR=packages/mockifyer-core"  >> $GITHUB_OUTPUT ;;
-            axios-v*) echo "PKG_DIR=packages/mockifyer-axios" >> $GITHUB_OUTPUT ;;
-            fetch-v*) echo "PKG_DIR=packages/mockifyer-fetch" >> $GITHUB_OUTPUT ;;
+            core-v*)      echo "PKG_DIR=packages/mockifyer-core"      >> $GITHUB_OUTPUT ;;
+            axios-v*)     echo "PKG_DIR=packages/mockifyer-axios"     >> $GITHUB_OUTPUT ;;
+            fetch-v*)     echo "PKG_DIR=packages/mockifyer-fetch"     >> $GITHUB_OUTPUT ;;
+            generator-v*) echo "PKG_DIR=packages/mockifyer-generator" >> $GITHUB_OUTPUT ;;
             *)
               echo "Unsupported tag: $TAG"
               exit 1
@@ -136,5 +139,6 @@ jobs:
           echo "  - @sgedda/mockifyer-core: https://www.npmjs.com/package/@sgedda/mockifyer-core"
           echo "  - @sgedda/mockifyer-axios: https://www.npmjs.com/package/@sgedda/mockifyer-axios"
           echo "  - @sgedda/mockifyer-fetch: https://www.npmjs.com/package/@sgedda/mockifyer-fetch"
+          echo "  - @sgedda/mockifyer-generator: https://www.npmjs.com/package/@sgedda/mockifyer-generator"
           echo "📦 GitHub Packages: https://github.com/${{ github.repository }}?tab=packages"
           echo "📝 Release: https://github.com/${{ github.repository }}/releases/tag/${GITHUB_REF#refs/tags/}"
