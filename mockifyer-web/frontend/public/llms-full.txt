@@ -74,10 +74,15 @@ Dashboard mock API also exposes `/api/mocks/:file/ai-context` for lightweight fi
 
 Outbound headers: `x-mockifyer-request-id`, `x-mockifyer-parent-request-id` for multi-hop tracing.
 
+## Streaming (SSE / chunked)
+
+Fetch can record `response.stream` timelines (`kind`, timed `chunks`, optional `truncated`) while keeping concatenated `response.data`. Config: `streamReplay` (`accelerated` default | `original` | `immediate`), `streamRecordMaxBytes`, `streamRecordMaxDurationMs`. Recording is direct-mode only; dashboard proxy can replay stream mocks but does not record them yet. No axios `responseType: 'stream'`, EventSource, WebSockets, or gRPC. Guide: https://mockifyer.dev/guides/streaming
+
 ## Links
 
 - https://mockifyer.dev
 - https://mockifyer.dev/getting-started.md
 - https://mockifyer.dev/config-reference.md
 - https://mockifyer.dev/e2e-tutorial
+- https://mockifyer.dev/guides/streaming
 - https://github.com/sgedda/mockifyer

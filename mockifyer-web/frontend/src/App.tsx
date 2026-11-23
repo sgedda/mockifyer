@@ -30,6 +30,7 @@ const MockDrift = lazy(() => import('./pages/guides/MockDrift'))
 const ReactNativeWithoutMSW = lazy(() => import('./pages/guides/ReactNativeWithoutMSW'))
 const BrowserRecordReplay = lazy(() => import('./pages/guides/BrowserRecordReplay'))
 const MockifyerAtlas = lazy(() => import('./pages/guides/MockifyerAtlas'))
+const Streaming = lazy(() => import('./pages/guides/Streaming'))
 const NotFound = lazy(() => import('./pages/NotFound'))
 
 function HashScrollHandler() {
@@ -107,6 +108,7 @@ function App() {
               <Route path="/guides/react-native-without-msw" element={<ReactNativeWithoutMSW />} />
               <Route path="/guides/browser-record-replay" element={<BrowserRecordReplay />} />
               <Route path="/guides/mockifyer-atlas" element={<MockifyerAtlas />} />
+              <Route path="/guides/streaming" element={<Streaming />} />
               
               {/* Redirects for removed pages */}
               <Route path="/playground" element={<Navigate to="/getting-started" replace />} />

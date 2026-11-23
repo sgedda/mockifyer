@@ -23,6 +23,7 @@ Use Mockifyer when you need reliable integration tests without depending on live
 - [Guides](https://mockifyer.dev/guides/mock-drift): Prevent Mock Drift
 - [Guides](https://mockifyer.dev/guides/reproduce-tester-bugs): Reproduce Tester Bugs
 - [Guides](https://mockifyer.dev/guides/stable-react-native-e2e): Stable React Native E2E
+- [Guides](https://mockifyer.dev/guides/streaming): Mocking SSE and Streaming APIs
 
 ## npm packages
 

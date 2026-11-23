@@ -19,6 +19,7 @@ const SAMPLE_ROUTES = [
   '/guides',
   '/guides/mock-drift',
   '/guides/stable-react-native-e2e',
+  '/guides/streaming',
   '/faq',
   '/comparisons',
   '/features',
@@ -27,6 +28,7 @@ const SAMPLE_ROUTES = [
 const CONTENT_ROUTES = [
   '/guides',
   '/guides/mock-drift',
+  '/guides/streaming',
   '/faq',
   '/comparisons',
   '/getting-started',
@@ -135,6 +137,13 @@ function ensureMinimalPublicAssets(): void {
       path: '/guides/stable-react-native-e2e',
       bodyHtml: guideBody,
       jsonLd: { '@type': 'TechArticle', headline: 'Stable RN E2E' },
+    },
+    '/guides/streaming': {
+      title: 'Mocking SSE and Streaming APIs with Mockifyer',
+      description: 'Streaming guide description for tests',
+      path: '/guides/streaming',
+      bodyHtml: guideBody,
+      jsonLd: { '@type': 'TechArticle', headline: 'Streaming SSE' },
     },
     '/faq': {
       title: 'Mockifyer FAQ: Record-Replay API Mocks',

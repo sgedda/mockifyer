@@ -34,18 +34,27 @@ test.describe('Guide Pages', () => {
     await expect(page.getByText(/MSW uses in-code handlers/i)).toBeVisible();
   });
 
-  test('all guides should have back to home button', async ({ page }) => {
+  test('should load Streaming guide', async ({ page }) => {
+    await page.goto('/guides/streaming');
+    await expect(
+      page.getByRole('heading', { name: /Mocking SSE and Streaming APIs/i })
+    ).toBeVisible();
+    await expect(page.getByText(/streamReplay/i).first()).toBeVisible();
+  });
+
+  test('all guides should have a back navigation link', async ({ page }) => {
     const guides = [
       '/guides/mock-at-the-network-edge',
       '/guides/reproduce-tester-bugs',
       '/guides/stable-react-native-e2e',
       '/guides/mock-drift',
       '/guides/react-native-without-msw',
+      '/guides/streaming',
     ];
 
     for (const guide of guides) {
       await page.goto(guide);
-      const backButton = page.getByRole('link', { name: /Back to Home/i });
+      const backButton = page.getByRole('link', { name: /Back to (Home|Guides)/i });
       await expect(backButton).toBeVisible();
     }
   });

@@ -598,6 +598,7 @@ const HTML_ROUTES_FALLBACK = [
   '/guides/mockifyer-atlas',
   '/guides/react-native-without-msw',
   '/guides/browser-record-replay',
+  '/guides/streaming',
 ];
 
 function getKnownHtmlRoutes(): string[] {
