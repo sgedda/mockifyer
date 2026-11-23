@@ -97,6 +97,12 @@
     <priority>0.7</priority>
   </url>
   <url>
+    <loc>https://mockifyer.dev/guides/streaming</loc>
+    <lastmod>2026-11-23</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
     <loc>https://mockifyer.dev/features</loc>
     <lastmod>2026-11-23</lastmod>
     <changefreq>monthly</changefreq>

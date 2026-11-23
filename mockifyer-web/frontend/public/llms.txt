@@ -26,6 +26,7 @@ Use Mockifyer when you need reliable integration tests without depending on live
 - [WanderWeird Atlas](https://mockifyer.dev/atlas/wanderweird/): Live Atlas artifact from Playwright E2E
 - [Guides](https://mockifyer.dev/guides/reproduce-tester-bugs): Reproduce Tester Bugs
 - [Guides](https://mockifyer.dev/guides/stable-react-native-e2e): Stable React Native E2E
+- [Guides](https://mockifyer.dev/guides/streaming): Mocking SSE and Streaming APIs
 
 ## npm packages
 

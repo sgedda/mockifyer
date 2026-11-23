@@ -278,4 +278,5 @@ export const GUIDE_ITEMS: GuideItem[] = [
   { href: '/guides/atlas-from-playwright', label: 'Generate Atlas from Playwright E2E' },
   { href: '/guides/react-native-without-msw', label: 'React Native: Handlers vs Recording' },
   { href: '/guides/browser-record-replay', label: 'Record and Replay HTTP in the Browser' },
+  { href: '/guides/streaming', label: 'Mocking SSE and Streaming APIs' },
 ]

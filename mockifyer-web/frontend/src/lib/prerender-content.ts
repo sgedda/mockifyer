@@ -36,6 +36,7 @@ export const CONTENT_ROUTES_WITH_FULL_BODY = new Set([
   '/guides/browser-record-replay',
   '/guides/mockifyer-atlas',
   '/guides/atlas-from-playwright',
+  '/guides/streaming',
   '/comparisons',
   '/faq',
   '/getting-started',
@@ -189,6 +190,20 @@ const GUIDE_BODIES: Record<string, Omit<PrerenderBodyContent, 'links'>> = {
       },
     ],
   },
+  '/guides/streaming': {
+    h1: 'Mocking SSE and Streaming APIs with Mockifyer',
+    summary:
+      'Record chunk timelines for SSE and chunked HTTP bodies with fetch, keep concatenated response.data for compatibility, and replay a paced ReadableStream with original, accelerated, or immediate modes.',
+    sections: [
+      {
+        heading: 'Record with a Tee, Replay with Timing',
+        paragraphs: [
+          'When a live response is text/event-stream or chunked without Content-Length, Mockifyer tees the body: your caller still gets the live ReadableStream while a background branch timestamps chunks until EOF or byte/duration caps. Caps set truncated; the mock file is saved after the stream ends or a cap is hit.',
+          'Configure streamReplay (accelerated default), streamRecordMaxBytes, and streamRecordMaxDurationMs on setupMockifyer. Drift uses capped reads and compares concatenated data. The dashboard shows a chunk timeline; MCP summaries avoid dumping full bodies. Recording is direct-mode only — proxy can replay stream mocks but does not record them yet.',
+        ],
+      },
+    ],
+  },
 }
 
 function buildGuidesHub(): PrerenderBodyContent {
@@ -200,7 +215,7 @@ function buildGuidesHub(): PrerenderBodyContent {
       {
         heading: 'Published Guides',
         paragraphs: [
-          'Practical guides for record-replay API mocking: network-edge testing, React Native E2E stability, mock drift detection, Atlas architecture maps, and browser record-replay.',
+          'Practical guides for record-replay API mocking: network-edge testing, React Native E2E stability, mock drift detection, SSE/streaming, Atlas architecture maps, and browser record-replay.',
           'Each guide links to install steps, configuration tips, and related docs so you can go from concept to a working setup quickly.',
         ],
       },

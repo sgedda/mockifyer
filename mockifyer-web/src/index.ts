@@ -616,6 +616,7 @@ const HTML_ROUTES_FALLBACK = [
   '/guides/atlas-from-playwright',
   '/guides/react-native-without-msw',
   '/guides/browser-record-replay',
+  '/guides/streaming',
 ];
 
 function getKnownHtmlRoutes(): string[] {

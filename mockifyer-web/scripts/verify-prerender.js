@@ -28,7 +28,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-// scripts/verify-prerender.ts
+// mockifyer-web/scripts/verify-prerender.ts
 var verify_prerender_exports = {};
 __export(verify_prerender_exports, {
   verify: () => verify
@@ -37,7 +37,7 @@ module.exports = __toCommonJS(verify_prerender_exports);
 var import_fs = __toESM(require("fs"));
 var import_path = __toESM(require("path"));
 
-// frontend/src/lib/seo-config.ts
+// mockifyer-web/frontend/src/lib/seo-config.ts
 var SITE_URL = "https://mockifyer.dev";
 var SITE_NAME = "Mockifyer";
 var DEFAULT_TITLE = "Mockifyer \u2014 Record & Replay HTTP API Mocks";
@@ -80,7 +80,7 @@ var PAGE_SEO = {
   },
   "/guides": {
     title: "Mockifyer Guides",
-    description: "Practical guides for record-replay API mocking: network-edge testing, React Native E2E, mock drift, Atlas maps, and browser record-replay.",
+    description: "Practical guides for record-replay API mocking: network-edge testing, React Native E2E, mock drift, SSE/streaming, Atlas maps, and browser record-replay.",
     path: "/guides"
   },
   "/guides/mock-at-the-network-edge": {
@@ -123,6 +123,11 @@ var PAGE_SEO = {
     description: "Record traffic during Playwright tests with Mockifyer, build Atlas HTML in global teardown, and upload it as a CI artifact.",
     path: "/guides/atlas-from-playwright"
   },
+  "/guides/streaming": {
+    title: "Mocking SSE and Streaming APIs with Mockifyer",
+    description: "Record and replay SSE and chunked HTTP streams: tee on record, paced ReadableStream replay, drift caps, and dashboard chunk timelines.",
+    path: "/guides/streaming"
+  },
   "/features": {
     title: "Mockifyer Features: Record, Replay, Scenarios",
     description: "Selective recording, scenario switching, date freezing, React Native support, GraphQL matching, and a local dashboard for editing mocks.",
@@ -159,7 +164,7 @@ function formatPageTitle(title) {
   return `${title} | ${SITE_NAME}`;
 }
 
-// frontend/src/lib/prerender-content.ts
+// mockifyer-web/frontend/src/lib/prerender-content.ts
 var CONTENT_ROUTES_WITH_FULL_BODY = /* @__PURE__ */ new Set([
   "/guides",
   "/guides/mock-at-the-network-edge",
@@ -170,13 +175,14 @@ var CONTENT_ROUTES_WITH_FULL_BODY = /* @__PURE__ */ new Set([
   "/guides/browser-record-replay",
   "/guides/mockifyer-atlas",
   "/guides/atlas-from-playwright",
+  "/guides/streaming",
   "/comparisons",
   "/faq",
   "/getting-started",
   "/e2e-tutorial"
 ]);
 
-// scripts/verify-prerender.ts
+// mockifyer-web/scripts/verify-prerender.ts
 var HOMEPAGE_CANONICAL = `${SITE_URL}/`;
 var MAX_TITLE_LENGTH = 60;
 var MAX_DESCRIPTION_LENGTH = 155;

@@ -17,6 +17,7 @@ test.describe('Page Layout', () => {
     '/guides/stable-react-native-e2e',
     '/guides/mock-drift',
     '/guides/react-native-without-msw',
+    '/guides/streaming',
   ];
 
   test('docs pages should have left margin at 1440px viewport', async ({ page }) => {

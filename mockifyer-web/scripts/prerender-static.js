@@ -28,7 +28,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-// scripts/prerender-static.ts
+// mockifyer-web/scripts/prerender-static.ts
 var prerender_static_exports = {};
 __export(prerender_static_exports, {
   HOMEPAGE_CANONICAL: () => HOMEPAGE_CANONICAL,
@@ -45,7 +45,7 @@ module.exports = __toCommonJS(prerender_static_exports);
 var import_fs = __toESM(require("fs"));
 var import_path = __toESM(require("path"));
 
-// frontend/src/lib/seo-config.ts
+// mockifyer-web/frontend/src/lib/seo-config.ts
 var SITE_URL = "https://mockifyer.dev";
 var SITE_NAME = "Mockifyer";
 var DEFAULT_TITLE = "Mockifyer \u2014 Record & Replay HTTP API Mocks";
@@ -88,7 +88,7 @@ var PAGE_SEO = {
   },
   "/guides": {
     title: "Mockifyer Guides",
-    description: "Practical guides for record-replay API mocking: network-edge testing, React Native E2E, mock drift, Atlas maps, and browser record-replay.",
+    description: "Practical guides for record-replay API mocking: network-edge testing, React Native E2E, mock drift, SSE/streaming, Atlas maps, and browser record-replay.",
     path: "/guides"
   },
   "/guides/mock-at-the-network-edge": {
@@ -131,6 +131,11 @@ var PAGE_SEO = {
     description: "Record traffic during Playwright tests with Mockifyer, build Atlas HTML in global teardown, and upload it as a CI artifact.",
     path: "/guides/atlas-from-playwright"
   },
+  "/guides/streaming": {
+    title: "Mocking SSE and Streaming APIs with Mockifyer",
+    description: "Record and replay SSE and chunked HTTP streams: tee on record, paced ReadableStream replay, drift caps, and dashboard chunk timelines.",
+    path: "/guides/streaming"
+  },
   "/features": {
     title: "Mockifyer Features: Record, Replay, Scenarios",
     description: "Selective recording, scenario switching, date freezing, React Native support, GraphQL matching, and a local dashboard for editing mocks.",
@@ -167,7 +172,7 @@ function formatPageTitle(title) {
   return `${title} | ${SITE_NAME}`;
 }
 
-// frontend/src/lib/faq.ts
+// mockifyer-web/frontend/src/lib/faq.ts
 var HOME_FAQ = [
   {
     question: "What is Mockifyer?",
@@ -203,7 +208,7 @@ var HOME_FAQ = [
   }
 ];
 
-// frontend/src/lib/product-docs.ts
+// mockifyer-web/frontend/src/lib/product-docs.ts
 var GUIDE_ITEMS = [
   { href: "/guides/mock-at-the-network-edge", label: "Mock at the Network Edge" },
   { href: "/guides/reproduce-tester-bugs", label: "Reproduce Tester Bugs" },
@@ -212,10 +217,11 @@ var GUIDE_ITEMS = [
   { href: "/guides/mockifyer-atlas", label: "Mockifyer Atlas: Architecture Visualization" },
   { href: "/guides/atlas-from-playwright", label: "Generate Atlas from Playwright E2E" },
   { href: "/guides/react-native-without-msw", label: "React Native: Handlers vs Recording" },
-  { href: "/guides/browser-record-replay", label: "Record and Replay HTTP in the Browser" }
+  { href: "/guides/browser-record-replay", label: "Record and Replay HTTP in the Browser" },
+  { href: "/guides/streaming", label: "Mocking SSE and Streaming APIs" }
 ];
 
-// frontend/src/lib/prerender-content.ts
+// mockifyer-web/frontend/src/lib/prerender-content.ts
 var CONTENT_ROUTES_WITH_FULL_BODY = /* @__PURE__ */ new Set([
   "/guides",
   "/guides/mock-at-the-network-edge",
@@ -226,6 +232,7 @@ var CONTENT_ROUTES_WITH_FULL_BODY = /* @__PURE__ */ new Set([
   "/guides/browser-record-replay",
   "/guides/mockifyer-atlas",
   "/guides/atlas-from-playwright",
+  "/guides/streaming",
   "/comparisons",
   "/faq",
   "/getting-started",
@@ -366,6 +373,19 @@ var GUIDE_BODIES = {
         ]
       }
     ]
+  },
+  "/guides/streaming": {
+    h1: "Mocking SSE and Streaming APIs with Mockifyer",
+    summary: "Record chunk timelines for SSE and chunked HTTP bodies with fetch, keep concatenated response.data for compatibility, and replay a paced ReadableStream with original, accelerated, or immediate modes.",
+    sections: [
+      {
+        heading: "Record with a Tee, Replay with Timing",
+        paragraphs: [
+          "When a live response is text/event-stream or chunked without Content-Length, Mockifyer tees the body: your caller still gets the live ReadableStream while a background branch timestamps chunks until EOF or byte/duration caps. Caps set truncated; the mock file is saved after the stream ends or a cap is hit.",
+          "Configure streamReplay (accelerated default), streamRecordMaxBytes, and streamRecordMaxDurationMs on setupMockifyer. Drift uses capped reads and compares concatenated data. The dashboard shows a chunk timeline; MCP summaries avoid dumping full bodies. Recording is direct-mode only \u2014 proxy can replay stream mocks but does not record them yet."
+        ]
+      }
+    ]
   }
 };
 function buildGuidesHub() {
@@ -377,7 +397,7 @@ function buildGuidesHub() {
       {
         heading: "Published Guides",
         paragraphs: [
-          "Practical guides for record-replay API mocking: network-edge testing, React Native E2E stability, mock drift detection, Atlas architecture maps, and browser record-replay.",
+          "Practical guides for record-replay API mocking: network-edge testing, React Native E2E stability, mock drift detection, SSE/streaming, Atlas architecture maps, and browser record-replay.",
           "Each guide links to install steps, configuration tips, and related docs so you can go from concept to a working setup quickly."
         ]
       }
@@ -583,7 +603,7 @@ function getRouteJsonLd(routePath) {
   return null;
 }
 
-// scripts/prerender-static.ts
+// mockifyer-web/scripts/prerender-static.ts
 var NOT_FOUND_SEO = {
   title: "Page Not Found",
   description: "The page you are looking for does not exist.",

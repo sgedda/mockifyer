@@ -68,7 +68,7 @@ export const PAGE_SEO: Record<string, PageSeoConfig> = {
   '/guides': {
     title: 'Mockifyer Guides',
     description:
-      'Practical guides for record-replay API mocking: network-edge testing, React Native E2E, mock drift, Atlas maps, and browser record-replay.',
+      'Practical guides for record-replay API mocking: network-edge testing, React Native E2E, mock drift, SSE/streaming, Atlas maps, and browser record-replay.',
     path: '/guides',
   },
   '/guides/mock-at-the-network-edge': {
@@ -118,6 +118,12 @@ export const PAGE_SEO: Record<string, PageSeoConfig> = {
     description:
       'Record traffic during Playwright tests with Mockifyer, build Atlas HTML in global teardown, and upload it as a CI artifact.',
     path: '/guides/atlas-from-playwright',
+  },
+  '/guides/streaming': {
+    title: 'Mocking SSE and Streaming APIs with Mockifyer',
+    description:
+      'Record and replay SSE and chunked HTTP streams: tee on record, paced ReadableStream replay, drift caps, and dashboard chunk timelines.',
+    path: '/guides/streaming',
   },
   '/features': {
     title: 'Mockifyer Features: Record, Replay, Scenarios',

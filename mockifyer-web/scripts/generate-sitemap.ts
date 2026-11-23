@@ -33,6 +33,7 @@ const ROUTE_CONFIG: Record<string, RouteMeta> = {
   '/guides/reproduce-tester-bugs': { priority: '0.7', changefreq: 'monthly' },
   '/guides/stable-react-native-e2e': { priority: '0.7', changefreq: 'monthly' },
   '/guides/browser-record-replay': { priority: '0.7', changefreq: 'monthly' },
+  '/guides/streaming': { priority: '0.7', changefreq: 'monthly' },
   '/atlas/wanderweird': { priority: '0.7', changefreq: 'monthly' },
   '/contact': { priority: '0.5', changefreq: 'yearly' },
 };
