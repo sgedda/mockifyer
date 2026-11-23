@@ -1,10 +1,9 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
-import { Github, ArrowRight, PlayCircle, Database, Code2, Sparkles, Construction, Target, Zap, GitBranch, Terminal, Play, Map, ExternalLink } from 'lucide-react'
+import { Github, ArrowRight, PlayCircle, Database, Code2, Sparkles, Construction, Target, Zap, GitBranch, Terminal, Play, Radio, LayoutDashboard, TrendingUp, CheckCircle2, Map, ExternalLink } from 'lucide-react'
 import CodeBlock from '@/components/CodeBlock'
 import RunItButton from '@/components/RunItButton'
-import HeroRecordReplayDemo from '@/components/HeroRecordReplayDemo'
 import {
   ATLAS_FROM_PLAYWRIGHT_HREF,
   WANDERWEIRD_ATLAS_HREF,
@@ -45,51 +44,189 @@ export default function Introduction() {
     <div className="space-y-0">
       {/* Hero Section */}
       <section className="relative overflow-hidden border-b border-border">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(37,99,235,.10),transparent_60%)]"></div>
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(99,102,241,.12),transparent_60%)]"></div>
         <div className="pointer-events-none absolute inset-0 opacity-40 dark:opacity-20 [background-image:linear-gradient(hsl(var(--border))_1px,transparent_1px),linear-gradient(90deg,hsl(var(--border))_1px,transparent_1px)] [background-size:48px_48px] [mask-image:radial-gradient(ellipse_at_top,black,transparent_70%)]"></div>
         
-        <div className="relative mx-auto max-w-[1200px] px-5 py-14 sm:py-20">
-          <div className="text-center max-w-3xl mx-auto">
+        <div className="relative mx-auto max-w-[1200px] px-5 py-16 sm:py-24">
+          <div className="text-center max-w-4xl mx-auto">
+            <div className="flex justify-center mb-8">
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-primary/20 bg-primary/5 text-sm font-medium text-primary">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+                </span>
+                Open-source API record &amp; replay for Node, React Native &amp; Expo
+              </div>
+            </div>
+            
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-foreground leading-tight">
-              Mockifyer
+              <span className="inline-block">Record real APIs.</span>{' '}
+              <span className="inline-block bg-gradient-to-r from-primary via-blue-500 to-violet-500 bg-clip-text text-transparent animate-gradient pb-2 leading-normal">
+                Replay them anywhere.
+              </span>
             </h1>
             
-            <p className="mt-5 text-lg sm:text-xl text-muted-foreground leading-relaxed max-w-2xl mx-auto">
-              Record real API traffic from your app, then replay it as mocks — works with fetch, axios and React Native.
+            <p className="mt-6 text-lg text-muted-foreground leading-relaxed max-w-2xl mx-auto">
+              Record real traffic from fetch, axios and React Native, then manage it: switch scenarios in a dashboard, catch API drift, and run stable offline E2E. No account, no cloud—mocks are JSON in your repo.
             </p>
 
-            <div className="mt-8">
-              <HeroRecordReplayDemo />
+            {/* Feature Pills */}
+            <div className="mt-4 flex flex-wrap justify-center gap-2 max-w-2xl mx-auto">
+              <span className="px-3 py-1 text-xs sm:text-sm border border-border rounded-full text-muted-foreground">Record & replay</span>
+              <span className="text-muted-foreground">·</span>
+              <span className="px-3 py-1 text-xs sm:text-sm border border-border rounded-full text-muted-foreground">Dashboard & scenarios</span>
+              <span className="text-muted-foreground">·</span>
+              <span className="px-3 py-1 text-xs sm:text-sm border border-border rounded-full text-muted-foreground">Drift check</span>
+              <span className="text-muted-foreground">·</span>
+              <span className="px-3 py-1 text-xs sm:text-sm border border-border rounded-full text-muted-foreground">Offline E2E & CI</span>
+              <span className="text-muted-foreground">·</span>
+              <span className="px-3 py-1 text-xs sm:text-sm border border-border rounded-full text-muted-foreground">MCP for AI agents</span>
+            </div>
+            
+            {/* Try Command CTA */}
+            <div className="mt-10 max-w-2xl mx-auto">
+              <div className="text-center mb-3">
+                <span className="text-sm font-medium text-muted-foreground">Get started in 2 minutes</span>
+              </div>
+              <div className="relative">
+                <CodeBlock
+                  language="bash"
+                  code="npx -p @sgedda/mockifyer-core mockifyer try"
+                  className="border-2 border-primary/20"
+                />
+              </div>
+              <p className="text-center text-sm text-muted-foreground mt-3">
+                Self-contained demo: records one call, replays it with the network blocked (~10 seconds)
+              </p>
+              <div className="mt-4 flex justify-center">
+                <a href={STACKBLITZ_QUICKSTART_URL} target="_blank" rel="noopener noreferrer">
+                  <Button variant="outline" size="sm" className="font-medium">
+                    <ExternalLink className="mr-2 h-4 w-4" />
+                    Open in StackBlitz
+                  </Button>
+                </a>
+              </div>
             </div>
 
-            <div className="mt-8 flex flex-wrap justify-center gap-3">
+            {/* Compact Terminal Output */}
+            <div className="mt-6 max-w-[640px] mx-auto">
+              <div className="rounded-lg overflow-hidden border border-border/50 shadow-lg">
+                {/* Terminal Header */}
+                <div className="bg-zinc-800 dark:bg-zinc-900 px-4 py-2 flex items-center gap-2">
+                  <div className="flex gap-1.5">
+                    <div className="w-3 h-3 rounded-full bg-red-500/80"></div>
+                    <div className="w-3 h-3 rounded-full bg-yellow-500/80"></div>
+                    <div className="w-3 h-3 rounded-full bg-green-500/80"></div>
+                  </div>
+                  <span className="text-xs text-zinc-400 ml-2">terminal</span>
+                </div>
+                {/* Terminal Content */}
+                <div className="bg-zinc-950 dark:bg-black px-4 py-3 font-mono text-sm text-left overflow-x-auto">
+                  <div className="text-zinc-500 dark:text-zinc-600 mb-3">$ npx mockifyer try</div>
+                  <div className="space-y-1.5">
+                    <div className="text-green-400">✓ Recorded GET /hello</div>
+                    <div className="text-zinc-400 dark:text-zinc-500 ml-4 text-xs">Response: {`{"message":"Hello from Mockifyer!"}`}</div>
+                    <div className="text-green-400 mt-2">✓ Server stopped <span className="text-zinc-600 dark:text-zinc-700">(network unavailable)</span></div>
+                    <div className="text-green-400 mt-2">✓ Replayed from mock — 0 network calls</div>
+                    <div className="text-zinc-400 dark:text-zinc-500 ml-4 text-xs">Response: {`{"message":"Hello from Mockifyer!"}`}</div>
+                    <div className="text-green-400 mt-2">✓ Same response, served from mock</div>
+                    <div className="text-zinc-500 dark:text-zinc-600 mt-3">Next: npx mockifyer init</div>
+                  </div>
+                </div>
+              </div>
+              <p className="text-center text-xs text-muted-foreground mt-3 italic">Same response, no network. That's the whole idea.</p>
+            </div>
+
+            {/* Feature Tiles */}
+            <div className="mt-10 max-w-[1200px] mx-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <Link to="/getting-started" className="group">
+                  <div className="h-full p-4 rounded-lg border border-border bg-card hover:border-primary/50 transition-colors">
+                    <Radio className="h-5 w-5 text-primary mb-2" />
+                    <h3 className="font-semibold text-sm mb-1">Records real app traffic</h3>
+                    <p className="text-xs text-muted-foreground mb-2">fetch, axios and React Native, selectively, only what you choose.</p>
+                    <span className="text-xs text-primary group-hover:underline inline-flex items-center gap-1">
+                      Learn more <ArrowRight className="h-3 w-3" />
+                    </span>
+                  </div>
+                </Link>
+
+                <Link to="/dashboard" className="group">
+                  <div className="h-full p-4 rounded-lg border border-border bg-card hover:border-primary/50 transition-colors">
+                    <LayoutDashboard className="h-5 w-5 text-primary mb-2" />
+                    <h3 className="font-semibold text-sm mb-1">Dashboard and scenarios</h3>
+                    <p className="text-xs text-muted-foreground mb-2">Browse, edit and activate mocks, and switch error, empty and slow scenarios.</p>
+                    <span className="text-xs text-primary group-hover:underline inline-flex items-center gap-1">
+                      Learn more <ArrowRight className="h-3 w-3" />
+                    </span>
+                  </div>
+                </Link>
+
+                <Link to="/guides/mock-drift" className="group">
+                  <div className="h-full p-4 rounded-lg border border-border bg-card hover:border-primary/50 transition-colors">
+                    <TrendingUp className="h-5 w-5 text-primary mb-2" />
+                    <h3 className="font-semibold text-sm mb-1">Drift check</h3>
+                    <p className="text-xs text-muted-foreground mb-2">Know when the real API changed and your mocks went stale.</p>
+                    <span className="text-xs text-primary group-hover:underline inline-flex items-center gap-1">
+                      Learn more <ArrowRight className="h-3 w-3" />
+                    </span>
+                  </div>
+                </Link>
+
+                <Link to="/guides/stable-react-native-e2e" className="group">
+                  <div className="h-full p-4 rounded-lg border border-border bg-card hover:border-primary/50 transition-colors">
+                    <CheckCircle2 className="h-5 w-5 text-primary mb-2" />
+                    <h3 className="font-semibold text-sm mb-1">Stable E2E and CI</h3>
+                    <p className="text-xs text-muted-foreground mb-2">Offline, deterministic Maestro and Playwright runs, with mocks as JSON in your repo.</p>
+                    <span className="text-xs text-primary group-hover:underline inline-flex items-center gap-1">
+                      Learn more <ArrowRight className="h-3 w-3" />
+                    </span>
+                  </div>
+                </Link>
+              </div>
+            </div>
+
+            {/* Comparison Section */}
+            <div className="mt-12 max-w-[1200px] mx-auto">
+              <h2 className="text-2xl font-semibold tracking-tight text-center mb-6">How is this different from HAR or MSW?</h2>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="p-4 rounded-lg border border-border bg-card">
+                  <h3 className="font-semibold text-sm mb-2">Playwright HAR</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Replays recorded traffic, but only inside Playwright browser tests.
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-lg border border-border bg-card">
+                  <h3 className="font-semibold text-sm mb-2">MSW</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Great interception, but you write every handler by hand.
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-lg border border-primary/50 bg-primary/5">
+                  <h3 className="font-semibold text-sm mb-2 text-primary">Mockifyer</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Records from your real app and replays everywhere it runs: dev mode, React Native on a device, demos and E2E. Manage it all in a dashboard, with drift checks.
+                  </p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="mt-8 flex flex-wrap justify-center gap-4">
               <Link to="/getting-started">
                 <Button size="lg" className="h-12 px-8 text-base font-medium group">
-                  Quick Start
+                  Quick Start Guide
                   <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
                 </Button>
               </Link>
-              <a href="https://github.com/sgedda/mockifyer" target="_blank" rel="noopener noreferrer">
+              <Link to="/e2e-tutorial">
                 <Button size="lg" variant="outline" className="h-12 px-8 text-base font-medium">
-                  <Github className="mr-2 h-5 w-5" />
-                  GitHub
+                  <PlayCircle className="mr-2 h-5 w-5" />
+                  Full Tutorial
                 </Button>
-              </a>
-              <a href={STACKBLITZ_QUICKSTART_URL} target="_blank" rel="noopener noreferrer">
-                <Button size="lg" variant="outline" className="h-12 px-8 text-base font-medium">
-                  <ExternalLink className="mr-2 h-5 w-5" />
-                  Open in StackBlitz
-                </Button>
-              </a>
+              </Link>
             </div>
-
-            <p className="mt-5 text-sm text-muted-foreground">
-              <a href="#atlas-showcase" className="text-primary hover:underline font-medium inline-flex items-center gap-1">
-                See what Mockifyer sees
-                <ArrowRight className="h-3.5 w-3.5" />
-              </a>
-              {' '}— traffic map from our Playwright E2E suite
-            </p>
           </div>
         </div>
       </section>
@@ -380,20 +517,11 @@ const now = getCurrentDate();`}
                 </p>
               </div>
             </div>
-            <div className="flex flex-wrap gap-3">
-              <a href={STACKBLITZ_QUICKSTART_URL} target="_blank" rel="noopener noreferrer">
-                <Button size="sm" className="font-medium">
-                  <ExternalLink className="mr-2 h-4 w-4" />
-                  Open in StackBlitz
-                </Button>
-              </a>
-              <RunItButton 
-                project="record-replay-basics"
-                title="Run Demo in StackBlitz"
-                size="sm"
-                variant="outline"
-              />
-            </div>
+            <RunItButton 
+              project="record-replay-basics"
+              title="Run Demo in StackBlitz"
+              size="sm"
+            />
           </div>
         </div>
       </section>
