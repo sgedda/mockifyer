@@ -1,5 +1,6 @@
-import type { MockData } from '../types';
+import type { MockData, StoredResponseStream } from '../types';
 import type { MockifyerTraceMeta } from '../utils/mockifyer-trace';
+import type { CapturedStreamRecording } from '../utils/stream-response';
 
 /** Payload from dashboard `/api/proxy` when a mock was persisted to Redis (optional client-side mirror). */
 export interface MockifyerProxyRecordingMeta {
@@ -28,6 +29,17 @@ export interface HTTPResponse<T = any> {
   mockifyerProxyRecording?: MockifyerProxyRecordingMeta;
   /** Populated from response headers or dashboard proxy envelope; upstream body stays unchanged. */
   mockifyerTrace?: MockifyerTraceMeta;
+  /**
+   * When recording a live stream, resolves once the recording branch finishes
+   * (concatenated body + {@link StoredResponseStream}). Save paths await this
+   * without delaying the caller's live ReadableStream.
+   */
+  mockifyerStreamRecording?: Promise<CapturedStreamRecording>;
+  /**
+   * Stored stream timeline to rebuild as a ReadableStream on replay
+   * (local mock hit or dashboard proxy mock-hit payload).
+   */
+  mockifyerStoredStream?: StoredResponseStream;
 }
 
 export interface HTTPClient<T = any, R = HTTPResponse<T>> {

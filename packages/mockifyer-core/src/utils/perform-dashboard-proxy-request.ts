@@ -17,7 +17,7 @@ import {
 } from './join-proxy-dashboard-api-url';
 import { serializeProxyRequestBody } from './serialize-proxy-request-body';
 import type { HTTPRequestConfig, HTTPResponse, MockifyerProxyRecordingMeta } from '../types/http-client';
-import type { MockData } from '../types';
+import type { MockData, StoredResponseStream } from '../types';
 import {
   resolveMockifyerTraceFromProxyPayload,
   stripMockifyerTraceFromBody,
@@ -172,7 +172,12 @@ export async function performDashboardProxyRequest(
     // ignore logging failures
   }
   const proxyResponseBody = payload.response as
-    | { data?: unknown; status?: number; headers?: Record<string, string> }
+    | {
+        data?: unknown;
+        status?: number;
+        headers?: Record<string, string>;
+        stream?: StoredResponseStream;
+      }
     | undefined;
   let data = proxyResponseBody?.data;
   const status = proxyResponseBody?.status ?? 200;
@@ -183,6 +188,14 @@ export async function performDashboardProxyRequest(
   if (networkSource === 'mock-hit') {
     responseHeaders['x-mockifyer'] = 'true';
   }
+  // Phase 1 proxy streaming: rebuild ReadableStream on the client from stored chunks
+  // (do not require a streaming /api/proxy). Upstream-proxied responses stay flat.
+  const storedStream =
+    networkSource === 'mock-hit' &&
+    proxyResponseBody?.stream &&
+    Array.isArray(proxyResponseBody.stream.chunks)
+      ? proxyResponseBody.stream
+      : undefined;
 
   const mockifyerTrace = resolveMockifyerTraceFromProxyPayload(
     payload,
@@ -257,6 +270,7 @@ export async function performDashboardProxyRequest(
     headers: responseHeaders,
     config,
     mockifyerProxyRecording,
+    ...(storedStream ? { mockifyerStoredStream: storedStream } : {}),
     ...(effectiveTrace ? { mockifyerTrace: effectiveTrace } : {}),
   };
 }

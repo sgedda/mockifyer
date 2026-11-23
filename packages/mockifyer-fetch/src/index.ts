@@ -290,7 +290,11 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
           });
         }
         
-        return new Response(bodyInitForFetchResponse(response.status, response.data), {
+        const streamOpts = {
+          stream: (response as HTTPResponse).mockifyerStoredStream,
+          streamReplay: resolvedConfig.streamReplay,
+        };
+        return new Response(bodyInitForFetchResponse(response.status, response.data, streamOpts), {
           status: response.status,
           statusText: response.statusText || '',
           headers: responseHeaders
@@ -303,11 +307,17 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
           });
 
           const errorStatus = error.response.status;
-          return new Response(bodyInitForFetchResponse(errorStatus, error.response.data), {
-            status: errorStatus,
-            statusText: error.response.statusText || '',
-            headers: responseHeaders
-          });
+          return new Response(
+            bodyInitForFetchResponse(errorStatus, error.response.data, {
+              stream: (error.response as HTTPResponse).mockifyerStoredStream,
+              streamReplay: resolvedConfig.streamReplay,
+            }),
+            {
+              status: errorStatus,
+              statusText: error.response.statusText || '',
+              headers: responseHeaders
+            }
+          );
         }
         throw attachMockifyerRequestIdToError(
           error,

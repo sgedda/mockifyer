@@ -19,7 +19,7 @@ import {
   enhanceReportWithHistory,
 } from './drift-management';
 import { requireSafeScenarioName } from './safe-scenario';
-import { readDriftResponseBody } from './response-body';
+import { readDriftResponseBody, readDriftResponseBodyMaybeCapped } from './response-body';
 
 interface DriftConfig {
   scenario?: string;
@@ -449,7 +449,14 @@ async function checkSingleMock(
 
       clearTimeout(timeout);
 
-      const actualBody = await readDriftResponseBody(response);
+      // Stream mocks (SSE / chunked): read with byte/duration caps so open streams
+      // do not hang until the overall fetch timeout. Compare concatenated bodies.
+      const hasStoredStream =
+        mock.response?.stream != null &&
+        Array.isArray(mock.response.stream.chunks);
+      const actualBody = hasStoredStream
+        ? await readDriftResponseBodyMaybeCapped(response, { forceCapped: true })
+        : await readDriftResponseBody(response);
 
       // Compare with mock (always compare status and all fields)
       const issues = compareResponses(

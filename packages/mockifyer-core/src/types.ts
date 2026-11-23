@@ -415,6 +415,25 @@ export interface MockifyerConfig {
    * - 'debug': All logs including debug messages
    */
   logging?: 'none' | 'error' | 'warn' | 'info' | 'debug';
+  /**
+   * How to replay mocks that include {@link StoredResponse.stream} chunk timing.
+   * - `original` — emit chunks with recorded inter-chunk delays
+   * - `accelerated` (default) — compress the timeline so total wait stays bounded
+   * - `immediate` — emit all chunks with no delay
+   *
+   * Mocks without `stream` are unchanged (single flat body).
+   */
+  streamReplay?: StreamReplayMode;
+  /**
+   * Max UTF-8 bytes to capture when recording a streaming response (SSE / chunked).
+   * Default: 1_000_000 (1 MiB). When the cap is hit the recording is marked `truncated`.
+   */
+  streamRecordMaxBytes?: number;
+  /**
+   * Max wall-clock ms to capture when recording a streaming response.
+   * Default: 30_000. When the cap is hit the recording is marked `truncated`.
+   */
+  streamRecordMaxDurationMs?: number;
 }
 
 export interface StoredRequest {
@@ -425,10 +444,46 @@ export interface StoredRequest {
   queryParams?: Record<string, string>;
 }
 
+/** Kind of recorded HTTP response stream. */
+export type StreamKind = 'sse' | 'bytes';
+
+/**
+ * How {@link StoredResponse.stream} chunks are paced on replay.
+ * @see MockifyerConfig.streamReplay
+ */
+export type StreamReplayMode = 'original' | 'accelerated' | 'immediate';
+
+/** One recorded body chunk with time since the first chunk (or stream start). */
+export interface StoredStreamChunk {
+  /** Milliseconds after the first chunk (first chunk is typically 0). */
+  offsetMs: number;
+  /** UTF-8 text of this chunk. */
+  data: string;
+}
+
+/**
+ * Optional chunk timeline for SSE / chunked responses.
+ * {@link StoredResponse.data} remains the concatenated body for backward compatibility.
+ */
+export interface StoredResponseStream {
+  kind: StreamKind;
+  chunks: StoredStreamChunk[];
+  /** Delay from response headers received until the first chunk (ms). */
+  firstChunkDelayMs?: number;
+  /** True when recording stopped due to byte/duration cap while the upstream stream was still open. */
+  truncated?: boolean;
+}
+
 export interface StoredResponse {
   status: number;
   data: any;
   headers: Record<string, string>;
+  /**
+   * Optional recorded stream timeline. When present, fetch replay can emit a real
+   * `ReadableStream` paced by {@link MockifyerConfig.streamReplay}.
+   * Omitting this field preserves legacy flat-body behaviour.
+   */
+  stream?: StoredResponseStream;
 }
 
 /**

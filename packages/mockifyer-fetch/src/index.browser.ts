@@ -34,7 +34,8 @@ export {
 
 // Re-export browser-safe fetch utilities
 export { FetchHTTPClient } from './clients/fetch-client';
-export { bodyInitForFetchResponse } from './utils/fetch-response-body';
+import { bodyInitForFetchResponse } from './utils/fetch-response-body';
+export { bodyInitForFetchResponse };
 export { resolvePatchedFetchRequest } from './utils/resolve-patched-fetch-request';
 
 export {
@@ -135,11 +136,15 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
         data: init?.body,
       });
       
-      // Convert mockifyer response to fetch Response
+      // Convert mockifyer response to fetch Response (rebuild stream when present)
       return new Response(
-        typeof response.data === 'string' ? response.data : JSON.stringify(response.data),
+        bodyInitForFetchResponse(response.status, response.data, {
+          stream: response.mockifyerStoredStream,
+          streamReplay: config.streamReplay,
+        }),
         {
           status: response.status,
+          statusText: response.statusText || '',
           headers: new Headers(response.headers || {})
         }
       );

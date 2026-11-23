@@ -109,6 +109,13 @@ export interface MockData {
       status: number
       data: any
       headers?: Record<string, string>
+      /** Optional recorded SSE / chunked body timeline (v1 stream record/replay). */
+      stream?: {
+        kind: 'sse' | 'bytes'
+        chunks: Array<{ offsetMs: number; data: string }>
+        firstChunkDelayMs?: number
+        truncated?: boolean
+      }
     }
     timestamp?: string
     duration?: number // Request duration in milliseconds

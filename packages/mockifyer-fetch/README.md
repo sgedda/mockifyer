@@ -23,6 +23,30 @@ const mockifyer = setupMockifyer({
 const response = await fetch('https://api.example.com/data');
 ```
 
+## Streaming responses (SSE / chunked)
+
+When a live response is `text/event-stream` or chunked without `Content-Length`, Mockifyer can record a chunk timeline on `response.stream` while keeping `response.data` as the concatenated body (backward compatible).
+
+```typescript
+setupMockifyer({
+  mockDataPath: './mock-data',
+  recordMode: true,
+  recordResponses: true,
+  useGlobalFetch: true,
+  // 'accelerated' (default) | 'original' | 'immediate'
+  streamReplay: 'accelerated',
+  streamRecordMaxBytes: 1_000_000,
+  streamRecordMaxDurationMs: 30_000,
+});
+```
+
+- **Record:** the fetch body is teed — your caller still gets the live `ReadableStream` without extra buffering; recording respects the byte/duration caps and sets `truncated` when a cap is hit.
+- **Replay:** mocks with `stream` rebuild a real `ReadableStream` paced by `streamReplay`. Mocks without `stream` behave exactly as before.
+- **Proxy (phase 1):** dashboard `/api/proxy` still returns a JSON envelope; the client rebuilds the stream from stored chunks on mock-hit.
+- **React Native:** if `ReadableStream` is unavailable, Mockifyer falls back to flat bodies (no crash).
+
+Axios `responseType: 'stream'` and `EventSource` patching are not included in this release.
+
 ## Browser & Expo Web Usage
 
 Mockifyer works in browsers and Expo web builds with the memory provider and preloaded fixtures.
