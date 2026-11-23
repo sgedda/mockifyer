@@ -26,6 +26,7 @@ jobs:
         run: |
           npm --prefix packages/mockifyer-core install
           npm --prefix packages/mockifyer-dashboard install
+          npm --prefix mockifyer-web install
 
       - name: Build packages
         run: npm run build
