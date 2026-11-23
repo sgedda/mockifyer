@@ -1,6 +1,56 @@
 import type { Faker } from '@faker-js/faker';
+import type { EnumMix } from './context';
 import type { Prng } from './types';
 import { FieldKind } from './types';
+
+/**
+ * Pick from `values` with optional relative weights (deterministic via {@link Prng}).
+ */
+export function weightedPick(
+  rng: Prng,
+  values: readonly string[],
+  weights?: readonly number[]
+): string {
+  if (values.length === 0) {
+    throw new Error('weightedPick requires a non-empty values array');
+  }
+  if (!weights || weights.length !== values.length) {
+    return rng.pick(values);
+  }
+  const total = weights.reduce((a, b) => a + (Number.isFinite(b) && b > 0 ? b : 0), 0);
+  if (total <= 0) {
+    return rng.pick(values);
+  }
+  let r = rng.next() * total;
+  for (let i = 0; i < values.length; i++) {
+    const w = weights[i]!;
+    if (!(Number.isFinite(w) && w > 0)) continue;
+    r -= w;
+    if (r < 0) {
+      return values[i]!;
+    }
+  }
+  return values[values.length - 1]!;
+}
+
+/** Optional generation hints passed into value synthesis. */
+export interface ValueHints {
+  currency?: string;
+  enumMix?: EnumMix;
+  /** Field key (last path segment) — used for status-like enum targeting. */
+  fieldKey?: string;
+}
+
+const STATUS_LIKE_KEY =
+  /^(status|state|type|kind|role|level|tier|phase|mode|category)$/i;
+
+/** Fixed ref date so faker.date.* is seed-deterministic (no wall clock). */
+const FAKER_REF_DATE = '2024-06-15T12:00:00.000Z';
+
+function isStatusLikeKey(key: string | undefined): boolean {
+  if (!key) return false;
+  return STATUS_LIKE_KEY.test(key.replace(/[^a-zA-Z0-9]/g, ''));
+}
 
 function moneyBounds(samples: unknown[]): { min: number; max: number; decimals: number } {
   const nums = samples.filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
@@ -64,7 +114,8 @@ export function generateValueForKind(
   rng: Prng,
   faker: Faker,
   samples: unknown[],
-  enumValues?: string[]
+  enumValues?: string[],
+  hints?: ValueHints
 ): unknown {
   switch (kind) {
     case FieldKind.Email:
@@ -87,14 +138,26 @@ export function generateValueForKind(
       return decimals === 0 ? Math.round(amount) : amount;
     }
     case FieldKind.Currency:
+      if (hints?.currency) {
+        return hints.currency;
+      }
       return enumValues && enumValues.length > 0
         ? rng.pick(enumValues)
         : faker.finance.currencyCode();
     case FieldKind.Date:
-      return faker.date.past({ years: 8 }).toISOString().slice(0, 10);
+      return faker.date
+        .past({ years: 8, refDate: FAKER_REF_DATE })
+        .toISOString()
+        .slice(0, 10);
     case FieldKind.IsoTimestamp:
-      return faker.date.recent({ days: 365 * 4 }).toISOString();
+      return faker.date
+        .recent({ days: 365 * 4, refDate: FAKER_REF_DATE })
+        .toISOString();
     case FieldKind.Enum: {
+      const mix = hints?.enumMix;
+      if (mix && mix.values.length > 0 && isStatusLikeKey(hints?.fieldKey)) {
+        return weightedPick(rng, mix.values, mix.weights);
+      }
       if (enumValues && enumValues.length > 0) {
         return rng.pick(enumValues);
       }
@@ -146,7 +209,7 @@ export function generateValueForKind(
     default: {
       const sample = samples.find((v) => v !== null && v !== undefined);
       if (typeof sample === 'string') {
-        return generateValueForKind(FieldKind.FreeText, rng, faker, samples, enumValues);
+        return generateValueForKind(FieldKind.FreeText, rng, faker, samples, enumValues, hints);
       }
       if (typeof sample === 'number') {
         return generateValueForKind(
@@ -154,7 +217,8 @@ export function generateValueForKind(
           rng,
           faker,
           samples,
-          enumValues
+          enumValues,
+          hints
         );
       }
       if (typeof sample === 'boolean') {

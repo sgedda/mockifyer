@@ -56,25 +56,31 @@ export type FieldKindOverrides = Record<string, FieldKind | string>;
 /**
  * Options for {@link generate}.
  *
- * Reserved (SGE-71 / SGE-72) — accepted but ignored in SGE-70 so callers can
- * start wiring APIs without breaking later:
- * - `context`, `locale`, `currency` — context-guided datasets / consistency
- * - `chaosLevel`, `variants`, `markGenerated`, `scrubSecrets` — edge variants
+ * SGE-71: `context`, `locale`, `currency` steer offline generation and
+ * related-field consistency. Explicit `locale` / `currency` / `count` override
+ * values parsed from `context`.
+ *
+ * Reserved for SGE-72 (accepted, not yet applied):
+ * `chaosLevel`, `variants`, `markGenerated`, `scrubSecrets`.
  */
 export interface GenerateOptions {
-  /** Number of root records to produce (default 1). */
+  /** Number of root records to produce (default 1; may also come from context). */
   count?: number;
   /** Seed for the PRNG; same seed + sample + options ⇒ identical output. */
   seed?: number | string;
   /** Path → kind overrides (highest precedence). */
   overrides?: FieldKindOverrides;
 
-  // --- reserved extension points (SGE-71) ---
-  /** @remarks Reserved for SGE-71 — free-text context steering. */
+  // --- context-guided datasets (SGE-71) ---
+  /**
+   * Free-text context, e.g.
+   * `"Swedish users, prices in SEK, 20 orders, mix of paid/refunded/failed"`.
+   * Parsed offline via {@link parseContext}; no network/AI.
+   */
   context?: string;
-  /** @remarks Reserved for SGE-71 — e.g. `"sv-SE"`. */
+  /** Faker locale — name or code, e.g. `"Swedish"` / `"sv"` / `"sv-SE"`. */
   locale?: string;
-  /** @remarks Reserved for SGE-71 — e.g. `"SEK"`. */
+  /** ISO currency code forced on currency fields, e.g. `"SEK"`. */
   currency?: string;
 
   // --- reserved extension points (SGE-72) ---
