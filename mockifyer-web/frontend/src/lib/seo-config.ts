@@ -32,7 +32,7 @@ export const PAGE_SEO: Record<string, PageSeoConfig> = {
   '/getting-started': {
     title: 'Getting Started with Mockifyer',
     description:
-      'Install @sgedda/mockifyer-axios or mockifyer-fetch, configure mock data paths, and start recording or replaying HTTP API responses in minutes.',
+      'Install Mockifyer, configure selective recording into _scratch, activate a mock in the dashboard, and replay your first HTTP response in about five steps.',
     path: '/getting-started',
   },
   '/date-config': {

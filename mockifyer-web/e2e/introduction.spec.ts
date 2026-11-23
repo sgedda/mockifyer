@@ -76,6 +76,18 @@ test.describe('Introduction Page', () => {
     await expect(demoButton).toBeVisible();
   });
 
+  test('should have Open in StackBlitz near the try command', async ({ page }) => {
+    await page.goto('/');
+
+    await expect(page.getByText(/Get started in 2 minutes/i)).toBeVisible();
+    const stackblitz = page.getByRole('link', { name: /Open in StackBlitz/i }).first();
+    await expect(stackblitz).toBeVisible();
+    await expect(stackblitz).toHaveAttribute(
+      'href',
+      'https://stackblitz.com/github/sgedda/mockifyer/tree/main/examples/stackblitz-quickstart'
+    );
+  });
+
   test('should display use cases', async ({ page }) => {
     await page.goto('/');
     

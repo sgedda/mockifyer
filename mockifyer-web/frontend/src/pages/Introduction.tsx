@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
-import { Github, ArrowRight, PlayCircle, Database, Code2, Sparkles, Construction, Target, Zap, GitBranch, Terminal, Play, Radio, LayoutDashboard, TrendingUp, CheckCircle2, Map } from 'lucide-react'
+import { Github, ArrowRight, PlayCircle, Database, Code2, Sparkles, Construction, Target, Zap, GitBranch, Terminal, Play, Radio, LayoutDashboard, TrendingUp, CheckCircle2, Map, ExternalLink } from 'lucide-react'
 import CodeBlock from '@/components/CodeBlock'
 import RunItButton from '@/components/RunItButton'
 import {
@@ -9,6 +9,9 @@ import {
   WANDERWEIRD_ATLAS_HREF,
   WANDERWEIRD_ATLAS_SHOWCASE,
 } from '@/lib/seo-config'
+
+const STACKBLITZ_QUICKSTART_URL =
+  'https://stackblitz.com/github/sgedda/mockifyer/tree/main/examples/stackblitz-quickstart'
 
 interface MediaItem {
   src: string
@@ -95,6 +98,14 @@ export default function Introduction() {
               <p className="text-center text-sm text-muted-foreground mt-3">
                 Self-contained demo: records one call, replays it with the network blocked (~10 seconds)
               </p>
+              <div className="mt-4 flex justify-center">
+                <a href={STACKBLITZ_QUICKSTART_URL} target="_blank" rel="noopener noreferrer">
+                  <Button variant="outline" size="sm" className="font-medium">
+                    <ExternalLink className="mr-2 h-4 w-4" />
+                    Open in StackBlitz
+                  </Button>
+                </a>
+              </div>
             </div>
 
             {/* Compact Terminal Output */}

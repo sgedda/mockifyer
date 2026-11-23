@@ -1,0 +1,10 @@
+{
+  "jsonplaceholder.typicode.com": {
+    "recordResponses": true,
+    "autoMock": true
+  },
+  "jsonplaceholder.typicode.com/todos/:id": {
+    "recordResponses": true,
+    "autoMock": true
+  }
+}
