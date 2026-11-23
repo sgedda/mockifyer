@@ -137,6 +137,11 @@ var PAGE_SEO = {
     title: "Mockifyer vs MSW, Polly.js, and Nock",
     description: "Compare Mockifyer with MSW, Polly.js, and Nock. Learn when record-replay fits better than in-code handlers for API testing.",
     path: "/comparisons"
+  },
+  "/atlas/wanderweird": {
+    title: "WanderWeird Atlas \u2014 Live Architecture Map",
+    description: "Interactive Mockifyer Atlas generated from real WanderWeird E2E traffic: endpoints, request chains, and mocked vs live flows.",
+    path: "/atlas/wanderweird"
   }
 };
 function formatPageTitle(title) {
@@ -241,6 +246,27 @@ function verify() {
     }
   }
   for (const [routePath, seo] of Object.entries(PAGE_SEO)) {
+    if (routePath.startsWith("/atlas/")) {
+      const atlasIndex = import_path.default.join(publicDir, routePath.replace(/^\//, ""), "index.html");
+      if (!import_fs.default.existsSync(atlasIndex)) {
+        failures.push({
+          route: routePath,
+          reason: `missing static Atlas ${import_path.default.relative(publicDir, atlasIndex)}`
+        });
+      } else {
+        const atlasHtml = import_fs.default.readFileSync(atlasIndex, "utf-8");
+        if (!/"totalRequests"\s*:\s*[1-9]/.test(atlasHtml) && !/"observedEndpoints"\s*:\s*[1-9]/.test(atlasHtml)) {
+          failures.push({
+            route: routePath,
+            reason: "Atlas HTML has no observed traffic (code-only scan)"
+          });
+        }
+        if (!/color-scheme:\s*light/.test(atlasHtml) && !/content="light"/.test(atlasHtml)) {
+          failures.push({ route: routePath, reason: "Atlas HTML missing light color-scheme" });
+        }
+      }
+      continue;
+    }
     const filePath = htmlPathForRoute(publicDir, routePath);
     if (!import_fs.default.existsSync(filePath)) {
       failures.push({ route: routePath, reason: `missing file ${import_path.default.relative(publicDir, filePath)}` });

@@ -8,7 +8,7 @@ test.describe('Introduction Page', () => {
     await expect(page.getByRole('heading', { name: /Record real APIs.*Replay them anywhere/i })).toBeVisible();
     
     // Check hero subtitle
-    await expect(page.getByText(/HTTP mock record\/replay for JavaScript and React Native/i)).toBeVisible();
+    await expect(page.getByText(/Record real traffic from fetch, axios and React Native/i)).toBeVisible();
     
     // Check problems section with new cards
     await expect(page.getByText(/API isn't ready yet/i)).toBeVisible();
@@ -19,9 +19,22 @@ test.describe('Introduction Page', () => {
 
     // How it works section
     await expect(page.getByRole('heading', { name: /How It Works/i })).toBeVisible();
-    await expect(page.getByRole('heading', { name: '1. Record' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: '2. Organize Scenarios' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '1. Initialize' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '2. Activate Mocks' })).toBeVisible();
     await expect(page.getByRole('heading', { name: '3. Replay in Tests' })).toBeVisible();
+  });
+
+  test('should display Atlas showcase under the hero', async ({ page }) => {
+    await page.goto('/');
+
+    const section = page.locator('#atlas-showcase');
+    await expect(section).toBeVisible();
+    await expect(page.getByRole('heading', { name: /See what Mockifyer sees/i })).toBeVisible();
+    await expect(section.getByRole('img', { name: /WanderWeird Atlas/i })).toBeVisible();
+
+    const openLink = section.getByRole('link', { name: /Open full Atlas/i });
+    await expect(openLink).toBeVisible();
+    await expect(openLink).toHaveAttribute('href', '/atlas/wanderweird/');
   });
 
   test('should display showcase videos', async ({ page }) => {

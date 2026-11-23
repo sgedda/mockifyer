@@ -137,6 +137,11 @@ var PAGE_SEO = {
     title: "Mockifyer vs MSW, Polly.js, and Nock",
     description: "Compare Mockifyer with MSW, Polly.js, and Nock. Learn when record-replay fits better than in-code handlers for API testing.",
     path: "/comparisons"
+  },
+  "/atlas/wanderweird": {
+    title: "WanderWeird Atlas \u2014 Live Architecture Map",
+    description: "Interactive Mockifyer Atlas generated from real WanderWeird E2E traffic: endpoints, request chains, and mocked vs live flows.",
+    path: "/atlas/wanderweird"
   }
 };
 
@@ -160,6 +165,7 @@ var ROUTE_CONFIG = {
   "/guides/reproduce-tester-bugs": { priority: "0.7", changefreq: "monthly" },
   "/guides/stable-react-native-e2e": { priority: "0.7", changefreq: "monthly" },
   "/guides/browser-record-replay": { priority: "0.7", changefreq: "monthly" },
+  "/atlas/wanderweird": { priority: "0.7", changefreq: "monthly" },
   "/contact": { priority: "0.5", changefreq: "yearly" }
 };
 var STATIC_CONTENT_ROUTES = [
@@ -169,6 +175,7 @@ var STATIC_CONTENT_ROUTES = [
 function fileLastmod(publicDir, loc) {
   const candidates = loc === "/" ? [import_path.default.join(publicDir, "index.html")] : [
     import_path.default.join(publicDir, `${loc.replace(/^\//, "")}.html`),
+    import_path.default.join(publicDir, loc.replace(/^\//, ""), "index.html"),
     import_path.default.join(publicDir, loc.replace(/^\//, ""))
   ];
   for (const candidate of candidates) {

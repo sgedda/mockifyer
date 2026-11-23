@@ -68,15 +68,32 @@ app.use((req, res, next) => {
 // Trailing slash redirect (301) - must be before other routes
 // Only redirect GET/HEAD requests. Pair with express.static({ redirect: false })
 // so directory-backed paths like /guides cannot loop with /guides/.
+// Keep trailing slashes under /atlas/ so relative asset fetches (bodies-search.json) resolve.
 app.use((req, res, next) => {
   if (
     (req.method === 'GET' || req.method === 'HEAD') &&
     req.path !== '/' &&
     req.path.endsWith('/')
   ) {
+    if (req.path.startsWith('/atlas/')) {
+      return next();
+    }
     const query = req.url.slice(req.path.length);
     const safePath = req.path.slice(0, -1);
     return res.redirect(301, safePath + query);
+  }
+  next();
+});
+
+// Static Atlas directory: bare path → trailing slash (relative fetches need a directory URL).
+// Match originalUrl (not req.path): with default non-strict routing, Express collapses
+// `/atlas/wanderweird/` to path `/atlas/wanderweird` and would otherwise loop forever.
+app.use((req, res, next) => {
+  if (
+    (req.method === 'GET' || req.method === 'HEAD') &&
+    /^\/atlas\/wanderweird(\?|$)/.test(req.originalUrl)
+  ) {
+    return res.redirect(301, `/atlas/wanderweird/${req.originalUrl.slice('/atlas/wanderweird'.length)}`);
   }
   next();
 });
@@ -610,7 +627,11 @@ app.get('*', (req, res) => {
   if (req.path.startsWith('/api/')) {
     return res.status(404).json({ error: 'API endpoint not found', path: req.path });
   }
-  if (req.path.startsWith('/assets/') || req.path.startsWith('/videos/')) {
+  if (
+    req.path.startsWith('/assets/') ||
+    req.path.startsWith('/videos/') ||
+    req.path.startsWith('/atlas/')
+  ) {
     return res.status(404).send('Asset not found');
   }
 

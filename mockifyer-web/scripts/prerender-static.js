@@ -145,6 +145,11 @@ var PAGE_SEO = {
     title: "Mockifyer vs MSW, Polly.js, and Nock",
     description: "Compare Mockifyer with MSW, Polly.js, and Nock. Learn when record-replay fits better than in-code handlers for API testing.",
     path: "/comparisons"
+  },
+  "/atlas/wanderweird": {
+    title: "WanderWeird Atlas \u2014 Live Architecture Map",
+    description: "Interactive Mockifyer Atlas generated from real WanderWeird E2E traffic: endpoints, request chains, and mocked vs live flows.",
+    path: "/atlas/wanderweird"
   }
 };
 function formatPageTitle(title) {
@@ -668,6 +673,22 @@ async function prerender() {
   const manifest = {};
   let count = 0;
   for (const [routePath, seoConfig] of Object.entries(PAGE_SEO)) {
+    if (routePath.startsWith("/atlas/")) {
+      const staticIndex = import_path.default.join(publicDir, routePath.replace(/^\//, ""), "index.html");
+      if (!import_fs.default.existsSync(staticIndex)) {
+        console.warn(`  \u26A0 ${routePath} listed in PAGE_SEO but ${staticIndex} is missing`);
+      } else {
+        console.log(`  \u2713 ${routePath} \u2192 atlas static asset (skipped SPA prerender)`);
+      }
+      manifest[routePath] = {
+        title: formatPageTitle(seoConfig.title),
+        description: seoConfig.description,
+        path: routePath,
+        noIndex: seoConfig.noIndex
+      };
+      count++;
+      continue;
+    }
     const generatedHtml = generateHtml(routePath, seoConfig, shellHtml);
     const relativePath = writeRouteHtml(publicDir, routePath, generatedHtml);
     const bodyContent = getPrerenderBodyContent(routePath);

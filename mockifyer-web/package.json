@@ -15,6 +15,7 @@
     "prerender": "node scripts/prerender-static.js",
     "generate:sitemap": "node scripts/generate-sitemap.js",
     "verify:prerender": "node scripts/verify-prerender.js",
+    "sync:atlas": "node scripts/sync-wanderweird-atlas.mjs",
     "build:backend": "tsc",
     "start": "node dist/index.js",
     "test:fetch": "MOCKIFYER_MODE=on MOCKIFYER_RECORD=true npx ts-node src/fetch-auto-mock.ts",

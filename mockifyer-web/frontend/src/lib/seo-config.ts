@@ -137,7 +137,23 @@ export const PAGE_SEO: Record<string, PageSeoConfig> = {
       'Compare Mockifyer with MSW, Polly.js, and Nock. Learn when record-replay fits better than in-code handlers for API testing.',
     path: '/comparisons',
   },
+  /**
+   * Static Atlas HTML (not an SPA route). Prerender skips /atlas/* and Express
+   * serves frontend/public/atlas/wanderweird/index.html. Listed for SEO/sitemap.
+   */
+  '/atlas/wanderweird': {
+    title: 'WanderWeird Atlas — Live Architecture Map',
+    description:
+      'Interactive Mockifyer Atlas generated from real WanderWeird E2E traffic: endpoints, request chains, and mocked vs live flows.',
+    path: '/atlas/wanderweird',
+  },
 }
+
+/**
+ * Trailing-slash URL for the static Atlas directory (relative asset fetches).
+ * Prefer this when linking from the marketing site.
+ */
+export const WANDERWEIRD_ATLAS_HREF = '/atlas/wanderweird/'
 
 /**
  * Helper to format page title with site name suffix.

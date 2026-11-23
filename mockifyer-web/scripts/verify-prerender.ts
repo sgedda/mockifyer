@@ -108,6 +108,31 @@ function verify(): void {
   }
 
   for (const [routePath, seo] of Object.entries(PAGE_SEO)) {
+    if (routePath.startsWith('/atlas/')) {
+      const atlasIndex = path.join(publicDir, routePath.replace(/^\//, ''), 'index.html');
+      if (!fs.existsSync(atlasIndex)) {
+        failures.push({
+          route: routePath,
+          reason: `missing static Atlas ${path.relative(publicDir, atlasIndex)}`,
+        });
+      } else {
+        const atlasHtml = fs.readFileSync(atlasIndex, 'utf-8');
+        if (
+          !/"totalRequests"\s*:\s*[1-9]/.test(atlasHtml) &&
+          !/"observedEndpoints"\s*:\s*[1-9]/.test(atlasHtml)
+        ) {
+          failures.push({
+            route: routePath,
+            reason: 'Atlas HTML has no observed traffic (code-only scan)',
+          });
+        }
+        if (!/color-scheme:\s*light/.test(atlasHtml) && !/content="light"/.test(atlasHtml)) {
+          failures.push({ route: routePath, reason: 'Atlas HTML missing light color-scheme' });
+        }
+      }
+      continue;
+    }
+
     const filePath = htmlPathForRoute(publicDir, routePath);
     if (!fs.existsSync(filePath)) {
       failures.push({ route: routePath, reason: `missing file ${path.relative(publicDir, filePath)}` });

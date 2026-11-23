@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
-import { Github, ArrowRight, PlayCircle, Database, Code2, Sparkles, Construction, Target, Zap, GitBranch, Terminal, Play, Radio, LayoutDashboard, TrendingUp, CheckCircle2 } from 'lucide-react'
+import { Github, ArrowRight, PlayCircle, Database, Code2, Sparkles, Construction, Target, Zap, GitBranch, Terminal, Play, Radio, LayoutDashboard, TrendingUp, CheckCircle2, Map } from 'lucide-react'
 import CodeBlock from '@/components/CodeBlock'
 import RunItButton from '@/components/RunItButton'
+import { WANDERWEIRD_ATLAS_HREF } from '@/lib/seo-config'
 
 interface MediaItem {
   src: string
@@ -212,6 +213,53 @@ export default function Introduction() {
               </Link>
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* Atlas showcase — real WanderWeird traffic map */}
+      <section
+        id="atlas-showcase"
+        className="mx-auto max-w-[1200px] px-5 py-16 border-b border-border"
+        aria-labelledby="atlas-showcase-heading"
+      >
+        <div className="grid lg:grid-cols-2 gap-10 lg:gap-12 items-center">
+          <div className="order-2 lg:order-1">
+            <div className="inline-flex items-center gap-2 text-sm font-medium text-primary mb-3">
+              <Map className="h-4 w-4" aria-hidden="true" />
+              Mockifyer Atlas
+            </div>
+            <h2 id="atlas-showcase-heading" className="text-3xl font-semibold tracking-tight mb-4">
+              See what Mockifyer sees
+            </h2>
+            <p className="text-muted-foreground leading-relaxed mb-3">
+              Generated from real recorded WanderWeird traffic — not a code-only scan. The Atlas maps endpoints and multi-hop flows, and shows which calls were mocked vs live.
+            </p>
+            <p className="text-sm text-muted-foreground mb-6">
+              Secrets scrubbed. Light-mode interactive map you can explore end-to-end.
+            </p>
+            <a href={WANDERWEIRD_ATLAS_HREF} className="inline-flex">
+              <Button size="lg" className="h-11 px-6 font-medium group">
+                Open full Atlas
+                <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
+              </Button>
+            </a>
+          </div>
+
+          <a
+            href={WANDERWEIRD_ATLAS_HREF}
+            className="order-1 lg:order-2 block rounded-xl border border-border bg-card overflow-hidden shadow-sm hover:border-primary/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            aria-label="Open the interactive WanderWeird Atlas"
+          >
+            <img
+              src="/atlas/wanderweird/preview.jpg"
+              alt="WanderWeird Atlas overview: 21 observed endpoints, 1205 requests, and a system diagram of mocked vs live hosts"
+              width={1600}
+              height={617}
+              loading="lazy"
+              decoding="async"
+              className="w-full h-auto"
+            />
+          </a>
         </div>
       </section>
 
