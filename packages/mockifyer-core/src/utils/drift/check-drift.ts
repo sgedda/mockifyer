@@ -19,7 +19,11 @@ import {
   enhanceReportWithHistory,
 } from './drift-management';
 import { requireSafeScenarioName } from './safe-scenario';
-import { readDriftResponseBody } from './response-body';
+import { readDriftResponseBody, readDriftResponseBodyMaybeCapped } from './response-body';
+import {
+  DEFAULT_STREAM_RECORD_MAX_BYTES,
+  DEFAULT_STREAM_RECORD_MAX_DURATION_MS,
+} from '../stream-response';
 
 interface DriftConfig {
   scenario?: string;
@@ -447,9 +451,20 @@ async function checkSingleMock(
         signal: controller.signal,
       });
 
-      clearTimeout(timeout);
-
-      const actualBody = await readDriftResponseBody(response);
+      // Keep the overall abort timeout active until the body is fully consumed.
+      // Clearing it here let quiet SSE hang forever on response.text() / idle reads.
+      const hasStoredStream =
+        mock.response?.stream != null &&
+        Array.isArray(mock.response.stream.chunks);
+      const actualBody = hasStoredStream
+        ? await readDriftResponseBodyMaybeCapped(response, {
+            forceCapped: true,
+            // Bound stream reads by the smaller of the drift timeout and the
+            // default stream record duration so idle SSE cannot outlive either.
+            maxDurationMs: Math.min(timeoutMs, DEFAULT_STREAM_RECORD_MAX_DURATION_MS),
+            maxBytes: DEFAULT_STREAM_RECORD_MAX_BYTES,
+          })
+        : await readDriftResponseBody(response);
 
       // Compare with mock (always compare status and all fields)
       const issues = compareResponses(

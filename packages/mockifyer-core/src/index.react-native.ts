@@ -65,6 +65,7 @@ export * from './utils/mockifyer-init-log';
 export * from './utils/mock-response-date-overrides';
 export * from './utils/mock-response-field-overrides';
 export * from './utils/mock-response-prepare';
+export * from './utils/stream-response';
 export * from './utils/override-sets';
 export * from './types/override-group';
 export * from './utils/override-group';

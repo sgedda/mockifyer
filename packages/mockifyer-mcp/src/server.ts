@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { DashboardApiClient } from './dashboard-client.js';
+import { projectMockForMcp } from './stream-summary.js';
 
 function jsonResult(data: unknown) {
   return {
@@ -136,7 +137,8 @@ export function createMockifyerMcpServer(client = new DashboardApiClient()): Mcp
     async (args) => {
       try {
         const result = await client.getMock(args.filename, args.scenario);
-        return jsonResult(result);
+        // Stream mocks: summarise events/delays instead of dumping the huge body.
+        return jsonResult(projectMockForMcp(result));
       } catch (error) {
         return toolError(error instanceof Error ? error.message : String(error));
       }

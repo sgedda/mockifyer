@@ -9,6 +9,11 @@ import {
   MOCKIFYER_CLIENT_ID_HEADER,
   MOCKIFYER_DEVICE_ID_HEADER,
   resolveMockifyerTraceFromHeaders,
+  detectStreamKind,
+  teeResponseBodyForRecording,
+  captureReadableStreamChunks,
+  supportsReadableStreamBody,
+  type StreamRecordCaps,
 } from '@sgedda/mockifyer-core';
 
 function headerContentType(headers: Headers): string | undefined {
@@ -78,6 +83,8 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
   private getStrictLaneScenario?: () => boolean;
   private getUpstreamTlsInsecure?: () => boolean;
   private getExplicitProxyScenarioContext?: () => boolean;
+  private getShouldRecordStreams?: () => boolean;
+  private getStreamRecordCaps?: () => StreamRecordCaps;
   private clientIdSnapshot?: string;
   private deviceId?: string;
 
@@ -98,6 +105,9 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
     getUpstreamTlsInsecure?: () => boolean;
     /** When false, skip `/api/proxy` and call the real URL (devtools-friendly passthrough). */
     getExplicitProxyScenarioContext?: () => boolean;
+    /** When true, tee streaming bodies and capture chunk timelines while recording. */
+    getShouldRecordStreams?: () => boolean;
+    getStreamRecordCaps?: () => StreamRecordCaps;
     deviceId?: string;
   }) {
     super();
@@ -112,6 +122,8 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
     this.getStrictLaneScenario = config?.getStrictLaneScenario;
     this.getUpstreamTlsInsecure = config?.getUpstreamTlsInsecure;
     this.getExplicitProxyScenarioContext = config?.getExplicitProxyScenarioContext;
+    this.getShouldRecordStreams = config?.getShouldRecordStreams;
+    this.getStreamRecordCaps = config?.getStreamRecordCaps;
     this.clientIdSnapshot = config?.clientId;
     this.deviceId = config?.deviceId;
   }
@@ -231,7 +243,51 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
     }
 
     const response = await fetchFn(url, requestConfig);
+
+    const responseHeaders: Record<string, string> = {};
+    response.headers.forEach((value: string, key: string) => {
+      responseHeaders[key] = value;
+    });
+
+    const mockifyerTrace = resolveMockifyerTraceFromHeaders(responseHeaders);
     const contentType = response.headers.get('content-type') || '';
+    const streamKind = detectStreamKind(response.headers);
+    const canStream = supportsReadableStreamBody() && streamKind != null && response.body != null;
+    const shouldRecordStreams = this.getShouldRecordStreams?.() === true;
+
+    // Streaming path: pass the live body through without buffering so the caller
+    // is not delayed. When recording, tee and capture chunks in the background.
+    if (canStream) {
+      const caps = this.getStreamRecordCaps?.() ?? {};
+      if (shouldRecordStreams) {
+        const teed = teeResponseBodyForRecording(response.body);
+        if (teed) {
+          const recording = captureReadableStreamChunks(teed.record, streamKind, caps);
+          return {
+            data: teed.live as any,
+            status: response.status,
+            statusText: response.statusText,
+            headers: responseHeaders,
+            config,
+            mockifyerStreamRecording: recording,
+            ...(mockifyerTrace ? { mockifyerTrace } : {}),
+          };
+        }
+        // Tee unavailable — fall through to buffered text() so recording still works.
+      } else {
+        // Not recording: avoid buffering the live stream for the caller.
+        return {
+          data: response.body as any,
+          status: response.status,
+          statusText: response.statusText,
+          headers: responseHeaders,
+          config,
+          ...(mockifyerTrace ? { mockifyerTrace } : {}),
+        };
+      }
+    }
+
+    // Flat path (legacy / React Native without ReadableStream / non-stream responses)
     const rawText = await response.text();
     let data: any = rawText;
     if (contentType.includes('application/json')) {
@@ -241,13 +297,6 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
         data = rawText;
       }
     }
-
-    const responseHeaders: Record<string, string> = {};
-    response.headers.forEach((value: string, key: string) => {
-      responseHeaders[key] = value;
-    });
-
-    const mockifyerTrace = resolveMockifyerTraceFromHeaders(responseHeaders);
 
     return {
       data,

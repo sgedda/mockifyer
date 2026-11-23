@@ -606,6 +606,12 @@ export class MockifyerClass {
       getStrictLaneScenario: () => resolveProxyStrictLaneScenario(this.config),
       getUpstreamTlsInsecure: () => resolveProxyUpstreamTlsInsecure(this.config),
       getExplicitProxyScenarioContext: () => isExplicitProxyScenarioContext(this.config),
+      getShouldRecordStreams: () =>
+        this.config.recordMode === true && !this.config.proxy?.baseUrl,
+      getStreamRecordCaps: () => ({
+        maxBytes: this.config.streamRecordMaxBytes,
+        maxDurationMs: this.config.streamRecordMaxDurationMs,
+      }),
       deviceId: (this.config as any).deviceId,
     });
     
@@ -1017,12 +1023,15 @@ export class MockifyerClass {
 
           await this.warmPoolResponseCache(mockData);
 
-          const mockResponse = {
+          const mockResponse: HTTPResponse = {
             data: mockResponseBody,
             status: effectiveStatus,
             statusText: 'OK',
             headers: responseHeaders,
-            config: config as any
+            config: config as any,
+            ...(mockData.response.stream
+              ? { mockifyerStoredStream: mockData.response.stream }
+              : {}),
           };
 
           return {
@@ -1229,7 +1238,10 @@ export class MockifyerClass {
                 ? response.config.metadata.durationMs
                 : undefined,
             requestBody: response.config?.data,
-            responseBody: response.data,
+            responseBody:
+              typeof ReadableStream !== 'undefined' && response.data instanceof ReadableStream
+                ? '[stream]'
+                : response.data,
           },
           this.readRequestCorrelation(response.config),
           response.config?.headers
@@ -1238,7 +1250,15 @@ export class MockifyerClass {
 
         // Only save locally if recordMode is enabled AND we're not proxying upstream calls.
         if (this.config.recordMode && !this.config.proxy?.baseUrl) {
-          await this.saveResponse(response);
+          if (response.mockifyerStreamRecording) {
+            // Do not await recording — the caller already has the live stream.
+            // Persist once the recording branch finishes (caps / EOF).
+            void this.saveStreamRecording(response).catch((err) => {
+              logger.error('[Mockifyer-Fetch] Failed to save stream recording:', err);
+            });
+          } else {
+            await this.saveResponse(response);
+          }
         }
 
         return response;
@@ -1337,6 +1357,26 @@ export class MockifyerClass {
     } catch (e) {
       logger.warn('[Mockifyer-Fetch] Proxy client mirror (Metro) failed:', e);
     }
+  }
+
+  /**
+   * Await background stream capture, then persist concatenated body + stream timeline.
+   * Called without blocking the caller's live ReadableStream.
+   */
+  private async saveStreamRecording(response: HTTPResponse): Promise<void> {
+    const recording = response.mockifyerStreamRecording;
+    if (!recording) {
+      await this.saveResponse(response);
+      return;
+    }
+    const captured = await recording;
+    const withBody: HTTPResponse = {
+      ...response,
+      data: captured.concatenated,
+      mockifyerStoredStream: captured.stream,
+      mockifyerStreamRecording: undefined,
+    };
+    await this.saveResponse(withBody);
   }
 
   private async saveResponse(response: HTTPResponse): Promise<void> {
@@ -1456,12 +1496,18 @@ export class MockifyerClass {
         this.config.proxy?.recordResponses ??
         this.config.recordResponses;
       const recordBodies = resolveLocalRecordResponsesForUrl(storedRequest.url, configValue, this.config.baseUrl);
+      const storedStream = response.mockifyerStoredStream;
+      const responseDataForSave =
+        typeof ReadableStream !== 'undefined' && response.data instanceof ReadableStream
+          ? ''
+          : response.data;
       const mockData = buildLocalRecordingMockData({
         request: storedRequest,
         response: {
           status: response.status,
-          data: response.data,
+          data: responseDataForSave,
           headers: response.headers || {},
+          ...(storedStream && recordBodies ? { stream: storedStream } : {}),
         },
         recordResponses: recordBodies,
         meta: {

@@ -854,6 +854,50 @@ export default function MockEditor({
                   Status: {mock.data.response.status}
                 </div>
               </div>
+
+              {mock.data.response.stream &&
+                Array.isArray(mock.data.response.stream.chunks) &&
+                mock.data.response.stream.chunks.length > 0 && (
+                  <div className="space-y-2 rounded-md border border-border bg-muted/20 p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="text-sm font-medium">Stream timeline</div>
+                      <div className="text-xs text-muted-foreground">
+                        {mock.data.response.stream.kind.toUpperCase()} ·{' '}
+                        {mock.data.response.stream.chunks.length} chunk
+                        {mock.data.response.stream.chunks.length === 1 ? '' : 's'}
+                        {mock.data.response.stream.firstChunkDelayMs != null
+                          ? ` · first +${mock.data.response.stream.firstChunkDelayMs}ms`
+                          : ''}
+                        {mock.data.response.stream.truncated ? ' · truncated' : ''}
+                      </div>
+                    </div>
+                    <div className="max-h-56 overflow-auto space-y-1">
+                      {mock.data.response.stream.chunks.map((chunk, index) => {
+                        const preview =
+                          chunk.data.length > 120
+                            ? `${chunk.data.slice(0, 120)}…`
+                            : chunk.data
+                        return (
+                          <div
+                            key={`stream-chunk-${index}-${chunk.offsetMs}`}
+                            className="grid grid-cols-[4.5rem_1fr] gap-2 text-xs font-mono"
+                          >
+                            <span className="text-muted-foreground tabular-nums">
+                              +{chunk.offsetMs}ms
+                            </span>
+                            <pre className="whitespace-pre-wrap break-all m-0 bg-background/60 rounded px-2 py-1 border border-border/60">
+                              {preview || '(empty)'}
+                            </pre>
+                          </div>
+                        )
+                      })}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Concatenated body is still stored in Response Data below for overrides and
+                      drift. Replay pacing uses this timeline when ReadableStream is available.
+                    </p>
+                  </div>
+                )}
               
               {preferJsonEditor && (
                 <p className="text-xs text-muted-foreground">

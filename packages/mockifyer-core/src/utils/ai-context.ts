@@ -1,4 +1,5 @@
 import type { MockData } from '../types';
+import { summarizeStoredStream } from './stream-response';
 
 export type AiContextMode = 'profile' | 'schema' | 'suggest' | 'full';
 
@@ -34,6 +35,16 @@ export interface AiContextProfile {
   stateHints: AiStateHint[];
 }
 
+export interface AiContextStreamSummary {
+  kind: string;
+  chunkCount: number;
+  truncated: boolean;
+  firstChunkDelayMs: number;
+  totalDurationMs: number;
+  totalBytes: number;
+  events: Array<{ offsetMs: number; bytes: number; preview: string }>;
+}
+
 export interface AiContextResult {
   endpoint: { method: string; url: string; pathname: string };
   status: number;
@@ -42,6 +53,8 @@ export interface AiContextResult {
   discovery: AiContextDiscoveryMeta;
   suggestions?: ScoredAiPath[];
   data?: MockData;
+  /** Present when the mock has a recorded stream timeline — prefer this over dumping `response.data`. */
+  streamSummary?: AiContextStreamSummary;
 }
 
 export interface AiContextOptions {
@@ -534,22 +547,39 @@ export function buildAiContext(
 
   const status = primaryMock.response?.status ?? 200;
   const allMocks = [primaryMock, ...relatedMocks.filter((m) => m !== primaryMock)];
+  const storedStream = primaryMock.response?.stream;
+  const streamSummary =
+    storedStream && Array.isArray(storedStream.chunks)
+      ? summarizeStoredStream(storedStream)
+      : undefined;
 
   if (mode === 'full') {
     const fullBytes = Buffer.byteLength(JSON.stringify(primaryMock.response?.data ?? null));
+    // For stream mocks, avoid dumping the huge concatenated body in `data`.
+    const dataForFull =
+      streamSummary && primaryMock.response
+        ? ({
+            ...primaryMock,
+            response: {
+              ...primaryMock.response,
+              data: `[stream:${streamSummary.kind} chunks=${streamSummary.chunkCount} bytes=${streamSummary.totalBytes}]`,
+            },
+          } as MockData)
+        : primaryMock;
     return {
       endpoint: { method, url, pathname },
       status,
       mode,
       profile: { fields: {}, schema: {}, stateHints: [] },
       discovery: {
-        sources: ['full'],
+        sources: streamSummary ? ['full', 'stream'] : ['full'],
         includedPaths: 0,
         omittedPaths: 0,
         omittedBytes: 0,
         mode,
       },
-      data: primaryMock,
+      data: dataForFull,
+      ...(streamSummary ? { streamSummary } : {}),
     };
   }
 
@@ -575,12 +605,13 @@ export function buildAiContext(
       profile: { fields: {}, schema: {}, stateHints: [] },
       suggestions: scored.slice(0, options.maxPaths ?? DEFAULT_MAX_PATHS * 2),
       discovery: {
-        sources,
+        sources: streamSummary ? [...sources, 'stream'] : sources,
         includedPaths: 0,
         omittedPaths: pathInfos.size,
         omittedBytes: Buffer.byteLength(JSON.stringify(primaryMock.response?.data ?? null)),
         mode,
       },
+      ...(streamSummary ? { streamSummary } : {}),
     };
   }
 
@@ -610,11 +641,12 @@ export function buildAiContext(
     mode,
     profile,
     discovery: {
-      sources,
+      sources: streamSummary ? [...sources, 'stream'] : sources,
       includedPaths: selectedPaths.length,
       omittedPaths: countOmittedPaths(pathInfos, selectedSet),
       omittedBytes: Math.max(0, fullBytes - projectedBytes),
       mode,
     },
+    ...(streamSummary ? { streamSummary } : {}),
   };
 }

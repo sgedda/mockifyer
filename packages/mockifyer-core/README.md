@@ -45,6 +45,22 @@ npx mockifyer try
 - Date/time manipulation for deterministic tests
 - Request/response interception utilities
 - TypeScript types and interfaces
+- Optional stream timelines on `StoredResponse.stream` (SSE / chunked) with replay helpers
+
+### Streaming (`StoredResponse.stream`)
+
+```typescript
+import {
+  createReplayReadableStream,
+  detectStreamKind,
+  summarizeStoredStream,
+} from '@sgedda/mockifyer-core';
+
+// Optional field on StoredResponse — `data` stays the concatenated body:
+// stream?: { kind: 'sse' | 'bytes'; chunks: { offsetMs; data }[]; firstChunkDelayMs?; truncated? }
+```
+
+Config knobs (used by `@sgedda/mockifyer-fetch`): `streamReplay`, `streamRecordMaxBytes`, `streamRecordMaxDurationMs`. Drift checks for stream mocks read with the same caps instead of hanging on open SSE.
 
 Most users should install **[@sgedda/mockifyer-axios](https://www.npmjs.com/package/@sgedda/mockifyer-axios)** or **[@sgedda/mockifyer-fetch](https://www.npmjs.com/package/@sgedda/mockifyer-fetch)** instead, which wrap this core package with HTTP client-specific integrations.
 

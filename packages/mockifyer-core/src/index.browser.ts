@@ -59,6 +59,7 @@ export * from './utils/recording-default-always-live';
 // export * from './utils/mockifyer-init-log';
 export * from './utils/mock-response-field-overrides';
 export * from './utils/mock-response-prepare';
+export * from './utils/stream-response';
 export * from './utils/override-group';
 export * from './utils/override-group-runtime';
 export * from './utils/override-group-resolve';
