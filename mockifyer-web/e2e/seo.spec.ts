@@ -5,7 +5,7 @@ const ROUTES = [
   { path: '/', title: 'Mockifyer — Record & Replay HTTP API Mocks', h1: /Mockifyer/ },
   { path: '/getting-started', title: 'Getting Started with Mockifyer', h1: /Getting Started/i },
   { path: '/features', title: 'Mockifyer Features: Record, Replay, Scenarios', h1: /Mockifyer Features/i },
-  { path: '/faq', title: 'Mockifyer FAQ: Record-Replay API Mocks', h1: /FAQ/i },
+  { path: '/faq', title: 'Mockifyer FAQ: Record-Replay API Mocks', h1: /Frequently Asked Questions|FAQ/i },
   { path: '/packages', title: 'Mockifyer npm Packages for Axios and Fetch', h1: /Packages/i },
   { path: '/dashboard', title: 'Mockifyer Dashboard and MCP Tools', h1: /Dashboard/i },
   { path: '/comparisons', title: 'Mockifyer vs MSW, Polly.js, and Nock', h1: /Mockifyer vs/i },
@@ -28,10 +28,10 @@ test.describe('SEO: Per-route HTML metadata', () => {
       const html = await response?.text();
       expect(html).toBeTruthy();
 
-      // Check title tag in raw HTML
+      // Check title tag in raw HTML (entities are escaped in prerendered markup)
       const titleMatch = html!.match(/<title>(.*?)<\/title>/);
       expect(titleMatch).toBeTruthy();
-      expect(titleMatch![1]).toBe(route.title);
+      expect(titleMatch![1].replace(/&amp;/g, '&')).toBe(route.title);
 
       // Check canonical link in raw HTML
       const canonicalMatch = html!.match(/<link rel="canonical" href="([^"]+)"/);

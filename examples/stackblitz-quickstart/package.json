@@ -1,0 +1,16 @@
+{
+  "name": "mockifyer-stackblitz-quickstart",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Minimal Mockifyer record → offline replay starter for StackBlitz WebContainers",
+  "scripts": {
+    "start": "node replay.js",
+    "record": "node record.js",
+    "replay": "node replay.js"
+  },
+  "dependencies": {
+    "@sgedda/mockifyer-core": "^1.10.199",
+    "@sgedda/mockifyer-fetch": "^1.8.108"
+  }
+}

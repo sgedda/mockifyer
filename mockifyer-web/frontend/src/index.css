@@ -198,6 +198,46 @@
     @apply mx-auto px-4 sm:px-6 lg:px-8;
     max-width: 80rem;
   }
+
+  /* Hero before/after demo — qualitative live vs replay illustration */
+  .hero-demo-live-panel {
+    position: relative;
+    min-height: 5.5rem;
+  }
+
+  .hero-demo-live-wait,
+  .hero-demo-live-body {
+    transition: opacity 0.35s ease;
+  }
+
+  .hero-demo-live-wait {
+    animation: hero-demo-wait-cycle 4.5s ease-in-out infinite;
+  }
+
+  .hero-demo-live-body {
+    position: absolute;
+    inset: 0;
+    animation: hero-demo-body-cycle 4.5s ease-in-out infinite;
+  }
+
+  .hero-demo-replay-body {
+    animation: hero-demo-replay-pulse 4.5s ease-in-out infinite;
+  }
+
+  @keyframes hero-demo-wait-cycle {
+    0%, 40% { opacity: 1; }
+    55%, 100% { opacity: 0; }
+  }
+
+  @keyframes hero-demo-body-cycle {
+    0%, 40% { opacity: 0; }
+    55%, 100% { opacity: 1; }
+  }
+
+  @keyframes hero-demo-replay-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.88; }
+  }
 }
 
 

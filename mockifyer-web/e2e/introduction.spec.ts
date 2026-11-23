@@ -4,12 +4,14 @@ test.describe('Introduction Page', () => {
   test('should display main content', async ({ page }) => {
     await page.goto('/');
     
-    // Check hero heading
-    await expect(page.getByRole('heading', { name: /Record real APIs.*Replay them anywhere/i })).toBeVisible();
+    // Check hero brand + plain-language value prop
+    await expect(page.getByRole('heading', { name: /^Mockifyer$/i })).toBeVisible();
+    await expect(page.getByText(/Record real API traffic from your app, then replay it as mocks/i)).toBeVisible();
     
-    // Check hero subtitle
-    await expect(page.getByText(/Record real traffic from fetch, axios and React Native/i)).toBeVisible();
-    
+    // Before/after demo
+    await expect(page.getByText(/Live API/i).first()).toBeVisible();
+    await expect(page.getByText(/Mockifyer replay/i).first()).toBeVisible();
+
     // Check problems section with new cards
     await expect(page.getByText(/API isn't ready yet/i)).toBeVisible();
     await expect(page.getByText(/Hard-to-reproduce states/i)).toBeVisible();
@@ -44,6 +46,13 @@ test.describe('Introduction Page', () => {
     await expect(howTo).toHaveAttribute('href', '/guides/atlas-from-playwright');
   });
 
+  test('should link from hero to Atlas showcase', async ({ page }) => {
+    await page.goto('/');
+    const atlasJump = page.getByRole('link', { name: /See what Mockifyer sees/i }).first();
+    await expect(atlasJump).toBeVisible();
+    await expect(atlasJump).toHaveAttribute('href', '#atlas-showcase');
+  });
+
   test('should display showcase videos', async ({ page }) => {
     await page.goto('/');
     
@@ -68,10 +77,14 @@ test.describe('Introduction Page', () => {
     await expect(getStartedLink).toBeVisible();
   });
 
-  test('should have Try it Live demo button', async ({ page }) => {
+  test('should have primary Quick Start and StackBlitz CTAs', async ({ page }) => {
     await page.goto('/');
-    
-    // Check for RunItButton
+
+    await expect(page.getByRole('link', { name: /Quick Start/i }).first()).toBeVisible();
+    await expect(page.getByRole('link', { name: /Open in StackBlitz/i }).first()).toBeVisible();
+    await expect(page.getByRole('link', { name: /GitHub/i }).first()).toBeVisible();
+
+    // Keep the existing demos StackBlitz button further down the page
     const demoButton = page.getByRole('button', { name: /Run Demo in StackBlitz/i });
     await expect(demoButton).toBeVisible();
   });
@@ -159,4 +172,3 @@ test.describe('Introduction Page', () => {
     }
   });
 });
-

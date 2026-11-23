@@ -3,10 +3,13 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Link } from 'react-router-dom'
-import { CheckCircle2, Code, Zap, BookOpen, Play, Shield, Terminal, Monitor, TestTube, Clock } from 'lucide-react'
+import { CheckCircle2, Code, Zap, BookOpen, Play, Shield, Terminal, Monitor, TestTube, Clock, ExternalLink, AlertCircle } from 'lucide-react'
 import CodeBlock from '@/components/CodeBlock'
 import PackagesOverview from '@/components/PackagesOverview'
 import { MCP_TOOLS } from '@/lib/product-docs'
+
+const STACKBLITZ_QUICKSTART_URL =
+  'https://stackblitz.com/github/sgedda/mockifyer/tree/main/examples/stackblitz-quickstart'
 
 export default function GettingStarted() {
   return (
@@ -17,19 +20,30 @@ export default function GettingStarted() {
           Getting Started
         </h1>
         <p className="text-muted-foreground mt-4 text-lg max-w-3xl">
-          Node.js, React Native, dashboard, and MCP — install the @sgedda packages that match your stack
+          Install, configure selective recording, run your app, activate a mock, and see it replay — about five steps to your first mock.
         </p>
+        <div className="mt-6">
+          <a href={STACKBLITZ_QUICKSTART_URL} target="_blank" rel="noopener noreferrer">
+            <Button variant="outline" className="font-medium">
+              <ExternalLink className="mr-2 h-4 w-4" />
+              Open in StackBlitz
+            </Button>
+          </a>
+          <p className="text-xs text-muted-foreground mt-2">
+            Browser Node demo: record one public API call, then replay with the network blocked. Dashboard is not available in StackBlitz.
+          </p>
+        </div>
       </header>
 
-      {/* Quick Start - 2 Minutes */}
+      {/* Quick Start — selective recording first */}
       <Card className="border-primary/20 bg-primary/5">
         <CardHeader>
           <CardTitle className="text-2xl flex items-center gap-2">
             <Zap className="h-6 w-6 text-primary" />
-            Quick Start: 2 Minutes
+            Quick Start
           </CardTitle>
           <CardDescription className="text-base">
-            Get an 'aha' moment with the 3-command workflow
+            Selective recording by default: stubs land in <code className="bg-muted px-1 rounded">_scratch/</code> and stay live until you activate a mock
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -41,12 +55,23 @@ export default function GettingStarted() {
               <div className="flex-1">
                 <h3 className="font-semibold text-lg mb-2 flex items-center gap-2">
                   <Terminal className="h-5 w-5" />
-                  Try the demo
+                  Install
                 </h3>
                 <p className="text-sm text-muted-foreground mb-3">
-                  Self-contained record/replay in ~10 seconds. Records one GET request to a local server, stops it, then replays from the mock (0 network calls).
+                  Pick the package for your HTTP client (axios or fetch). React Native uses the fetch package.
                 </p>
-                <CodeBlock code="npx -p @sgedda/mockifyer-core mockifyer try" language="bash" />
+                <Tabs defaultValue="axios-install" className="w-full">
+                  <TabsList>
+                    <TabsTrigger value="axios-install">Axios</TabsTrigger>
+                    <TabsTrigger value="fetch-install">Fetch</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="axios-install" className="mt-3">
+                    <CodeBlock code="npm install @sgedda/mockifyer-core @sgedda/mockifyer-axios axios" language="bash" />
+                  </TabsContent>
+                  <TabsContent value="fetch-install" className="mt-3">
+                    <CodeBlock code="npm install @sgedda/mockifyer-core @sgedda/mockifyer-fetch" language="bash" />
+                  </TabsContent>
+                </Tabs>
               </div>
             </div>
 
@@ -57,14 +82,43 @@ export default function GettingStarted() {
               <div className="flex-1">
                 <h3 className="font-semibold text-lg mb-2 flex items-center gap-2">
                   <Code className="h-5 w-5" />
-                  Initialize your project
+                  Configure
                 </h3>
                 <p className="text-sm text-muted-foreground mb-3">
-                  Detects axios/fetch/React Native from package.json, writes <code className="bg-muted px-1 rounded">mockifyer.config.json</code> with <strong>selective recording</strong> defaults, and prints setup code.
+                  Or run <code className="bg-muted px-1 rounded">npx -p @sgedda/mockifyer-core mockifyer init</code> to detect your client and print the same selective defaults.
                 </p>
-                <CodeBlock code="npx -p @sgedda/mockifyer-core mockifyer init" language="bash" />
+                <Tabs defaultValue="axios-setup" className="w-full">
+                  <TabsList>
+                    <TabsTrigger value="axios-setup">Axios</TabsTrigger>
+                    <TabsTrigger value="fetch-setup">Fetch</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="axios-setup" className="mt-3 space-y-2">
+                    <CodeBlock code={`import { setupMockifyer } from '@sgedda/mockifyer-axios';
+
+setupMockifyer({
+  mockDataPath: './mock-data',
+  recordMode: true,
+  recordNewMocksAsPassthrough: true,  // Selective: activate in dashboard
+  recordResponses: false,             // Request-only stubs initially
+  useGlobalAxios: true
+});
+
+import axios from 'axios';`} language="typescript" />
+                  </TabsContent>
+                  <TabsContent value="fetch-setup" className="mt-3 space-y-2">
+                    <CodeBlock code={`import { setupMockifyer } from '@sgedda/mockifyer-fetch';
+
+setupMockifyer({
+  mockDataPath: './mock-data',
+  recordMode: true,
+  recordNewMocksAsPassthrough: true,  // Selective: activate in dashboard
+  recordResponses: false,             // Request-only stubs initially
+  useGlobalFetch: true
+});`} language="typescript" />
+                  </TabsContent>
+                </Tabs>
                 <p className="text-xs text-muted-foreground mt-2">
-                  <strong>Selective by default:</strong> Requests land as request-only stubs in <code className="bg-muted px-1 rounded">_scratch/</code> and keep hitting the live API. Activate mocks in the dashboard.
+                  These match what <code className="bg-muted px-1 rounded">mockifyer init</code> writes. Requests stay on the live API until activated.
                 </p>
               </div>
             </div>
@@ -75,20 +129,88 @@ export default function GettingStarted() {
               </div>
               <div className="flex-1">
                 <h3 className="font-semibold text-lg mb-2 flex items-center gap-2">
-                  <Monitor className="h-5 w-5" />
-                  Browse and activate mocks
+                  <Play className="h-5 w-5" />
+                  Run your app
                 </h3>
                 <p className="text-sm text-muted-foreground mb-3">
-                  Launch the dashboard to see recorded requests, untick "Always use live API" to activate mocks, and organize into scenarios.
+                  Start your app the way you normally do. Call <code className="bg-muted px-1 rounded">setupMockifyer</code> before your first HTTP request (and before importing axios when using the axios package).
+                </p>
+                <CodeBlock code={`# Example — keep MOCKIFYER_RECORD enabled while capturing
+MOCKIFYER_RECORD=true npm start`} language="bash" />
+              </div>
+            </div>
+
+            <div className="flex items-start gap-4">
+              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold text-lg">
+                4
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-lg mb-2 flex items-center gap-2">
+                  <Terminal className="h-5 w-5" />
+                  Record (selective)
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  Click through your app. Each request is stored as a <strong>request-only</strong> stub under{' '}
+                  <code className="bg-muted px-1 rounded">mock-data/_scratch/</code> and keeps hitting the live API.
+                  Nothing is replayed yet — you choose what to activate next.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-4">
+              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold text-lg">
+                5
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-lg mb-2 flex items-center gap-2">
+                  <Monitor className="h-5 w-5" />
+                  Activate a mock → see it replay
+                </h3>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Open the dashboard, find the stub in <code className="bg-muted px-1 rounded">_scratch</code>, and untick{' '}
+                  <strong>Always use live API</strong> (or add a domain-path rule). The next matching request captures/serves the mock instead of the live API.
                 </p>
                 <CodeBlock code="npx -p @sgedda/mockifyer-dashboard mockifyer-dashboard" language="bash" />
               </div>
             </div>
           </div>
 
-          <div className="p-4 bg-muted rounded-md border border-border">
-            <p className="text-sm text-muted-foreground">
-              <strong>Next:</strong> Add the setup code from step 2 to your app's entry file, then follow the platform-specific guides below for axios, fetch, or React Native integration.
+          <div className="border-t border-border pt-6 space-y-3">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-amber-900 dark:text-amber-200">
+                  Try it quickly (capture-all) — heavy
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Records full bodies for every URL and replays immediately. Fine for a tiny demo; prefer selective recording above for real apps.
+                </p>
+              </div>
+            </div>
+            <CodeBlock
+              language="typescript"
+              code={`// Capture-all — not the default. Same three knobs as demos/record-replay-basics.
+process.env.MOCKIFYER_RECORD_RESPONSES = 'true';
+process.env.MOCKIFYER_RECORD_DEFAULT_ALWAYS_USE_REAL_API = 'false';
+
+setupMockifyer({
+  mockDataPath: './mock-data',
+  recordMode: true,
+  useGlobalFetch: true, // or useGlobalAxios: true
+  domainPathRulesMode: 'record_all',
+});`}
+            />
+            <p className="text-xs text-muted-foreground">
+              Or open the ready-made starter:{' '}
+              <a
+                href={STACKBLITZ_QUICKSTART_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:underline"
+              >
+                examples/stackblitz-quickstart
+              </a>
+              .
             </p>
           </div>
         </CardContent>

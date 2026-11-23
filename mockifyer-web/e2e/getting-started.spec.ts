@@ -10,8 +10,12 @@ test.describe('Getting Started Page', () => {
     await expect(page.getByRole('heading', { name: /Getting Started/i })).toBeVisible();
   });
 
-  test('should have Quick Start section', async ({ page }) => {
-    await expect(page.getByText(/Quick Start/i)).toBeVisible();
+  test('should have Quick Start section with selective recording', async ({ page }) => {
+    await expect(page.getByText(/Quick Start/i).first()).toBeVisible();
+    await expect(page.getByText(/Selective recording by default/i)).toBeVisible();
+    await expect(page.getByText(/_scratch/i).first()).toBeVisible();
+    await expect(page.getByText(/Try it quickly \(capture-all\)/i)).toBeVisible();
+    await expect(page.getByRole('link', { name: /Open in StackBlitz/i }).first()).toBeVisible();
   });
 
   test('should have code examples', async ({ page }) => {

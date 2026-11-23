@@ -58,7 +58,7 @@ var PAGE_SEO = {
   },
   "/getting-started": {
     title: "Getting Started with Mockifyer",
-    description: "Install @sgedda/mockifyer-axios or mockifyer-fetch, configure mock data paths, and start recording or replaying HTTP API responses in minutes.",
+    description: "Install Mockifyer, configure selective recording into _scratch, activate a mock in the dashboard, and replay your first HTTP response in about five steps.",
     path: "/getting-started"
   },
   "/date-config": {
@@ -427,10 +427,10 @@ function buildGettingStartedBody() {
     summary: seo.description,
     sections: [
       {
-        heading: "Quick Start: 2 Minutes",
+        heading: "Quick Start",
         paragraphs: [
-          "Try the demo with npx -p @sgedda/mockifyer-core mockifyer try, then initialize your project with mockifyer init. The CLI detects axios, fetch, or React Native and writes selective-recording defaults.",
-          "Browse and activate mocks in the local dashboard. Requests land as request-only stubs until you activate them, so live APIs stay reachable while you curate recordings."
+          "Install @sgedda/mockifyer-axios or @sgedda/mockifyer-fetch, then call setupMockifyer with selective defaults (recordNewMocksAsPassthrough: true, recordResponses: false). Or run npx -p @sgedda/mockifyer-core mockifyer init.",
+          "Run your app with recording on. Requests land as request-only stubs in mock-data/_scratch/ and stay on the live API until you activate a mock in the dashboard (untick Always use live API) or via domain-path rules. Capture-all settings are an optional heavy shortcut for tiny demos."
         ]
       },
       {
