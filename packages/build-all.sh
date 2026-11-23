@@ -21,6 +21,11 @@ cd "$PACKAGES_DIR/mockifyer-core"
 npm install
 npm run build
 
+echo "Building mockifyer-generator..."
+cd "$PACKAGES_DIR/mockifyer-generator"
+npm install
+npm run build
+
 echo "Building mockifyer-axios..."
 cd "$PACKAGES_DIR/mockifyer-axios"
 npm install

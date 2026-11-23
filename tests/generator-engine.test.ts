@@ -3,15 +3,15 @@ import * as path from 'path';
 import {
   FieldKind,
   createMulberry32,
+  createSeededFaker,
   generate,
-  generateUuid,
   infer,
   inferFieldKind,
-} from '@sgedda/mockifyer-core/generator';
+} from '@sgedda/mockifyer-generator';
 
 const GENERATOR_SRC = path.resolve(
   __dirname,
-  '../packages/mockifyer-core/src/generator'
+  '../packages/mockifyer-generator/src'
 );
 
 describe('generator engine — field-kind inference', () => {
@@ -52,11 +52,8 @@ describe('generator engine — field-kind inference', () => {
   });
 
   it('handles tricky names without over-matching', () => {
-    // "format" should not become a timestamp just because it ends with "at"
     expect(inferFieldKind('format', ['json']).kind).not.toBe(FieldKind.IsoTimestamp);
-    // username is a name-ish string, not email
     expect(inferFieldKind('username', ['ada_l']).kind).toBe(FieldKind.FullName);
-    // email_verified is boolean despite containing "email"
     expect(inferFieldKind('email_verified', [true]).kind).toBe(FieldKind.Boolean);
   });
 
@@ -115,29 +112,32 @@ describe('generator engine — determinism', () => {
 [
   {
     "address": {
-      "city": "Oslo",
-      "zip": "46773",
+      "city": "Haleystead",
+      "zip": "73888",
     },
-    "email": "chloe.ibrahim56@example.com",
-    "id": 2,
+    "email": "Rick15@gmail.com",
+    "id": 1,
     "status": "shipped",
     "tags": [
       "b",
+      "b",
+      "a",
     ],
-    "total": 30.51,
+    "total": 27.77,
   },
   {
     "address": {
-      "city": "Austin",
-      "zip": "38421",
+      "city": "East Britney",
+      "zip": "45166",
     },
-    "email": "ethan.johansson3@example.com",
-    "id": 2,
+    "email": "Kobe_Lockman@gmail.com",
+    "id": 1,
     "status": "shipped",
     "tags": [
+      "b",
       "a",
     ],
-    "total": 29.31,
+    "total": 24.59,
   },
 ]
 `);
@@ -224,8 +224,8 @@ describe('generator engine — array-of-records inference', () => {
   });
 });
 
-describe('generator engine — PRNG helpers', () => {
-  it('mulberry32 is deterministic and uuid is shaped', () => {
+describe('generator engine — PRNG / faker helpers', () => {
+  it('mulberry32 is deterministic and faker uuid is shaped', () => {
     const a = createMulberry32(123);
     const b = createMulberry32(123);
     expect([a.next(), a.next(), a.int(1, 10)]).toEqual([
@@ -233,9 +233,13 @@ describe('generator engine — PRNG helpers', () => {
       b.next(),
       b.int(1, 10),
     ]);
-    const uuid = generateUuid(createMulberry32(5));
+    const faker = createSeededFaker(5);
+    const uuid = faker.string.uuid();
     expect(uuid).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    );
+    expect(createSeededFaker(5).internet.email()).toBe(
+      createSeededFaker(5).internet.email()
     );
   });
 });
@@ -261,7 +265,6 @@ describe('generator engine — browser-safe / no Node globals', () => {
 
   it('generate runs without touching Node fs/path/crypto', () => {
     const sample = { email: 'a@b.com', id: 1 };
-    // Sanity: module API is callable in the Jest environment without Node APIs in the generator graph
     const out = generate(sample, { count: 2, seed: 11 });
     expect(out).toHaveLength(2);
     expect(typeof (out[0] as { email: string }).email).toBe('string');
@@ -276,6 +279,7 @@ describe('generator engine — browser-safe / no Node globals', () => {
       platform: 'browser',
       format: 'esm',
       target: ['es2020'],
+      minify: true,
       logLevel: 'silent',
     });
     expect(result.errors).toHaveLength(0);
@@ -283,5 +287,32 @@ describe('generator engine — browser-safe / no Node globals', () => {
     expect(code.length).toBeGreaterThan(100);
     expect(code).not.toMatch(/require\(['"](?:fs|path|crypto|buffer)['"]\)/);
     expect(code).not.toMatch(/from\s+['"]node:/);
+
+    // Report size for humans (also used when updating the PR body)
+    const { gzipSync } = require('zlib') as typeof import('zlib');
+    const gzipped = gzipSync(Buffer.from(code, 'utf8'));
+    // eslint-disable-next-line no-console
+    console.log(
+      `[generator bundle] minified=${code.length}B gzipped=${gzipped.length}B`
+    );
+  });
+});
+
+describe('generator package — core isolation', () => {
+  it('core package.json has no generator export and no faker dependency', () => {
+    const corePkg = JSON.parse(
+      fs.readFileSync(
+        path.resolve(__dirname, '../packages/mockifyer-core/package.json'),
+        'utf8'
+      )
+    );
+    expect(corePkg.exports?.['./generator']).toBeUndefined();
+    expect(corePkg.dependencies?.['@faker-js/faker']).toBeUndefined();
+    expect(corePkg.devDependencies?.['@faker-js/faker']).toBeUndefined();
+    expect(
+      fs.existsSync(
+        path.resolve(__dirname, '../packages/mockifyer-core/src/generator')
+      )
+    ).toBe(false);
   });
 });

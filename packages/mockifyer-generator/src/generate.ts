@@ -1,3 +1,4 @@
+import { createSeededFaker } from './faker';
 import { inferFields, normalizeOverridePath } from './infer';
 import { createMulberry32 } from './prng';
 import {
@@ -6,8 +7,10 @@ import {
   type FieldKindOverrides,
   type GenerateOptions,
   type InferResult,
+  type Prng,
 } from './types';
 import { generateValueForKind } from './values';
+import type { Faker } from '@faker-js/faker';
 
 function descriptorMap(fields: FieldDescriptor[]): Map<string, FieldDescriptor> {
   const map = new Map<string, FieldDescriptor>();
@@ -23,7 +26,6 @@ function findDescriptor(
 ): FieldDescriptor | undefined {
   const direct = map.get(path);
   if (direct) return direct;
-  // Fallbacks for override-normalized paths
   for (const [p, d] of map) {
     if (
       normalizeOverridePath(p).replace(/\[\*\]/g, '') ===
@@ -38,7 +40,7 @@ function findDescriptor(
 /**
  * Plausible array length around the sample length (±50%, at least 0).
  */
-function varyArrayLength(sampleLen: number, rng: ReturnType<typeof createMulberry32>): number {
+function varyArrayLength(sampleLen: number, rng: Prng): number {
   if (sampleLen <= 0) {
     return rng.int(0, 2);
   }
@@ -63,12 +65,13 @@ function synthesizeValue(
   path: string,
   key: string,
   map: Map<string, FieldDescriptor>,
-  rng: ReturnType<typeof createMulberry32>
+  rng: Prng,
+  faker: Faker
 ): unknown {
   if (sample === null) {
     const d = findDescriptor(map, path);
     if (d && d.kind !== FieldKind.Null && d.kind !== FieldKind.Unknown) {
-      return generateValueForKind(d.kind, rng, d.samples, d.enumValues);
+      return generateValueForKind(d.kind, rng, faker, d.samples, d.enumValues);
     }
     return null;
   }
@@ -82,7 +85,9 @@ function synthesizeValue(
     const out: unknown[] = [];
     for (let i = 0; i < len; i++) {
       const itemTemplate = template[i % template.length];
-      out.push(synthesizeValue(itemTemplate, joinPath(path, i, true), key, map, rng));
+      out.push(
+        synthesizeValue(itemTemplate, joinPath(path, i, true), key, map, rng, faker)
+      );
     }
     return out;
   }
@@ -96,7 +101,8 @@ function synthesizeValue(
         joinPath(path, childKey),
         childKey,
         map,
-        rng
+        rng,
+        faker
       );
     }
     return out;
@@ -104,17 +110,17 @@ function synthesizeValue(
 
   const d = findDescriptor(map, path);
   if (d) {
-    return generateValueForKind(d.kind, rng, d.samples, d.enumValues);
+    return generateValueForKind(d.kind, rng, faker, d.samples, d.enumValues);
   }
 
-  // No descriptor — preserve type with a light mutation
   if (typeof sample === 'string') {
-    return generateValueForKind(FieldKind.FreeText, rng, [sample]);
+    return generateValueForKind(FieldKind.FreeText, rng, faker, [sample]);
   }
   if (typeof sample === 'number') {
     return generateValueForKind(
       Number.isInteger(sample) ? FieldKind.Integer : FieldKind.Number,
       rng,
+      faker,
       [sample]
     );
   }
@@ -142,9 +148,12 @@ export function infer(sample: unknown, overrides?: FieldKindOverrides): InferRes
  * Deterministic: identical `sample` + `seed` + options produce byte-identical
  * JSON across Node and browsers. Browser-safe (no `fs` / `path` / Node crypto).
  *
+ * Structure (array lengths, enum picks, shuffles) uses Mulberry32.
+ * Field values use a per-record `@faker-js/faker` instance seeded from the same seed.
+ *
  * @example
  * ```ts
- * import { generate, FieldKind } from '@sgedda/mockifyer-core/generator';
+ * import { generate, FieldKind } from '@sgedda/mockifyer-generator';
  *
  * const records = generate(
  *   { id: 1, email: 'a@b.com', status: 'shipped' },
@@ -174,25 +183,23 @@ export function generate(sample: unknown, options: GenerateOptions = {}): unknow
   const records: unknown[] = [];
 
   if (inferred.rootIsArray && Array.isArray(sample)) {
-    // Sample is already a list of records — each generated item is one record
-    // shaped like a typical element (merge templates by cycling).
     const templates = sample.length > 0 ? sample : [{}];
     for (let i = 0; i < count; i++) {
-      // Derive a per-record stream so adding more count does not reshuffle earlier rows
-      const recordSeed = `${hashPair(seed, i)}`;
+      const recordSeed = hashPair(seed, i);
       const rng = createMulberry32(recordSeed);
+      const faker = createSeededFaker(recordSeed);
       const template = templates[i % templates.length];
-      records.push(synthesizeValue(template, '$[*]', '', map, rng));
-      // Touch rootRng so unused-seed paths stay reserved for future options
+      records.push(synthesizeValue(template, '$[*]', '', map, rng, faker));
       void rootRng.next();
     }
     return records;
   }
 
   for (let i = 0; i < count; i++) {
-    const recordSeed = `${hashPair(seed, i)}`;
+    const recordSeed = hashPair(seed, i);
     const rng = createMulberry32(recordSeed);
-    records.push(synthesizeValue(sample, '$', '', map, rng));
+    const faker = createSeededFaker(recordSeed);
+    records.push(synthesizeValue(sample, '$', '', map, rng, faker));
     void rootRng.next();
   }
 

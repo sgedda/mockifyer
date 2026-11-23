@@ -1,8 +1,11 @@
 /**
  * Browser-safe mock data generator engine (SGE-70).
  *
- * Import from `@sgedda/mockifyer-core/generator` — no Node-only APIs
+ * Import from `@sgedda/mockifyer-generator` — no Node-only APIs
  * (fs, path, Node crypto, Node buffer) and no network.
+ *
+ * Values come from a seeded `@faker-js/faker` instance (single `en` locale).
+ * Structure (counts, picks, shuffles) uses Mulberry32.
  *
  * @packageDocumentation
  *
@@ -21,6 +24,7 @@ export type {
 } from './types';
 
 export { createMulberry32, hashSeed } from './prng';
+export { createSeededFaker } from './faker';
 export { inferFieldKind, inferFields, normalizeOverridePath } from './infer';
-export { generateValueForKind, generateUuid } from './values';
+export { generateValueForKind } from './values';
 export { generate, infer } from './generate';

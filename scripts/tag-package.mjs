@@ -99,6 +99,7 @@ function tagForPackage(pkgName, version) {
   if (pkgName === "@sgedda/mockifyer-core") return `core-v${version}`;
   if (pkgName === "@sgedda/mockifyer-axios") return `axios-v${version}`;
   if (pkgName === "@sgedda/mockifyer-fetch") return `fetch-v${version}`;
+  if (pkgName === "@sgedda/mockifyer-generator") return `generator-v${version}`;
   if (pkgName === "@sgedda/mockifyer-dashboard") return `dashboard-v${version}`;
   return `v${version}`;
 }
