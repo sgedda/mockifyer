@@ -8,6 +8,8 @@ export enum FieldKind {
   FirstName = 'firstName',
   LastName = 'lastName',
   FullName = 'fullName',
+  /** Product / SKU title (e.g. `items[*].name`), not a person name. */
+  ProductName = 'productName',
   Uuid = 'uuid',
   IntegerId = 'integerId',
   Money = 'money',

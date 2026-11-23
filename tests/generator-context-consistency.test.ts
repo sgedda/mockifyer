@@ -1,10 +1,14 @@
 import {
   applyRelatedFieldConsistency,
   createSeededFaker,
+  emailLocalPartFromName,
+  FieldKind,
   generate,
   generateAsync,
+  inferFieldKind,
   loadLocale,
   isLocaleLoaded,
+  isLineItemProductNamePath,
   parseContext,
   resolveLocaleCode,
   weightedPick,
@@ -323,5 +327,69 @@ describe('generator — determinism with context', () => {
       weightedPick(b, values, weights),
       weightedPick(b, values, weights),
     ]);
+  });
+});
+
+describe('generator — person/product consistency', () => {
+  beforeAll(async () => {
+    await loadLocale('sv');
+  });
+
+  it('emailLocalPartFromName strips accents and joins with dots', () => {
+    expect(emailLocalPartFromName('Pernilla Olofsson')).toBe('pernilla.olofsson');
+    expect(emailLocalPartFromName('José María')).toBe('jose.maria');
+  });
+
+  it('infers items[*].name as ProductName, root name as FullName', () => {
+    expect(isLineItemProductNamePath('$.items[*].name', 'name')).toBe(true);
+    expect(inferFieldKind('name', ['Widget'], '$.items[*].name').kind).toBe(
+      FieldKind.ProductName
+    );
+    expect(inferFieldKind('name', ['Ada Lovelace'], '$.name').kind).toBe(FieldKind.FullName);
+  });
+
+  it('swedish context defaults currency to SEK and aligns email with name', async () => {
+    const sample = {
+      id: 1,
+      name: 'Ada Lovelace',
+      email: 'ada@example.com',
+      status: 'active',
+      currency: 'USD',
+      total: 19.99,
+      items: [{ id: 10, name: 'Widget', qty: 2, price: 9.99 }],
+    };
+    const records = (await generateAsync(sample, {
+      seed: 7,
+      context: 'swedish users, 5 items',
+    })) as Array<{
+      name: string;
+      email: string;
+      currency: string;
+      items: Array<{ name: string }>;
+    }>;
+
+    expect(records).toHaveLength(5);
+    for (const record of records) {
+      expect(record.currency).toBe('SEK');
+      const local = emailLocalPartFromName(record.name);
+      expect(record.email).toBe(`${local}@${record.email.split('@')[1]}`);
+      expect(record.email.startsWith(`${local}@`)).toBe(true);
+      for (const item of record.items) {
+        // Product titles from faker.commerce — not "First Last" person shapes
+        expect(item.name).not.toMatch(/^(Dr\.|Prof\.|Mr\.|Mrs\.|Ms\.)\s/);
+        expect(item.name.split(/\s+/).length).toBeLessThanOrEqual(5);
+        // Must not equal the parent person name
+        expect(item.name).not.toBe(record.name);
+      }
+    }
+  });
+
+  it('applyRelatedFieldConsistency rewrites email from name', () => {
+    const record = {
+      name: 'Pernilla Olofsson',
+      email: 'random.other@corp.example',
+    };
+    applyRelatedFieldConsistency(record);
+    expect(record.email).toBe('pernilla.olofsson@corp.example');
   });
 });

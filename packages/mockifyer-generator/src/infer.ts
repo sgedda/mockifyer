@@ -79,11 +79,57 @@ function confidenceFromSignals(nameHit: boolean, valueHit: boolean, strongValue:
   return 0.4;
 }
 
+/** Line-item / catalog array segments where `name` means a product, not a person. */
+const LINE_ITEM_ARRAY_SEGMENTS = new Set([
+  'items',
+  'lineitems',
+  'lines',
+  'products',
+  'entries',
+  'details',
+  'orderitems',
+  'orderlineitems',
+  'skus',
+  'goods',
+]);
+
+/**
+ * True when `path` looks like `$.items[*].name` / `$.order.items[*].title`
+ * (product title under a line-item array), not a person `name`.
+ */
+export function isLineItemProductNamePath(path: string, key: string): boolean {
+  const nk = normalizeKey(key);
+  if (nk !== 'name' && nk !== 'title' && nk !== 'productname' && nk !== 'product') {
+    return false;
+  }
+  // Match …items[*].name / …products[*].title (optional nested parents)
+  const segments = path
+    .replace(/^\$\.?/, '')
+    .split('.')
+    .filter(Boolean)
+    .map((s) => s.replace(/\[\*\]$/, '').replace(/\[\d+\]$/, ''));
+  if (segments.length < 2) {
+    return false;
+  }
+  const parent = segments[segments.length - 2]!;
+  return LINE_ITEM_ARRAY_SEGMENTS.has(normalizeKey(parent));
+}
+
 /**
  * Infer a single field kind from its key name and observed values.
  * Exported for unit tests of tricky names.
+ *
+ * Pass `path` (e.g. `$.items[*].name`) so line-item titles are not treated as people.
  */
-export function inferFieldKind(key: string, samples: unknown[]): KindGuess {
+export function inferFieldKind(
+  key: string,
+  samples: unknown[],
+  path?: string
+): KindGuess {
+  if (path && isLineItemProductNamePath(path, key)) {
+    return { kind: FieldKind.ProductName, confidence: 0.9 };
+  }
+
   const nk = normalizeKey(key);
   const nonNull = samples.filter((v) => v !== null && v !== undefined);
   const strings = nonNull.filter((v): v is string => typeof v === 'string');
@@ -352,7 +398,7 @@ export function inferFields(
     }
 
     const key = entry.key || lastSegment(entry.path);
-    let guess = inferFieldKind(key, entry.samples);
+    let guess = inferFieldKind(key, entry.samples, entry.path);
 
     let resolvedOverride = overrideMap.get(entry.path);
     if (!resolvedOverride) {

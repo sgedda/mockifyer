@@ -151,19 +151,28 @@ describe('generator CLI — variants', () => {
     expect(scenarios.length).toBeGreaterThan(0);
     expect(scenarios.every((s) => s.startsWith('trip-'))).toBe(true);
 
-    for (const scenario of scenarios) {
-      const filePath = path.join(outDir, scenario, 'generated', 'empty-lists.json');
-      // realistic only enables emptyLists
-      if (scenario === 'trip-empty-lists') {
-        expect(fs.existsSync(filePath)).toBe(true);
-        const written = JSON.parse(fs.readFileSync(filePath, 'utf8')) as {
-          generated: boolean;
-          response: { data: { trips: unknown[] } };
-        };
-        expect(written.generated).toBe(true);
-        expect(written.response.data.trips).toEqual([]);
+    const emptyScenario = path.join(outDir, 'trip-empty-lists');
+    expect(fs.existsSync(emptyScenario)).toBe(true);
+    // Core-compatible layout: {host}/{path…}/GET_….json (not generated/*.json)
+    const jsonFiles: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (entry.name.endsWith('.json')) jsonFiles.push(full);
       }
-    }
+    };
+    walk(emptyScenario);
+    expect(jsonFiles.length).toBe(1);
+    const rel = path.relative(emptyScenario, jsonFiles[0]!).replace(/\\/g, '/');
+    expect(rel).toMatch(/^api\.example\.com\/trips\/GET_/);
+    expect(rel).not.toMatch(/^generated\//);
+    const written = JSON.parse(fs.readFileSync(jsonFiles[0]!, 'utf8')) as {
+      generated: boolean;
+      response: { data: { trips: unknown[] } };
+    };
+    expect(written.generated).toBe(true);
+    expect(written.response.data.trips).toEqual([]);
   });
 
   it('is deterministic with the same --seed', async () => {

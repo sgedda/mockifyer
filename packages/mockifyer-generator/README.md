@@ -110,7 +110,8 @@ import { writeVariantScenarios } from '@sgedda/mockifyer-generator/node';
 
 const named = variants(sample, { seed: 7, chaosLevel: 'nightmare' });
 writeVariantScenarios(named, { mockDataPath: './mock-data' });
-// → mock-data/generated-empty-lists/generated/empty-lists.json, …
+// → mock-data/generated-empty-lists/{hostname}/{path…}/GET_{date}_{hash}.json
+//    (same layout as core recordings — ready for MOCKIFYER_SCENARIO replay)
 ```
 
 The main entry stays browser-safe; only `@sgedda/mockifyer-generator/node` uses `fs`.

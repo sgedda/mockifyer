@@ -29,6 +29,19 @@ export interface ParsedContext {
 export const SUPPORTED_LOCALES = ['en', 'sv', 'de', 'fr', 'es'] as const;
 export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
 
+/**
+ * Default ISO 4217 currency when a locale is set but no currency was specified
+ * in context / options. `en` has no default (sample / faker currency stands).
+ */
+export const LOCALE_DEFAULT_CURRENCY: Readonly<
+  Partial<Record<SupportedLocale, string>>
+> = {
+  sv: 'SEK',
+  de: 'EUR',
+  fr: 'EUR',
+  es: 'EUR',
+};
+
 const LOCALE_ALIASES: Record<string, SupportedLocale> = {
   en: 'en',
   eng: 'en',

@@ -1,9 +1,11 @@
 import { applyRelatedFieldConsistency } from './consistency';
 import {
+  LOCALE_DEFAULT_CURRENCY,
   parseContext,
   resolveLocaleCode,
   type EnumMix,
   type ParsedContext,
+  type SupportedLocale,
 } from './context';
 import { createSeededFaker, loadLocale } from './faker';
 import { inferFields, normalizeOverridePath } from './infer';
@@ -152,7 +154,10 @@ export function resolveGenerateSettings(options: GenerateOptions): {
 } {
   const parsed = options.context ? parseContext(options.context) : {};
   const locale = resolveLocaleCode(options.locale ?? parsed.locale);
-  const currency = options.currency ?? parsed.currency;
+  const currency =
+    options.currency ??
+    parsed.currency ??
+    LOCALE_DEFAULT_CURRENCY[locale as SupportedLocale];
   const count = options.count ?? parsed.count ?? 1;
   return {
     count,

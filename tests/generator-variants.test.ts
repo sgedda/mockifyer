@@ -409,6 +409,10 @@ describe('generator variants — node write', () => {
       expect(written.length).toBe(named.length);
       for (const w of written) {
         expect(fs.existsSync(w.filePath)).toBe(true);
+        expect(w.relativeFile.replace(/\\/g, '/')).toMatch(
+          /^api\.example\.com\/orders\/1\/GET_/
+        );
+        expect(w.relativeFile).not.toMatch(/^generated\//);
         const parsed = JSON.parse(fs.readFileSync(w.filePath, 'utf8'));
         expect(parsed.generated).toBe(true);
         expect(parsed.scenario).toBe(w.scenario);

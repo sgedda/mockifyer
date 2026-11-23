@@ -31,7 +31,12 @@ export {
   isLocaleLoaded,
   __resetLoadedLocalesForTests,
 } from './faker';
-export { inferFieldKind, inferFields, normalizeOverridePath } from './infer';
+export {
+  inferFieldKind,
+  inferFields,
+  normalizeOverridePath,
+  isLineItemProductNamePath,
+} from './infer';
 export { generateValueForKind, weightedPick } from './values';
 export type { ValueHints } from './values';
 export { generate, generateAsync, infer, resolveGenerateSettings } from './generate';
@@ -40,9 +45,13 @@ export {
   resolveLocaleCode,
   tryResolveLocale,
   SUPPORTED_LOCALES,
+  LOCALE_DEFAULT_CURRENCY,
 } from './context';
 export type { EnumMix, ParsedContext, SupportedLocale } from './context';
-export { applyRelatedFieldConsistency } from './consistency';
+export {
+  applyRelatedFieldConsistency,
+  emailLocalPartFromName,
+} from './consistency';
 
 // --- SGE-72: edge-case variants, chaos, mock format, secret scrub ---
 export {
