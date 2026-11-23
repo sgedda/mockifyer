@@ -245,11 +245,21 @@ describe('generator engine — PRNG / faker helpers', () => {
 });
 
 describe('generator engine — browser-safe / no Node globals', () => {
-  it('source files do not import Node-only modules', () => {
-    const files = fs
-      .readdirSync(GENERATOR_SRC)
-      .filter((f) => f.endsWith('.ts'))
-      .map((f) => path.join(GENERATOR_SRC, f));
+  it('browser entry source files do not import Node-only modules', () => {
+    // `src/node/**` is the Node-only subpath export — excluded from this check.
+    const files: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          if (entry.name === 'node') continue;
+          walk(full);
+        } else if (entry.name.endsWith('.ts')) {
+          files.push(full);
+        }
+      }
+    };
+    walk(GENERATOR_SRC);
     expect(files.length).toBeGreaterThan(0);
 
     const forbiddenImport =

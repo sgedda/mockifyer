@@ -1,8 +1,8 @@
 # @sgedda/mockifyer-generator
 
-Browser-safe, seeded mock-data generator for Mockifyer ([SGE-70](https://linear.app/sgedda/issue/SGE-70/generator-engine-field-kind-inference-seeded-offline-generation) / [SGE-71](https://linear.app/sgedda/issue/SGE-71/generator-context-guided-datasets-and-related-field-consistency)).
+Browser-safe, seeded mock-data generator for Mockifyer ([SGE-70](https://linear.app/sgedda/issue/SGE-70) / [SGE-71](https://linear.app/sgedda/issue/SGE-71) / [SGE-72](https://linear.app/sgedda/issue/SGE-72)).
 
-Infers field kinds from a JSON sample, then generates N records with the same shape. Uses Mulberry32 for structure (array lengths, enum picks) and seeded `@faker-js/faker` locale entry points for values. Same sample + seed + context ⇒ identical JSON in Node and browsers. No Node-only APIs and no network.
+Infers field kinds from a JSON sample, then generates N records with the same shape. Uses Mulberry32 for structure (array lengths, enum picks) and seeded `@faker-js/faker` locale entry points for values. Same sample + seed + context ⇒ identical JSON in Node and browsers. No Node-only APIs and no network on the main entry.
 
 ## Install
 
@@ -18,6 +18,7 @@ import {
   generateAsync,
   loadLocale,
   parseContext,
+  variants,
   FieldKind,
 } from '@sgedda/mockifyer-generator';
 
@@ -42,8 +43,6 @@ generate(sample, { seed: 42, locale: 'sv' });
 const records = await generateAsync(sample, {
   seed: 42,
   context: 'Swedish users, prices in SEK, 5 orders, mix of paid/refunded/failed',
-  // explicit options override parsed context:
-  // locale: 'sv', currency: 'SEK', count: 5,
 });
 ```
 
@@ -58,8 +57,6 @@ const records = await generateAsync(sample, {
 
 Sync `generate` / `createSeededFaker` **throw** if a non-`en` locale is requested but not yet loaded (no silent fallback).
 
-Bundlers that support async `import()` can code-split `@faker-js/faker/locale/{sv,de,fr,es}` out of the main entry.
-
 ## Consistency (SGE-71)
 
 After generation, related fields are aligned within each record:
@@ -69,11 +66,54 @@ After generation, related fields are aligned within each record:
 - `created` / `createdAt` ≤ `updated` / `updatedAt` (and `start` ≤ `end`)
 - currency fields match the resolved currency option
 
-## Extension points
+## Edge-case variants (SGE-72)
 
-`GenerateOptions` still reserves (not yet applied):
+```ts
+import { variants, serializeMock, toScenarioMap } from '@sgedda/mockifyer-generator';
 
-- **SGE-72:** `chaosLevel`, `variants`, `markGenerated`, `scrubSecrets`
+const named = variants(recordedMockOrJson, {
+  seed: 42,
+  chaosLevel: 'wild', // realistic | mild | wild | nightmare — or 0..1
+  // kinds: ['emptyLists', 'http404'], // optional allowlist
+});
+
+// Each entry: { kind, name, mock } with mock.generated === true
+for (const v of named) {
+  console.log(v.name, v.mock.response.status, serializeMock(v.mock));
+}
+
+const scenarios = toScenarioMap(named); // { 'generated-empty-lists': mock, ... }
+```
+
+### Chaos level
+
+| Level | Approx. intensity | Typical kinds |
+|-------|-------------------|---------------|
+| `realistic` | 0.1 | empty lists |
+| `mild` (default) | 0.35 | + missing optional, nulls |
+| `wild` | 0.7 | + long strings, unicode, 400/404, slow |
+| `nightmare` | 1.0 | + 401/500, truncated stream (when sample has `response.stream`) |
+
+Same `seed` + `chaosLevel` ⇒ identical named set and mock bodies.
+
+Identifier fields (`id`, `*Id`, `*_id`, `uuid`, `slug`, and inferred Uuid/IntegerId kinds) stay unchanged at `realistic` / `mild` / `wild`. They are only scrambled at `nightmare`, or when `scrambleIds: true` is set (use `scrambleIds: false` to keep ids even at nightmare).
+
+### Secret scrub
+
+Variants scrub Authorization / api keys / tokens / cookies (Atlas rules) and guarantee sample emails and other collected PII literals never appear in output.
+
+### Node: write scenarios to disk
+
+```ts
+import { variants } from '@sgedda/mockifyer-generator';
+import { writeVariantScenarios } from '@sgedda/mockifyer-generator/node';
+
+const named = variants(sample, { seed: 7, chaosLevel: 'nightmare' });
+writeVariantScenarios(named, { mockDataPath: './mock-data' });
+// → mock-data/generated-empty-lists/generated/empty-lists.json, …
+```
+
+The main entry stays browser-safe; only `@sgedda/mockifyer-generator/node` uses `fs`.
 
 ## Publish
 
