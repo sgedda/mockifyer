@@ -113,6 +113,12 @@ export const PAGE_SEO: Record<string, PageSeoConfig> = {
       'Generate interactive traffic maps from recorded HTTP hops. See hosts, request chains, search payloads, and trace multi-service flows.',
     path: '/guides/mockifyer-atlas',
   },
+  '/guides/atlas-from-playwright': {
+    title: 'Generate Atlas from Playwright E2E',
+    description:
+      'Record traffic during Playwright tests with Mockifyer, build Atlas HTML in global teardown, and upload it as a CI artifact.',
+    path: '/guides/atlas-from-playwright',
+  },
   '/guides/streaming': {
     title: 'Mocking SSE and Streaming APIs with Mockifyer',
     description:
@@ -143,7 +149,34 @@ export const PAGE_SEO: Record<string, PageSeoConfig> = {
       'Compare Mockifyer with MSW, Polly.js, and Nock. Learn when record-replay fits better than in-code handlers for API testing.',
     path: '/comparisons',
   },
+  /**
+   * Static Atlas HTML (not an SPA route). Prerender skips /atlas/* and Express
+   * serves frontend/public/atlas/wanderweird/index.html. Listed for SEO/sitemap.
+   */
+  '/atlas/wanderweird': {
+    title: 'WanderWeird Atlas — Live Architecture Map',
+    description:
+      'Interactive Mockifyer Atlas generated from real WanderWeird E2E traffic: endpoints, request chains, and mocked vs live flows.',
+    path: '/atlas/wanderweird',
+  },
 }
+
+/**
+ * Trailing-slash URL for the static Atlas directory (relative asset fetches).
+ * Prefer this when linking from the marketing site.
+ */
+export const WANDERWEIRD_ATLAS_HREF = '/atlas/wanderweird/'
+
+/** How-to: generate Atlas HTML from a Playwright E2E run (CI artifact). */
+export const ATLAS_FROM_PLAYWRIGHT_HREF = '/guides/atlas-from-playwright'
+
+/** Provenance for the hosted WanderWeird showcase Atlas (from e2e teardown artifact). */
+export const WANDERWEIRD_ATLAS_SHOWCASE = {
+  totalRequests: 1205,
+  observedEndpoints: 21,
+  runDate: '2026-11-23',
+  scenario: 'WanderWeird E2E Run',
+} as const
 
 /**
  * Helper to format page title with site name suffix.

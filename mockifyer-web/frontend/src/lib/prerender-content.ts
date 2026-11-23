@@ -35,6 +35,7 @@ export const CONTENT_ROUTES_WITH_FULL_BODY = new Set([
   '/guides/react-native-without-msw',
   '/guides/browser-record-replay',
   '/guides/mockifyer-atlas',
+  '/guides/atlas-from-playwright',
   '/guides/streaming',
   '/comparisons',
   '/faq',
@@ -171,6 +172,20 @@ const GUIDE_BODIES: Record<string, Omit<PrerenderBodyContent, 'links'>> = {
         paragraphs: [
           'Atlas turns recorded hops into an interactive map of hosts and request chains. Search payloads, follow nested calls, and export HTML docs for architecture reviews.',
           'In Metro, press t to start live hop capture while you exercise the app. Combine with x-mockifyer-request-id to understand multi-service graphs end to end.',
+        ],
+      },
+    ],
+  },
+  '/guides/atlas-from-playwright': {
+    h1: 'Generate Atlas from Playwright E2E',
+    summary:
+      'Record traffic during Playwright tests with Mockifyer, build Atlas HTML in global teardown, and upload it as a CI artifact on every run.',
+    sections: [
+      {
+        heading: 'Playwright teardown builds the map',
+        paragraphs: [
+          'Wire globalTeardown in playwright.config.ts. After the suite, fetch dashboard network events, scrub secrets, and call buildAtlasDocHtmlFiles to write e2e/atlas-report/.',
+          'Upload e2e/atlas-report/ with actions/upload-artifact@v4 (name atlas-architecture) so every CI run keeps an interactive architecture artifact.',
         ],
       },
     ],

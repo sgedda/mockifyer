@@ -1,9 +1,14 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
-import { Github, ArrowRight, PlayCircle, Database, Code2, Sparkles, Construction, Target, Zap, GitBranch, Terminal, Play, Radio, LayoutDashboard, TrendingUp, CheckCircle2 } from 'lucide-react'
+import { Github, ArrowRight, PlayCircle, Database, Code2, Sparkles, Construction, Target, Zap, GitBranch, Terminal, Play, Radio, LayoutDashboard, TrendingUp, CheckCircle2, Map } from 'lucide-react'
 import CodeBlock from '@/components/CodeBlock'
 import RunItButton from '@/components/RunItButton'
+import {
+  ATLAS_FROM_PLAYWRIGHT_HREF,
+  WANDERWEIRD_ATLAS_HREF,
+  WANDERWEIRD_ATLAS_SHOWCASE,
+} from '@/lib/seo-config'
 
 interface MediaItem {
   src: string
@@ -212,6 +217,88 @@ export default function Introduction() {
               </Link>
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* Atlas showcase — real WanderWeird traffic map */}
+      <section
+        id="atlas-showcase"
+        className="mx-auto max-w-[1200px] px-5 py-16 border-b border-border"
+        aria-labelledby="atlas-showcase-heading"
+      >
+        <div className="grid lg:grid-cols-2 gap-10 lg:gap-12 items-center">
+          <div className="order-2 lg:order-1">
+            <div className="inline-flex items-center gap-2 text-sm font-medium text-primary mb-3">
+              <Map className="h-4 w-4" aria-hidden="true" />
+              Mockifyer Atlas
+            </div>
+            <h2 id="atlas-showcase-heading" className="text-3xl font-semibold tracking-tight mb-4">
+              See what Mockifyer sees
+            </h2>
+            <p className="text-muted-foreground leading-relaxed mb-3">
+              Generated automatically from {WANDERWEIRD_ATLAS_SHOWCASE.totalRequests} requests in our
+              Playwright E2E suite against the WanderWeird demo app. Mockifyer recorded the traffic
+              during the tests, then built this Atlas as a test artifact — endpoints, multi-hop flows,
+              and mocked vs live calls.
+            </p>
+            <p className="text-sm text-muted-foreground mb-6">
+              Secrets scrubbed. Light-mode interactive map. Run date {WANDERWEIRD_ATLAS_SHOWCASE.runDate}.
+            </p>
+
+            <ol
+              className="mb-6 grid gap-3 sm:grid-cols-3 text-left"
+              aria-label="How Atlas is produced from Playwright"
+            >
+              <li className="rounded-lg border border-border bg-muted/30 p-3">
+                <div className="text-xs font-semibold text-primary mb-1">1. Run Playwright</div>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Run your Playwright tests with Mockifyer recording on the app under test.
+                </p>
+              </li>
+              <li className="rounded-lg border border-border bg-muted/30 p-3">
+                <div className="text-xs font-semibold text-primary mb-1">2. Traffic is recorded</div>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Hops land in the dashboard network log while the suite exercises real flows.
+                </p>
+              </li>
+              <li className="rounded-lg border border-border bg-muted/30 p-3">
+                <div className="text-xs font-semibold text-primary mb-1">3. Atlas artifact (CI)</div>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Global teardown builds Atlas HTML; GitHub Actions uploads it every run.
+                </p>
+              </li>
+            </ol>
+
+            <div className="flex flex-wrap gap-3">
+              <a href={WANDERWEIRD_ATLAS_HREF} className="inline-flex">
+                <Button size="lg" className="h-11 px-6 font-medium group">
+                  Open full Atlas
+                  <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
+                </Button>
+              </a>
+              <Link to={ATLAS_FROM_PLAYWRIGHT_HREF} className="inline-flex">
+                <Button size="lg" variant="outline" className="h-11 px-6 font-medium">
+                  How to automate this
+                </Button>
+              </Link>
+            </div>
+          </div>
+
+          <a
+            href={WANDERWEIRD_ATLAS_HREF}
+            className="order-1 lg:order-2 block rounded-xl border border-border bg-card overflow-hidden shadow-sm hover:border-primary/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            aria-label="Open the interactive WanderWeird Atlas"
+          >
+            <img
+              src="/atlas/wanderweird/preview.jpg"
+              alt="WanderWeird Atlas overview: 21 observed endpoints, 1205 requests, and a system diagram of mocked vs live hosts"
+              width={1600}
+              height={617}
+              loading="lazy"
+              decoding="async"
+              className="w-full h-auto"
+            />
+          </a>
         </div>
       </section>
 

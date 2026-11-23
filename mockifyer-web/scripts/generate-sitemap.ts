@@ -28,11 +28,13 @@ const ROUTE_CONFIG: Record<string, RouteMeta> = {
   '/guides/mock-at-the-network-edge': { priority: '0.7', changefreq: 'monthly' },
   '/guides/mock-drift': { priority: '0.7', changefreq: 'monthly' },
   '/guides/mockifyer-atlas': { priority: '0.7', changefreq: 'monthly' },
+  '/guides/atlas-from-playwright': { priority: '0.7', changefreq: 'monthly' },
   '/guides/react-native-without-msw': { priority: '0.7', changefreq: 'monthly' },
   '/guides/reproduce-tester-bugs': { priority: '0.7', changefreq: 'monthly' },
   '/guides/stable-react-native-e2e': { priority: '0.7', changefreq: 'monthly' },
   '/guides/browser-record-replay': { priority: '0.7', changefreq: 'monthly' },
   '/guides/streaming': { priority: '0.7', changefreq: 'monthly' },
+  '/atlas/wanderweird': { priority: '0.7', changefreq: 'monthly' },
   '/contact': { priority: '0.5', changefreq: 'yearly' },
 };
 
@@ -52,6 +54,7 @@ function fileLastmod(publicDir: string, loc: string): string | null {
       ? [path.join(publicDir, 'index.html')]
       : [
           path.join(publicDir, `${loc.replace(/^\//, '')}.html`),
+          path.join(publicDir, loc.replace(/^\//, ''), 'index.html'),
           path.join(publicDir, loc.replace(/^\//, '')),
         ];
 

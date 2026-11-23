@@ -22,7 +22,7 @@ test.describe('Guide Pages', () => {
 
   test('should load Stop Mock Drift guide', async ({ page }) => {
     await page.goto('/guides/mock-drift');
-    await expect(page.getByRole('heading', { name: /Stop Mock Drift/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Catch API Drift Before Production/i })).toBeVisible();
     
     // Should have the demo button
     await expect(page.getByRole('button', { name: /Try Drift Detection Demo/i })).toBeVisible();
@@ -32,6 +32,12 @@ test.describe('Guide Pages', () => {
     await page.goto('/guides/react-native-without-msw');
     await expect(page.getByRole('heading', { name: /Handlers vs Recording/i })).toBeVisible();
     await expect(page.getByText(/MSW uses in-code handlers/i)).toBeVisible();
+  });
+
+  test('should load Atlas from Playwright guide', async ({ page }) => {
+    await page.goto('/guides/atlas-from-playwright');
+    await expect(page.getByRole('heading', { name: /Generate Atlas from Playwright E2E/i })).toBeVisible();
+    await expect(page.getByText(/globalTeardown/i).first()).toBeVisible();
   });
 
   test('should load Streaming guide', async ({ page }) => {
@@ -49,6 +55,7 @@ test.describe('Guide Pages', () => {
       '/guides/stable-react-native-e2e',
       '/guides/mock-drift',
       '/guides/react-native-without-msw',
+      '/guides/atlas-from-playwright',
       '/guides/streaming',
     ];
 

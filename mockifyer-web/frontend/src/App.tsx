@@ -30,6 +30,7 @@ const MockDrift = lazy(() => import('./pages/guides/MockDrift'))
 const ReactNativeWithoutMSW = lazy(() => import('./pages/guides/ReactNativeWithoutMSW'))
 const BrowserRecordReplay = lazy(() => import('./pages/guides/BrowserRecordReplay'))
 const MockifyerAtlas = lazy(() => import('./pages/guides/MockifyerAtlas'))
+const AtlasFromPlaywright = lazy(() => import('./pages/guides/AtlasFromPlaywright'))
 const Streaming = lazy(() => import('./pages/guides/Streaming'))
 const NotFound = lazy(() => import('./pages/NotFound'))
 
@@ -108,6 +109,7 @@ function App() {
               <Route path="/guides/react-native-without-msw" element={<ReactNativeWithoutMSW />} />
               <Route path="/guides/browser-record-replay" element={<BrowserRecordReplay />} />
               <Route path="/guides/mockifyer-atlas" element={<MockifyerAtlas />} />
+              <Route path="/guides/atlas-from-playwright" element={<AtlasFromPlaywright />} />
               <Route path="/guides/streaming" element={<Streaming />} />
               
               {/* Redirects for removed pages */}

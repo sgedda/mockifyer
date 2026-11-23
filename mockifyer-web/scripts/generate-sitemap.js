@@ -118,6 +118,11 @@ var PAGE_SEO = {
     description: "Generate interactive traffic maps from recorded HTTP hops. See hosts, request chains, search payloads, and trace multi-service flows.",
     path: "/guides/mockifyer-atlas"
   },
+  "/guides/atlas-from-playwright": {
+    title: "Generate Atlas from Playwright E2E",
+    description: "Record traffic during Playwright tests with Mockifyer, build Atlas HTML in global teardown, and upload it as a CI artifact.",
+    path: "/guides/atlas-from-playwright"
+  },
   "/guides/streaming": {
     title: "Mocking SSE and Streaming APIs with Mockifyer",
     description: "Record and replay SSE and chunked HTTP streams: tee on record, paced ReadableStream replay, drift caps, and dashboard chunk timelines.",
@@ -142,6 +147,11 @@ var PAGE_SEO = {
     title: "Mockifyer vs MSW, Polly.js, and Nock",
     description: "Compare Mockifyer with MSW, Polly.js, and Nock. Learn when record-replay fits better than in-code handlers for API testing.",
     path: "/comparisons"
+  },
+  "/atlas/wanderweird": {
+    title: "WanderWeird Atlas \u2014 Live Architecture Map",
+    description: "Interactive Mockifyer Atlas generated from real WanderWeird E2E traffic: endpoints, request chains, and mocked vs live flows.",
+    path: "/atlas/wanderweird"
   }
 };
 
@@ -161,11 +171,13 @@ var ROUTE_CONFIG = {
   "/guides/mock-at-the-network-edge": { priority: "0.7", changefreq: "monthly" },
   "/guides/mock-drift": { priority: "0.7", changefreq: "monthly" },
   "/guides/mockifyer-atlas": { priority: "0.7", changefreq: "monthly" },
+  "/guides/atlas-from-playwright": { priority: "0.7", changefreq: "monthly" },
   "/guides/react-native-without-msw": { priority: "0.7", changefreq: "monthly" },
   "/guides/reproduce-tester-bugs": { priority: "0.7", changefreq: "monthly" },
   "/guides/stable-react-native-e2e": { priority: "0.7", changefreq: "monthly" },
   "/guides/browser-record-replay": { priority: "0.7", changefreq: "monthly" },
   "/guides/streaming": { priority: "0.7", changefreq: "monthly" },
+  "/atlas/wanderweird": { priority: "0.7", changefreq: "monthly" },
   "/contact": { priority: "0.5", changefreq: "yearly" }
 };
 var STATIC_CONTENT_ROUTES = [
@@ -175,6 +187,7 @@ var STATIC_CONTENT_ROUTES = [
 function fileLastmod(publicDir, loc) {
   const candidates = loc === "/" ? [import_path.default.join(publicDir, "index.html")] : [
     import_path.default.join(publicDir, `${loc.replace(/^\//, "")}.html`),
+    import_path.default.join(publicDir, loc.replace(/^\//, ""), "index.html"),
     import_path.default.join(publicDir, loc.replace(/^\//, ""))
   ];
   for (const candidate of candidates) {
