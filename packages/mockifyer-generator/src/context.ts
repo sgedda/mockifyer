@@ -100,19 +100,29 @@ const KNOWN_CURRENCIES = new Set([
 ]);
 
 /**
- * Map a language name or locale tag to a supported faker locale code.
- * Unknown input falls back to `en`.
+ * Resolve a language name or locale tag to a supported faker locale code.
+ * Returns `null` when the input is empty or unrecognized (no silent `en` fallback).
  */
-export function resolveLocaleCode(input: string | undefined | null): SupportedLocale {
+export function tryResolveLocale(
+  input: string | undefined | null
+): SupportedLocale | null {
   if (input == null || String(input).trim() === '') {
-    return 'en';
+    return null;
   }
   const key = String(input).trim().toLowerCase().replace(/_/g, '-');
   if (LOCALE_ALIASES[key]) {
     return LOCALE_ALIASES[key];
   }
   const base = key.split('-')[0] ?? key;
-  return LOCALE_ALIASES[base] ?? 'en';
+  return LOCALE_ALIASES[base] ?? null;
+}
+
+/**
+ * Map a language name or locale tag to a supported faker locale code.
+ * Unknown input falls back to `en`.
+ */
+export function resolveLocaleCode(input: string | undefined | null): SupportedLocale {
+  return tryResolveLocale(input) ?? 'en';
 }
 
 function parseLocale(text: string): SupportedLocale | undefined {

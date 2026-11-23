@@ -4,6 +4,9 @@
   "description": "Browser-safe mock data generator — field-kind inference, seeded offline generation, and edge-case variants for Mockifyer",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bin": {
+    "mockifyer-generate": "./dist/cli/index.js"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -19,7 +22,7 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node -e \"require('fs').chmodSync('dist/cli/index.js', 0o755)\"",
     "watch": "tsc --watch"
   },
   "keywords": [

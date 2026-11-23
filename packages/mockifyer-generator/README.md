@@ -115,6 +115,60 @@ writeVariantScenarios(named, { mockDataPath: './mock-data' });
 
 The main entry stays browser-safe; only `@sgedda/mockifyer-generator/node` uses `fs`.
 
+## CLI (SGE-73)
+
+Standalone binary — **no Mockifyer dashboard required**. Core does not depend on this package.
+
+```bash
+# after install / publish
+npx -p @sgedda/mockifyer-generator mockifyer-generate --help
+
+# from this repo (after npm run build in packages/mockifyer-generator)
+node packages/mockifyer-generator/dist/cli/index.js --help
+```
+
+### `variants` — edge cases from a recorded mock
+
+```bash
+mockifyer-generate variants ./path/to/GET_….json \
+  --level wild \
+  --seed 42 \
+  --out ./mock-data \
+  --scenario-prefix trip
+
+# preview only (stdout summary + JSON, no writes)
+mockifyer-generate variants ./mock.json --dry-run --seed 42
+```
+
+| Flag | Meaning |
+|------|---------|
+| `--level` | `realistic` \| `mild` \| `wild` \| `nightmare` (or `0..1`) |
+| `--kinds` | Comma list of kinds (camelCase or slug), e.g. `emptyLists,http-404` |
+| `--seed` | Deterministic seed |
+| `--out` | mock-data root (default `./mock-data`) |
+| `--scenario-prefix` | Scenario name prefix (default `generated`) |
+| `--dry-run` | Print summary + JSON; write nothing |
+| `--scramble-ids` | Allow mutating id fields (default: only at nightmare) |
+
+Requires a Mockifyer mock document (`request` + `response`). Bare JSON is rejected with a clear error.
+
+### `sample` — generate records from sample / context
+
+```bash
+mockifyer-generate sample --context 'swedish users, 10 items' --seed 7
+mockifyer-generate sample ./user.json --count 5 --locale sv --out users.json
+```
+
+| Flag | Meaning |
+|------|---------|
+| `--context` | Free-text context (locale / count / currency / enum mix) |
+| `--count` | Record count (overrides context when set) |
+| `--locale` | `en` \| `sv` \| `de` \| `fr` \| `es` (unknown → error) |
+| `--seed` | Deterministic seed |
+| `--out` | Write JSON file instead of stdout |
+
+Exit codes: `0` success, `1` error (missing file, invalid mock/JSON, unknown locale/kind/level).
+
 ## Publish
 
 Tag with `generator-v<version>` (see `.github/workflows/npm-publish.yml`), e.g. `generator-v0.1.0`.

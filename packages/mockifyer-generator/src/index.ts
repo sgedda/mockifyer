@@ -38,6 +38,7 @@ export { generate, generateAsync, infer, resolveGenerateSettings } from './gener
 export {
   parseContext,
   resolveLocaleCode,
+  tryResolveLocale,
   SUPPORTED_LOCALES,
 } from './context';
 export type { EnumMix, ParsedContext, SupportedLocale } from './context';
