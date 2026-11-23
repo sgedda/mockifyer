@@ -8,84 +8,91 @@
   <title>WanderWeird Atlas — Playwright E2E artifact | Mockifyer</title>
   <link rel="canonical" href="https://mockifyer.dev/atlas/wanderweird" />
   <style>
-    :root { color-scheme: light; }
+    /* Match atlas.html: light-only Mockifyer design tokens + header padding 1.5rem */
+    :root {
+      color-scheme: light;
+      --border: 240 5.9% 90%;
+      --primary: 221.2 83.2% 53.3%;
+      --muted-foreground: 240 3.8% 46.1%;
+      --foreground: 240 10% 3.9%;
+    }
     * { box-sizing: border-box; }
     html, body {
       margin: 0;
       height: 100%;
-      background: #f8fafc;
-      color: #0f172a;
-      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      background: #ffffff;
+      color: hsl(var(--foreground));
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
     }
     .banner {
-      border-bottom: 1px solid #e2e8f0;
-      background: #ffffff;
-      padding: 0.85rem 1.25rem;
+      /* Same horizontal inset as atlas.html header/main (1.5rem) — full-width, not centered column */
+      padding: 0.55rem 1.5rem;
+      border-bottom: 1px solid hsl(var(--border));
+      background: hsl(210 40% 98%);
     }
     .banner-inner {
-      max-width: 1200px;
-      margin: 0 auto;
       display: flex;
       flex-wrap: wrap;
-      gap: 0.75rem 1.5rem;
-      align-items: flex-start;
-      justify-content: space-between;
-    }
-    .banner h1 {
-      margin: 0 0 0.35rem;
-      font-size: 1rem;
-      font-weight: 650;
-      line-height: 1.35;
-    }
-    .banner p {
-      margin: 0;
-      font-size: 0.875rem;
-      line-height: 1.5;
-      color: #475569;
-      max-width: 52rem;
-    }
-    .banner a {
-      color: #2563eb;
-      font-weight: 600;
-      text-decoration: none;
-    }
-    .banner a:hover { text-decoration: underline; }
-    .meta {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.4rem;
-      margin-top: 0.55rem;
-    }
-    .meta span {
-      font-size: 0.75rem;
-      line-height: 1.2;
-      padding: 0.28rem 0.55rem;
-      border: 1px solid #e2e8f0;
-      border-radius: 999px;
-      background: #f8fafc;
-      color: #334155;
-      white-space: nowrap;
-    }
-    .actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.5rem;
       align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem 1.25rem;
+      width: 100%;
+      max-width: 100%;
     }
-    .actions a.btn {
+    .banner-left {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.45rem 0.75rem;
+      min-width: 0;
+      flex: 1 1 auto;
+    }
+    .badge {
       display: inline-flex;
       align-items: center;
-      padding: 0.45rem 0.85rem;
-      border-radius: 0.5rem;
-      border: 1px solid #bfdbfe;
-      background: #eff6ff;
-      color: #1d4ed8;
-      font-size: 0.8125rem;
-      font-weight: 600;
+      font-size: 0.75rem;
+      font-weight: 650;
+      line-height: 1.2;
+      padding: 0.2rem 0.55rem;
+      border-radius: 999px;
+      border: 1px solid hsl(221.2 83.2% 53.3% / 0.25);
+      background: hsl(221.2 83.2% 53.3% / 0.08);
+      color: hsl(221.2 83.2% 40%);
+      white-space: nowrap;
     }
-    .actions a.btn:hover { background: #dbeafe; text-decoration: none; }
+    .stats {
+      font-size: 0.8125rem;
+      line-height: 1.35;
+      color: hsl(var(--muted-foreground));
+    }
+    .stats .sep { margin: 0 0.35rem; opacity: 0.55; }
+    .banner-right {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.75rem 1rem;
+      flex: 0 0 auto;
+    }
+    .banner a {
+      font-size: 0.8125rem;
+      line-height: 1.2;
+      text-decoration: none;
+    }
+    .banner a.primary {
+      color: hsl(var(--primary));
+      font-weight: 650;
+    }
+    .banner a.primary:hover { text-decoration: underline; }
+    .banner a.home {
+      color: hsl(var(--muted-foreground));
+      font-weight: 500;
+    }
+    .banner a.home:hover {
+      color: hsl(var(--foreground));
+      text-decoration: underline;
+    }
     .frame-wrap {
-      height: calc(100% - 7.5rem);
+      height: calc(100% - 2.75rem);
       min-height: 480px;
     }
     iframe {
@@ -96,31 +103,24 @@
       display: block;
     }
     @media (max-width: 720px) {
-      .banner { padding: 0.75rem 1rem; }
-      .frame-wrap { height: calc(100% - 11rem); }
+      .banner { padding: 0.55rem 1rem; }
+      .banner-inner { align-items: flex-start; }
+      .frame-wrap { height: calc(100% - 4.25rem); }
     }
   </style>
 </head>
 <body>
   <header class="banner" id="atlas-origin-banner">
     <div class="banner-inner">
-      <div>
-        <h1>Generated automatically from a Playwright E2E run</h1>
-        <p>
-          Mockifyer recorded HTTP traffic while the WanderWeird demo app ran under Playwright.
-          After the suite finished, <code>e2e/global-teardown.ts</code> built this Atlas as a test artifact
-          (1205 requests · 21 observed endpoints · run date 2026-11-23). Secrets scrubbed. Light mode only.
-        </p>
-        <div class="meta" aria-label="Atlas generation stats">
-          <span>1205 requests</span>
-          <span>21 observed endpoints</span>
-          <span>WanderWeird E2E</span>
-          <span>2026-11-23</span>
-        </div>
+      <div class="banner-left">
+        <span class="badge">Generated by a Playwright E2E run</span>
+        <span class="stats" aria-label="Atlas generation stats">
+          1205 requests<span class="sep">·</span>21 endpoints<span class="sep">·</span>2026-11-23
+        </span>
       </div>
-      <div class="actions">
-        <a class="btn" href="/guides/atlas-from-playwright">How to generate Atlas from Playwright →</a>
-        <a class="btn" href="/">Mockifyer home</a>
+      <div class="banner-right">
+        <a class="primary" href="/guides/atlas-from-playwright">How it's generated →</a>
+        <a class="home" href="/">← Mockifyer home</a>
       </div>
     </div>
   </header>

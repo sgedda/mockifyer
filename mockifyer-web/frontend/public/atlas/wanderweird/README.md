@@ -7,7 +7,7 @@ the WanderWeird demo (`observedRequests > 0`), not a code-only scan. Light mode 
 
 | File | Role |
 |------|------|
-| `index.html` | Provenance wrapper (banner + how-to link); iframes the interactive Atlas |
+| `index.html` | Slim full-width provenance bar (aligned to Atlas padding); iframes the interactive Atlas |
 | `atlas.html` | Interactive Atlas from e2e teardown (events embedded) |
 | `bodies-search.json` | Payload search corpus (fetched by `atlas.html`) |
 | `preview.jpg` | Cropped overview + diagram for the home page |
