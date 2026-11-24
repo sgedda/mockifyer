@@ -106,7 +106,8 @@ export const PLAYGROUND_PRESETS: readonly PlaygroundPreset[] = [
     id: 'jsonplaceholder',
     label: 'JSONPlaceholder',
     context: 'english users',
-    teaser: true,
+    // Full tool page only — start teaser keeps 3 chips (Users / Orders / Products).
+    teaser: false,
     realApi: {
       name: 'JSONPlaceholder',
       sourceUrl: 'https://jsonplaceholder.typicode.com/users/1',

@@ -74,7 +74,8 @@ test.describe('Mock Data Generator playground', () => {
     await expect(page.getByTestId('item-count-input')).toBeVisible();
     await page.getByTestId('item-count-increment').click();
     await expect(page.getByTestId('item-count-input')).toHaveValue('4');
-    await expect(page.getByTestId('size-controls-live')).toContainText(/4 item/i);
+    await expect(page.getByTestId('size-controls-live')).toContainText(/4 items per list/i);
+    await expect(page.getByTestId('size-controls-live')).not.toContainText('~');
   });
 
   test('paste and upload are prominent; no URL fetch UI', async ({ page }) => {
@@ -201,25 +202,36 @@ test.describe('Mock Data Generator mobile', () => {
 });
 
 test.describe('Start page mock-data teaser', () => {
-  test('shows live output with presets and links to the full generator', async ({ page }) => {
+  test('compact teaser after Atlas links to the full generator', async ({ page }) => {
     await page.goto('/');
     const teaser = page.getByTestId('start-page-mock-generator');
     await expect(teaser).toBeVisible({ timeout: 15_000 });
+
+    // Placed after Atlas (not under the hero)
+    const atlasBox = await page.locator('#atlas-showcase').boundingBox();
+    const teaserBox = await teaser.boundingBox();
+    expect(atlasBox).toBeTruthy();
+    expect(teaserBox).toBeTruthy();
+    expect(teaserBox!.y).toBeGreaterThan(atlasBox!.y);
+
     await expect(page.getByTestId('start-presets')).toBeVisible();
+    await expect(page.getByTestId('start-preset-users')).toBeVisible();
+    await expect(page.getByTestId('start-preset-orders')).toBeVisible();
+    await expect(page.getByTestId('start-preset-products')).toBeVisible();
+    await expect(page.getByTestId('start-preset-jsonplaceholder')).toHaveCount(0);
+    await expect(page.getByTestId('start-context')).toHaveCount(0);
+    await expect(page.getByTestId('start-shuffle')).toHaveCount(0);
+
     await expect(page.getByTestId('start-generated-output')).toBeVisible();
-    await expect(page.getByTestId('start-generated-output')).toContainText('"email"', {
+    await expect(page.getByTestId('start-generated-preview')).toContainText('"email"', {
       timeout: 30_000,
     });
-    // Readable preview: first users, not the wrapper records array
-    const preview = page.getByTestId('start-generated-preview');
-    await expect(preview).toBeVisible();
-    const previewText = await preview.innerText();
+    const previewText = await page.getByTestId('start-generated-preview').innerText();
     expect(previewText.trimStart().startsWith('{')).toBe(true);
     expect(previewText).toContain('"users"');
-    expect(previewText).not.toMatch(/"users"\s*:\s*\[\s*\]/);
+    expect(previewText.split('\n').length).toBeLessThanOrEqual(8);
 
     await page.getByTestId('start-preset-orders').click();
-    await expect(page.getByTestId('start-context')).toHaveValue(/prices in USD/i);
     await expect(page.getByTestId('start-generated-output')).toContainText('"total"', {
       timeout: 30_000,
     });
@@ -230,5 +242,15 @@ test.describe('Start page mock-data teaser', () => {
     await page.getByTestId('start-open-full-generator').click();
     await expect(page).toHaveURL(/\/tools\/mock-data-generator#mdg1\./);
     await expect(page.getByTestId('context-input')).toHaveValue(/prices in USD/i);
+  });
+
+  test('Tools nav links to the mock data generator', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/');
+    await page.getByTestId('nav-tools-trigger').click();
+    const link = page.getByTestId('nav-mock-data-generator');
+    await expect(link).toBeVisible();
+    await link.click();
+    await expect(page).toHaveURL(/\/tools\/mock-data-generator/);
   });
 });

@@ -233,20 +233,6 @@ export default function Introduction() {
         </div>
       </section>
 
-      {/* Compact mock-data teaser — lazy chunk; engine loads after idle/visible */}
-      <Suspense
-        fallback={
-          <section className="bg-white border-b border-zinc-200 px-5 py-14" aria-busy="true">
-            <div className="mx-auto max-w-[1200px] flex items-center gap-2 text-sm text-zinc-500">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Loading mock data preview…
-            </div>
-          </section>
-        }
-      >
-        <StartPageMockGenerator />
-      </Suspense>
-
       {/* Atlas showcase — real WanderWeird traffic map */}
       <section
         id="atlas-showcase"
@@ -328,6 +314,20 @@ export default function Introduction() {
           </a>
         </div>
       </section>
+
+      {/* Compact mock-data teaser — after Features (hero) + Atlas; lazy engine */}
+      <Suspense
+        fallback={
+          <section className="bg-white border-b border-zinc-200 px-5 py-10" aria-busy="true">
+            <div className="mx-auto max-w-[1200px] flex items-center gap-2 text-sm text-zinc-500">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading mock data preview…
+            </div>
+          </section>
+        }
+      >
+        <StartPageMockGenerator />
+      </Suspense>
 
       {/* See It In Action Showcase */}
       <section className="mx-auto max-w-[1200px] px-5 py-16 border-b border-border">

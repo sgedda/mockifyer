@@ -526,7 +526,7 @@ export default function MockDataGenerator() {
           </div>
           <p className="text-sm font-medium" data-testid="size-controls-live">
             Live result: {count} record{count === 1 ? '' : 's'}
-            {records ? ` → got ${records.length}` : ''} · ~{itemCount} item
+            {records ? ` → got ${records.length}` : ''} · {itemCount} item
             {itemCount === 1 ? '' : 's'} per list
           </p>
         </section>

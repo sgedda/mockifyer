@@ -181,13 +181,10 @@ describe('playground sample presets', () => {
     }
   );
 
-  it('keeps teaser presets to at most four', () => {
+  it('keeps start-page teaser presets to three chips', () => {
     const teaser = PLAYGROUND_PRESETS.filter((p) => p.teaser);
-    expect(teaser.length).toBeGreaterThanOrEqual(3);
-    expect(teaser.length).toBeLessThanOrEqual(4);
-    expect(teaser.map((p) => p.id)).toEqual(
-      expect.arrayContaining(['users', 'orders', 'products', 'jsonplaceholder'])
-    );
+    expect(teaser.length).toBe(3);
+    expect(teaser.map((p) => p.id)).toEqual(['users', 'orders', 'products']);
   });
 
   it('products preset preserves catalog shape and money/sku kinds', async () => {
