@@ -1,0 +1,52 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "https://api.open-meteo.com/v1/forecast",
+    "headers": {
+      "x-mockifyer-request-id": "8f2c919a-3902-4332-a022-cea768ec4bcf"
+    },
+    "queryParams": {
+      "latitude": "52.52",
+      "longitude": "13.41",
+      "current": "temperature_2m"
+    }
+  },
+  "response": {
+    "status": 200,
+    "data": {
+      "latitude": 52.512604,
+      "longitude": 13.419517,
+      "generationtime_ms": 0.041961669921875,
+      "utc_offset_seconds": 0,
+      "timezone": "GMT",
+      "timezone_abbreviation": "GMT",
+      "elevation": 38,
+      "current_units": {
+        "time": "iso8601",
+        "interval": "seconds",
+        "temperature_2m": "°C"
+      },
+      "current": {
+        "time": "2026-11-24T13:00",
+        "interval": 900,
+        "temperature_2m": 2.8
+      }
+    },
+    "headers": {
+      "connection": "keep-alive",
+      "content-encoding": "deflate",
+      "content-type": "application/json; charset=utf-8",
+      "date": "Tue, 24 Nov 2026 13:14:26 GMT",
+      "transfer-encoding": "chunked",
+      "x-ratelimit-cost": "1.0",
+      "x-ratelimit-limit": "600.0",
+      "x-ratelimit-remaining": "599.0",
+      "x-ratelimit-reset": "1795526071",
+      "x-ratelimit-window": "60"
+    }
+  },
+  "timestamp": "2026-11-24T13:14:26.440Z",
+  "duration": 75,
+  "sessionId": "session-1795526066360-jq4lizgq8",
+  "requestId": "8f2c919a-3902-4332-a022-cea768ec4bcf"
+}
