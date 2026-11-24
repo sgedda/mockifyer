@@ -48,12 +48,14 @@ export {
   DEFAULT_ENTITY_SAMPLES,
   SUPPORTED_LOCALES,
   LOCALE_DEFAULT_CURRENCY,
+  LOCALE_DEFAULT_COUNTRY,
 } from './context';
 export type {
   EnumMix,
   ParsedContext,
   SupportedLocale,
   ContextEntity,
+  PhoneFormat,
 } from './context';
 export {
   applyRelatedFieldConsistency,

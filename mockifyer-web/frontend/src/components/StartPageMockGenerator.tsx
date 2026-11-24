@@ -41,6 +41,30 @@ function buildFullGeneratorHref(opts: {
   return `/tools/mock-data-generator${encoded.hash}`
 }
 
+/**
+ * Readable teaser preview: prefer the first nested entity list (e.g. `users`)
+ * sliced to a few items, instead of dumping the wrapper `[{ users: [...] }, …]`.
+ */
+function previewGeneratedRecords(records: unknown[]): unknown {
+  if (records.length === 0) {
+    return records
+  }
+  const first = records[0]
+  if (first !== null && typeof first === 'object' && !Array.isArray(first)) {
+    const entries = Object.entries(first as Record<string, unknown>)
+    const listEntry = entries.find(
+      ([, value]) => Array.isArray(value) && (value as unknown[]).length > 0
+    )
+    if (listEntry) {
+      const [key, value] = listEntry
+      return { [key]: (value as unknown[]).slice(0, 2) }
+    }
+    // Single object record (weather/orders) — show first record only
+    return first
+  }
+  return records.slice(0, 2)
+}
+
 function scheduleIdle(callback: () => void): () => void {
   const w = window as Window & {
     requestIdleCallback?: (cb: IdleRequestCallback, opts?: IdleRequestOptions) => number
@@ -262,9 +286,22 @@ export default function StartPageMockGenerator() {
               </p>
             ) : null}
             {records ? (
-              <pre className="max-h-[320px] overflow-auto p-4 text-xs font-mono text-zinc-800">
-                {JSON.stringify(records, null, 2)}
-              </pre>
+              <div className="max-h-[320px] overflow-auto">
+                <pre
+                  className="p-4 text-xs font-mono text-zinc-800"
+                  data-testid="start-generated-preview"
+                >
+                  {JSON.stringify(previewGeneratedRecords(records), null, 2)}
+                </pre>
+                <details className="border-t border-zinc-200 px-4 py-2 text-xs text-zinc-600">
+                  <summary className="cursor-pointer select-none font-medium">
+                    Full JSON ({records.length} record{records.length === 1 ? '' : 's'})
+                  </summary>
+                  <pre className="mt-2 pb-3 font-mono text-zinc-700 whitespace-pre-wrap break-all">
+                    {JSON.stringify(records, null, 2)}
+                  </pre>
+                </details>
+              </div>
             ) : null}
             {busy && records ? (
               <div className="absolute top-2 right-2 rounded-md bg-white/90 border border-zinc-200 px-2 py-1 text-xs text-zinc-600 flex items-center gap-1.5">

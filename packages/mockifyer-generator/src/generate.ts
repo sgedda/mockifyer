@@ -47,14 +47,17 @@ function findDescriptor(
 }
 
 /**
- * Plausible array length around the sample length (±50%, at least 0).
+ * Plausible array length around the sample length (±50%).
+ * Never returns 0 when the sample had items — empty arrays are reserved for
+ * edge-case variants (`emptyLists`), not normal generation.
  */
 function varyArrayLength(sampleLen: number, rng: Prng): number {
   if (sampleLen <= 0) {
-    return rng.int(0, 2);
+    // Empty sample template: still emit at least one element in normal generate.
+    return rng.int(1, 2);
   }
   const delta = Math.max(1, Math.ceil(sampleLen * 0.5));
-  const min = Math.max(0, sampleLen - delta);
+  const min = Math.max(1, sampleLen - delta);
   const max = sampleLen + delta;
   return rng.int(min, max);
 }
@@ -177,6 +180,7 @@ export function resolveGenerateSettings(options: GenerateOptions): {
   locale: string;
   currency?: string;
   enumMix?: EnumMix;
+  phoneFormat?: ParsedContext['phoneFormat'];
   overrides?: FieldKindOverrides;
   parsed: ParsedContext;
 } {
@@ -195,6 +199,7 @@ export function resolveGenerateSettings(options: GenerateOptions): {
     locale,
     currency,
     enumMix: parsed.enumMix,
+    phoneFormat: parsed.phoneFormat,
     overrides: options.overrides,
     parsed,
   };
@@ -271,7 +276,16 @@ function ensureLineItemTemplate(sample: unknown, itemCount?: number): unknown {
 
 export function generate(sample: unknown, options: GenerateOptions = {}): unknown[] {
   const settings = resolveGenerateSettings(options);
-  const { count, itemCount, seed, locale, currency, enumMix, overrides } = settings;
+  const {
+    count,
+    itemCount,
+    seed,
+    locale,
+    currency,
+    enumMix,
+    phoneFormat,
+    overrides,
+  } = settings;
 
   if (!Number.isInteger(count) || count < 0) {
     throw new Error(`generate(): count must be a non-negative integer, got ${count}`);
@@ -293,7 +307,7 @@ export function generate(sample: unknown, options: GenerateOptions = {}): unknow
   const inferred = inferFields(shapedSample, overrides);
   const map = descriptorMap(inferred.fields);
   const rootRng = createMulberry32(seed);
-  const hints: ValueHints = { currency, enumMix };
+  const hints: ValueHints = { currency, enumMix, locale, phoneFormat };
   const synthBase: Pick<SynthEnv, 'map' | 'hints' | 'itemCount'> = {
     map,
     hints,

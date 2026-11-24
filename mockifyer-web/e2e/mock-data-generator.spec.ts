@@ -27,6 +27,8 @@ test.describe('Mock Data Generator playground', () => {
     await expect(page.getByTestId('generated-output')).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId('generated-output')).toContainText('"email"');
     await expect(page.getByTestId('context-input')).toHaveValue(/swedish users/i);
+    // Initial auto-generate must not toast (toast only on user action)
+    await expect(page.getByText(/\d+ record\(s\), \d+ edge-case/i)).toHaveCount(0);
     const box = await page.getByTestId('generated-output').boundingBox();
     expect(box).toBeTruthy();
     // Above the fold on a typical laptop viewport (Playwright default ~720–900 tall)
@@ -138,6 +140,13 @@ test.describe('Start page mock-data teaser', () => {
     await expect(page.getByTestId('start-generated-output')).toContainText('"email"', {
       timeout: 30_000,
     });
+    // Readable preview: first users, not the wrapper records array
+    const preview = page.getByTestId('start-generated-preview');
+    await expect(preview).toBeVisible();
+    const previewText = await preview.innerText();
+    expect(previewText.trimStart().startsWith('{')).toBe(true);
+    expect(previewText).toContain('"users"');
+    expect(previewText).not.toMatch(/"users"\s*:\s*\[\s*\]/);
 
     await page.getByTestId('start-preset-orders').click();
     await expect(page.getByTestId('start-context')).toHaveValue(/prices in USD/i);

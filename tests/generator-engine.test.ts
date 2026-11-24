@@ -193,10 +193,28 @@ describe('generator engine — shape preservation', () => {
         ids: number[];
       }>;
       lengths.add(record.ids.length);
-      expect(record.ids.length).toBeGreaterThanOrEqual(0);
+      expect(record.ids.length).toBeGreaterThanOrEqual(1);
       expect(record.ids.length).toBeLessThanOrEqual(6);
     }
     expect(lengths.size).toBeGreaterThan(1);
+  });
+
+  it('never emits empty nested arrays in normal generate (emptyLists is variants-only)', () => {
+    const sample = {
+      users: [
+        {
+          id: '7c9e6679-7425-40de-944b-e07fc1f90ae7',
+          email: 'ada@example.com',
+          country: 'SE',
+        },
+      ],
+    };
+    for (let seed = 0; seed < 80; seed++) {
+      const [record] = generate(sample, { count: 1, seed }) as Array<{
+        users: unknown[];
+      }>;
+      expect(record.users.length).toBeGreaterThanOrEqual(1);
+    }
   });
 });
 

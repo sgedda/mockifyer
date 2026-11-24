@@ -1,5 +1,6 @@
 import type { Faker } from '@faker-js/faker';
-import type { EnumMix } from './context';
+import type { EnumMix, PhoneFormat } from './context';
+import { LOCALE_DEFAULT_COUNTRY, type SupportedLocale } from './context';
 import type { Prng } from './types';
 import { FieldKind } from './types';
 
@@ -37,8 +38,63 @@ export function weightedPick(
 export interface ValueHints {
   currency?: string;
   enumMix?: EnumMix;
+  /** Resolved faker locale (`en` | `sv` | …). */
+  locale?: string;
+  /** Prefer E.164 (`international`) when set from context. */
+  phoneFormat?: PhoneFormat;
   /** Field key (last path segment) — used for status-like enum targeting. */
   fieldKey?: string;
+}
+
+const LOCALE_DIAL_CODE: Readonly<Partial<Record<SupportedLocale, string>>> = {
+  sv: '46',
+  de: '49',
+  fr: '33',
+  es: '34',
+  en: '1',
+};
+
+/**
+ * Phone value: with `phoneFormat: 'international'` emit consistent E.164
+ * (`+` + locale dial + national digits). Otherwise faker's default style.
+ */
+function phoneForHints(faker: Faker, hints?: ValueHints): string {
+  if (hints?.phoneFormat !== 'international') {
+    return faker.phone.number();
+  }
+  const dial =
+    LOCALE_DIAL_CODE[(hints?.locale as SupportedLocale) ?? 'en'] ?? '1';
+  let nationalDigits = '';
+  try {
+    const raw = faker.phone.number({ style: 'international' });
+    if (typeof raw === 'string') {
+      let digits = raw.replace(/\D/g, '');
+      if (digits.startsWith(dial)) {
+        digits = digits.slice(dial.length);
+      }
+      nationalDigits = digits.replace(/^0+/, '');
+    }
+  } catch {
+    // Older faker may not support `style`
+  }
+  if (!nationalDigits) {
+    nationalDigits = String(faker.phone.number())
+      .replace(/\D/g, '')
+      .replace(/^0+/, '');
+  }
+  const body = (nationalDigits || '700000000').slice(0, 12);
+  return `+${dial}${body}`.slice(0, 16);
+}
+
+function countryForHints(faker: Faker, hints?: ValueHints): string {
+  const pinned =
+    hints?.locale != null
+      ? LOCALE_DEFAULT_COUNTRY[hints.locale as SupportedLocale]
+      : undefined;
+  if (pinned) {
+    return pinned;
+  }
+  return faker.location.countryCode();
 }
 
 const STATUS_LIKE_KEY =
@@ -174,7 +230,7 @@ export function generateValueForKind(
     case FieldKind.Url:
       return faker.internet.url();
     case FieldKind.Phone:
-      return faker.phone.number();
+      return phoneForHints(faker, hints);
     case FieldKind.Street:
       return faker.location.streetAddress();
     case FieldKind.City:
@@ -182,9 +238,14 @@ export function generateValueForKind(
     case FieldKind.Zip:
       return faker.location.zipCode();
     case FieldKind.Country:
+      // Locale context pins ISO country (e.g. swedish → SE) over sample enums /
+      // random faker country codes (GU, PW, …).
+      if (hints?.locale && LOCALE_DEFAULT_COUNTRY[hints.locale as SupportedLocale]) {
+        return countryForHints(faker, hints);
+      }
       return enumValues && enumValues.length > 0
         ? rng.pick(enumValues)
-        : faker.location.countryCode();
+        : countryForHints(faker, hints);
     case FieldKind.Boolean:
       return rng.next() < 0.5;
     case FieldKind.FreeText: {

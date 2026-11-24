@@ -17,6 +17,9 @@ export type ContextEntity = 'user' | 'order' | 'product';
  * Settings extracted from a free-text context string.
  * Explicit {@link GenerateOptions} fields override these when both are set.
  */
+/** Phone number formatting hint from free-text context. */
+export type PhoneFormat = 'international' | 'national';
+
 export interface ParsedContext {
   /** Faker locale code: `en` | `sv` | `de` | `fr` | `es`. */
   locale?: string;
@@ -36,6 +39,11 @@ export interface ParsedContext {
   entity?: ContextEntity;
   /** Enum values (and optional weights) for status-like fields. */
   enumMix?: EnumMix;
+  /**
+   * Phone format from context (`EU phone numbers`, `E.164` → international).
+   * International is E.164-style (`+46…`).
+   */
+  phoneFormat?: PhoneFormat;
 }
 
 /** Supported faker locale codes (keep small for browser bundles). */
@@ -53,6 +61,21 @@ export const LOCALE_DEFAULT_CURRENCY: Readonly<
   de: 'EUR',
   fr: 'EUR',
   es: 'EUR',
+};
+
+/**
+ * Default ISO 3166-1 alpha-2 country when a locale is set.
+ * Faker's `countryCode()` is world-wide even for `sv` — pin locale → country
+ * so "swedish users" yields `SE`, not `GU` / `PW`.
+ */
+export const LOCALE_DEFAULT_COUNTRY: Readonly<
+  Partial<Record<SupportedLocale, string>>
+> = {
+  sv: 'SE',
+  de: 'DE',
+  fr: 'FR',
+  es: 'ES',
+  en: 'US',
 };
 
 const LOCALE_ALIASES: Record<string, SupportedLocale> = {
@@ -324,6 +347,24 @@ function parseEntity(text: string): ContextEntity | undefined {
   return undefined;
 }
 
+/**
+ * Detect E.164 / international phone preference from context
+ * (`EU phone numbers`, `E.164`, `international phones`).
+ */
+function parsePhoneFormat(text: string): PhoneFormat | undefined {
+  if (
+    /\b(?:e\.?\s*164|international\s+phones?|eu\s+phones?(?:\s+numbers?)?)\b/i.test(
+      text
+    )
+  ) {
+    return 'international';
+  }
+  if (/\b(?:national\s+phones?|local\s+phones?)\b/i.test(text)) {
+    return 'national';
+  }
+  return undefined;
+}
+
 function parseEnumMix(text: string): EnumMix | undefined {
   const weightMatches = [...text.matchAll(/(\d+)\s*%\s*([A-Za-z][A-Za-z0-9_-]*)/g)];
   if (weightMatches.length >= 2) {
@@ -438,6 +479,11 @@ export function parseContext(text: string): ParsedContext {
   const enumMix = parseEnumMix(trimmed);
   if (enumMix) {
     out.enumMix = enumMix;
+  }
+
+  const phoneFormat = parsePhoneFormat(trimmed);
+  if (phoneFormat) {
+    out.phoneFormat = phoneFormat;
   }
 
   return out;
