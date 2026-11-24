@@ -8,19 +8,19 @@ The default `mcp.json` is pre-configured to work with the Mockifyer MCP server.
 
 ### Prerequisites
 
-1. **Build the MCP server** (first time only):
+1. **Start the Mockifyer dashboard**:
+   ```bash
+   npx @sgedda/mockifyer-dashboard --path ./mock-data
+   ```
+   
+   The dashboard must be running on `http://localhost:3002` (default).
+
+2. **Prefer published MCP** (once on npm): configure Cursor with `npx @sgedda/mockifyer-mcp` (see below). For local monorepo work, build once:
    ```bash
    cd packages/mockifyer-mcp
    npm install
    npm run build
    ```
-
-2. **Start the Mockifyer dashboard**:
-   ```bash
-   npx mockifyer-dashboard --path ./mock-data
-   ```
-   
-   The dashboard must be running on `http://localhost:3002` (default).
 
 3. **Restart Cursor** or reload MCP servers to activate the configuration.
 

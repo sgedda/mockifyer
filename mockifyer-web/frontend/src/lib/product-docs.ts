@@ -40,16 +40,17 @@ export const PUBLISHED_PACKAGES: PublishedPackage[] = [
     install: 'npx @sgedda/mockifyer-dashboard --path ./mock-data',
     npmUrl: 'https://www.npmjs.com/package/@sgedda/mockifyer-dashboard',
   },
-]
-
-// Not on npm — build from source
-export const REPO_ONLY_PACKAGES = [
   {
     name: '@sgedda/mockifyer-mcp',
     version: '0.1.5',
     role: '42 MCP tools for Cursor/Claude (search, AI context, field overrides, explain_value)',
-    buildPath: 'packages/mockifyer-mcp',
+    install: 'npx @sgedda/mockifyer-mcp',
+    npmUrl: 'https://www.npmjs.com/package/@sgedda/mockifyer-mcp',
   },
+]
+
+// Not on npm — build from source
+export const REPO_ONLY_PACKAGES = [
   {
     name: '@sgedda/mockifyer-test-helper',
     version: '1.8.9',

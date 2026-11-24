@@ -52,7 +52,15 @@
     "testing",
     "http",
     "intercept",
-    "fetch"
+    "fetch",
+    "api-mocking",
+    "record-replay",
+    "vcr",
+    "msw-alternative",
+    "http-recording",
+    "react-native",
+    "expo",
+    "nodejs"
   ],
   "author": {
     "name": "Sebastian Gedda",

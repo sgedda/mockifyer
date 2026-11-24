@@ -32,7 +32,7 @@ export const HOME_FAQ: FaqItem[] = [
   {
     question: 'What are the dashboard and MCP packages for?',
     answer:
-      '@sgedda/mockifyer-dashboard is a local UI/CLI to browse and edit mocks, switch scenarios, and run a Redis proxy with client lanes. The MCP server (in packages/mockifyer-mcp, not on npm) exposes 42 tools including search, AI context, field overrides, and explain_value to Cursor or Claude Desktop while the dashboard is running. Build from source.',
+      '@sgedda/mockifyer-dashboard is a local UI/CLI to browse and edit mocks, switch scenarios, and run a Redis proxy with client lanes. The MCP server (@sgedda/mockifyer-mcp) exposes 42 tools including search, AI context, field overrides, and explain_value to Cursor or Claude Desktop while the dashboard is running. Run with npx @sgedda/mockifyer-mcp (goes live once published).',
   },
   {
     question: 'Where is the official documentation?',

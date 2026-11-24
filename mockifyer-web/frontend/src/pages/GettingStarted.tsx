@@ -35,6 +35,29 @@ export default function GettingStarted() {
         </div>
       </header>
 
+      <Card className="border-border">
+        <CardHeader>
+          <CardTitle className="text-xl flex items-center gap-2">
+            <BookOpen className="h-5 w-5" />
+            Add Mockifyer to this repo
+          </CardTitle>
+          <CardDescription>
+            Drop AI-oriented docs into your app repo (editor-agnostic). Copy-paste:
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <CodeBlock code="npx mockifyer-init-ai" language="bash" />
+          <p className="text-xs text-muted-foreground mt-2">
+            Installs <code className="bg-muted px-1 rounded">docs/mockifyer-ai/</code> from{' '}
+            <code className="bg-muted px-1 rounded">@sgedda/mockifyer-core</code>. Online reference:{' '}
+            <a href="https://mockifyer.dev/llms.txt" className="text-primary hover:underline">
+              llms.txt
+            </a>
+            .
+          </p>
+        </CardContent>
+      </Card>
+
       {/* Quick Start — selective recording first */}
       <Card className="border-primary/20 bg-primary/5">
         <CardHeader>
@@ -514,12 +537,14 @@ await axios.get('/orders', {
         <CardContent className="space-y-4">
           <CodeBlock
             language="bash"
-            code={`npx @sgedda/mockifyer-dashboard --path ./mock-data`}
+            code={`npx @sgedda/mockifyer-dashboard --path ./mock-data
+npx @sgedda/mockifyer-mcp`}
           />
           <p className="text-sm text-muted-foreground">
             With Redis (<code className="bg-muted px-1 rounded">--provider redis</code>), the dashboard can proxy
-            outbound traffic per <code className="bg-muted px-1 rounded">MOCKIFYER_CLIENT_ID</code> lane. Install{' '}
-            <code className="bg-muted px-1 rounded">@sgedda/mockifyer-mcp</code> and point Cursor at the running dashboard.
+            outbound traffic per <code className="bg-muted px-1 rounded">MOCKIFYER_CLIENT_ID</code> lane. Point Cursor
+            or Claude Desktop at <code className="bg-muted px-1 rounded">npx @sgedda/mockifyer-mcp</code> while the
+            dashboard is running (package goes live once published).
           </p>
           <ul className="text-sm text-muted-foreground space-y-1 list-disc pl-5">
             {MCP_TOOLS.map((tool) => (

@@ -1,0 +1,51 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.sgedda/mockifyer-mcp",
+  "title": "Mockifyer",
+  "description": "Query and edit Mockifyer mocks, scenarios, and traces via the dashboard API.",
+  "repository": {
+    "url": "https://github.com/sgedda/mockifyer",
+    "source": "github",
+    "subdirectory": "packages/mockifyer-mcp"
+  },
+  "version": "0.1.5",
+  "websiteUrl": "https://mockifyer.dev",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "@sgedda/mockifyer-mcp",
+      "version": "0.1.5",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "MOCKIFYER_DASHBOARD_URL",
+          "description": "Dashboard origin (default http://localhost:3002)",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "MOCKIFYER_DASHBOARD_BASE",
+          "description": "URL mount prefix when the dashboard is under a path (e.g. /dashboard)",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "MOCKIFYER_DASHBOARD_AUTH_USER",
+          "description": "HTTP Basic Auth username when enabled on the dashboard",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "MOCKIFYER_DASHBOARD_AUTH_PASSWORD",
+          "description": "HTTP Basic Auth password when enabled on the dashboard",
+          "isRequired": false,
+          "isSecret": true,
+          "format": "string"
+        }
+      ]
+    }
+  ]
+}

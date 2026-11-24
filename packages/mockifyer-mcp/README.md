@@ -1,34 +1,47 @@
-# Mockifyer MCP Server
+# @sgedda/mockifyer-mcp
 
-MCP server that exposes Mockifyer dashboard APIs to AI clients (Cursor, Claude Desktop, etc.).
+MCP server that exposes Mockifyer dashboard APIs to AI clients (Cursor, Claude Desktop, and other MCP hosts).
 
-## Prerequisites
+Requires a running [Mockifyer dashboard](https://www.npmjs.com/package/@sgedda/mockifyer-dashboard) (default `http://localhost:3002`).
 
-The [Mockifyer dashboard](../mockifyer-dashboard) must be running:
-
-```bash
-npx mockifyer-dashboard --path ./mock-data
-# default: http://localhost:3002
-```
-
-## Install & build
+## Quick start
 
 ```bash
-cd packages/mockifyer-mcp
-npm install
-npm run build
+# Terminal 1 — dashboard
+npx @sgedda/mockifyer-dashboard --path ./mock-data
+
+# Terminal 2 — MCP (stdio; used by your IDE)
+npx @sgedda/mockifyer-mcp
 ```
 
-## Cursor configuration
+## Cursor
 
-Add to `.cursor/mcp.json` (project) or global MCP settings:
+Add to `.cursor/mcp.json` (project) or your global MCP settings:
 
 ```json
 {
   "mcpServers": {
     "mockifyer": {
-      "command": "node",
-      "args": ["/Users/you/git/mockifyer/packages/mockifyer-mcp/dist/cli.js"],
+      "command": "npx",
+      "args": ["@sgedda/mockifyer-mcp"],
+      "env": {
+        "MOCKIFYER_DASHBOARD_URL": "http://localhost:3002"
+      }
+    }
+  }
+}
+```
+
+## Claude Desktop
+
+Add under `mcpServers` in Claude Desktop’s config (`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "mockifyer": {
+      "command": "npx",
+      "args": ["@sgedda/mockifyer-mcp"],
       "env": {
         "MOCKIFYER_DASHBOARD_URL": "http://localhost:3002"
       }
@@ -56,6 +69,29 @@ Optional HTTP Basic Auth (when enabled on the dashboard host):
 ```
 
 See [mcp-config.example.json](./mcp-config.example.json).
+
+## Monorepo / from source
+
+```bash
+cd packages/mockifyer-mcp
+npm install
+npm run build
+```
+
+Then point your MCP client at `dist/cli.js` instead of `npx`.
+
+## Publish (maintainers)
+
+Push a tag matching the package version (does not run until you push the tag):
+
+```bash
+git tag mcp-v0.1.5
+git push origin mcp-v0.1.5
+```
+
+That triggers `.github/workflows/npm-publish.yml` for `@sgedda/mockifyer-mcp`.
+
+MCP Registry: after npm has the package, publish metadata from this directory with the [MCP publisher](https://modelcontextprotocol.io/registry/quickstart) using [server.json](./server.json) (`mcpName` in `package.json` must match `server.json` `name`).
 
 ## Tools
 
@@ -98,8 +134,6 @@ See [mcp-config.example.json](./mcp-config.example.json).
 | `mockifyer_preview_pool_ref` | Preview `$pool` resolve (path + field/index select) |
 | `mockifyer_set_pool_ref` | Embed `$pool` into a scenario mock response |
 
-Endpoint **slots** are deferred. **`$pool` refs** activate promoted response fixtures at serve time (see `packages/mockifyer-core/docs/POOL_REFS.md`). Entities remain a shared catalog for extract/browse.
-
 ## Example (IDE chat)
 
 > "What fields drive order status in scenario `default`?"
@@ -109,45 +143,10 @@ The assistant can call:
 1. `mockifyer_search_mocks({ q: "orders", scenario: "default" })`
 2. `mockifyer_get_mock_ai_context({ filename: "...", mode: "profile" })`
 3. `mockifyer_set_field_overrides({ filename, overrides: [{ path: "bookings.0.status", value: "CONFIRMED" }] })`
-   or `mockifyer_copy_array_item({ filename, arrayPath: "bookings", fromIndex: 0, itemOverrides: { status: "CONFIRMED" } })`
-
-> "Use pool response `trips-list-alice` in scenario `check-in-open`, keep the envelope, only trips nyc + rome."
-
-1. `mockifyer_preview_pool_ref({ id: "trips-list-alice", mode: "document", path: "trips", select: { field: "id", values: ["trip-nyc", "trip-rome"] } })`
-2. `mockifyer_set_pool_ref({ scenario: "check-in-open", filename: "…", pool: { id: "trips-list-alice", mode: "document", path: "trips", select: { field: "id", values: ["trip-nyc", "trip-rome"] } } })`
-
-> "Trace the gateway call that returned 502 — what did each hop use?"
-
-1. `mockifyer_list_network_events({ scenario: "default", limit: 50 })` — pick `requestId` or `eventId`
-2. `mockifyer_get_network_trace({ requestId: "...", scenario: "default" })` — ordered `trace.hops[]` root-first
-
-Requires network logging enabled in the dashboard Network tab (persistent with `redis` / `sqlite` providers).
-
-> "What did Atlas generate, and where is trip status in the bodies?"
-
-1. `mockifyer_get_atlas_generated_status()` — confirm `atlas-html` exists after Dev Menu / `mockifyer-atlas` render
-2. `mockifyer_list_atlas_generated_hops({ onlyWithBodies: true })` — hop ids with searchable bodies
-3. `mockifyer_search_atlas_bodies({ q: "CONFIRMED" })` or `mockifyer_get_atlas_hop_body({ eventId })`
-4. If bodies are empty (`captureBodies` was off), use `mockifyer_get_mock` / `mockifyer_get_mock_ai_context` for mock-hit responses instead
-
-> "Which screens/datasources did Atlas see (live, before generate)?"
-
-1. `mockifyer_get_atlas_doc({ summary: true })`
-2. `mockifyer_list_atlas_usage()` — join `requestId` to `mockifyer_get_network_trace`
-
-> "Create `check-in-open` from `default`, then point Playwright lane `trips-e2e-checkin` at it"
-
-1. `mockifyer_create_scenario({ scenario: "check-in-open", deriveFrom: "default" })`
-2. Apply `$pool` / field overrides on the new scenario mocks
-3. `mockifyer_set_client_lane_scenario({ clientId: "trips-e2e-checkin", scenario: "check-in-open" })`
-
-Use `mockifyer_set_scenario` only for the global/active scenario; prefer lane mapping for isolated E2E runs.
 
 > "Why does the screen show temperature = -999?"
 
 1. `mockifyer_explain_value({ scenario: "default", url: "/api/weather", fieldPath: "temperature_2m" })`
-
-Returns: origin (mock file + request), modifications (field overrides, date overrides, lane overrides), original vs effective value, hop chain, and sibling fields in one call. No need to chain ~10 tools (list_scenarios, search_mocks, get_atlas_doc, get_field_overrides, get_network_trace, etc.).
 
 ## Environment variables
 
@@ -157,3 +156,9 @@ Returns: origin (mock file + request), modifications (field overrides, date over
 | `MOCKIFYER_DASHBOARD_BASE` | `` | URL mount prefix (e.g. `/dashboard`) |
 | `MOCKIFYER_DASHBOARD_AUTH_USER` | — | Basic auth user |
 | `MOCKIFYER_DASHBOARD_AUTH_PASSWORD` | — | Basic auth password |
+
+## Links
+
+- Homepage: [mockifyer.dev](https://mockifyer.dev)
+- AI summary: [llms.txt](https://mockifyer.dev/llms.txt)
+- Source: [packages/mockifyer-mcp](https://github.com/sgedda/mockifyer/tree/main/packages/mockifyer-mcp)

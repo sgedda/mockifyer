@@ -28,7 +28,14 @@
     "dashboard",
     "api",
     "testing",
-    "mockifyer"
+    "mockifyer",
+    "api-mocking",
+    "mock-server",
+    "record-replay",
+    "http-recording",
+    "vcr",
+    "msw-alternative",
+    "nodejs"
   ],
   "author": {
     "name": "Sebastian Gedda",

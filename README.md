@@ -58,15 +58,30 @@ Installs `docs/mockifyer-ai/` (`INSTRUCTIONS.md` + reference). Docs ship with `@
 
 ## AI Integration (MCP)
 
-**Model Context Protocol** support for Cursor and Claude Desktop allows you to interact with Mockifyer using natural language:
+**Model Context Protocol** support for Cursor and Claude Desktop lets you query and edit mocks with natural language. Start the dashboard, then run the MCP server (goes live on npm once published):
 
 ```bash
-# Build the MCP server (first time)
-cd packages/mockifyer-mcp
-npm install && npm run build
+npx @sgedda/mockifyer-dashboard --path ./mock-data
+npx @sgedda/mockifyer-mcp
 ```
 
-The repository includes a pre-configured `.cursor/mcp.json` that works out of the box. Start the dashboard and restart Cursor to enable:
+Cursor / Claude Desktop config:
+
+```json
+{
+  "mcpServers": {
+    "mockifyer": {
+      "command": "npx",
+      "args": ["@sgedda/mockifyer-mcp"],
+      "env": {
+        "MOCKIFYER_DASHBOARD_URL": "http://localhost:3002"
+      }
+    }
+  }
+}
+```
+
+This monorepo also ships a local `.cursor/mcp.json` pointing at a built `packages/mockifyer-mcp/dist/cli.js`. Example prompts once connected:
 
 - "List all mocks in the default scenario"
 - "Override the booking status to CONFIRMED"
