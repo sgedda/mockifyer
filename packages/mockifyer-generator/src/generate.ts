@@ -62,7 +62,11 @@ function varyArrayLength(sampleLen: number, rng: Prng): number {
   return rng.int(min, max);
 }
 
-/** Keys treated as line-item arrays when applying {@link GenerateOptions.itemCount}. */
+/**
+ * Keys treated as list arrays when applying {@link GenerateOptions.itemCount}
+ * (“Items per list” / context `"N items"`). Includes line items and common
+ * entity collections (users, bookings, comments, …).
+ */
 const LINE_ITEM_ARRAY_KEYS = new Set([
   'items',
   'lineitems',
@@ -74,6 +78,13 @@ const LINE_ITEM_ARRAY_KEYS = new Set([
   'orderlineitems',
   'skus',
   'goods',
+  'users',
+  'customers',
+  'people',
+  'bookings',
+  'transactions',
+  'posts',
+  'comments',
 ]);
 
 function normalizeKey(key: string): string {
@@ -258,8 +269,10 @@ function hasLineItemArray(value: unknown): boolean {
 }
 
 /**
- * When context asks for `N items` but the sample has no line-item array
- * (e.g. user shape), attach a small template so {@link itemCount} can apply.
+ * When context asks for `N items` but the sample has no list array at all,
+ * attach a small `items` template so {@link itemCount} can apply.
+ * Samples that already have any array (e.g. `{ users: […] }`) are left alone —
+ * itemCount targets those lists via {@link LINE_ITEM_ARRAY_KEYS}.
  */
 function ensureLineItemTemplate(sample: unknown, itemCount?: number): unknown {
   if (itemCount === undefined) {
@@ -269,6 +282,12 @@ function ensureLineItemTemplate(sample: unknown, itemCount?: number): unknown {
     return sample;
   }
   if (hasLineItemArray(sample)) {
+    return sample;
+  }
+  const hasAnyArray = Object.values(sample as Record<string, unknown>).some((v) =>
+    Array.isArray(v)
+  );
+  if (hasAnyArray) {
     return sample;
   }
   return { ...(sample as Record<string, unknown>), items: [DEFAULT_LINE_ITEM] };

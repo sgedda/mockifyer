@@ -18,7 +18,13 @@ export const DEFAULT_SAMPLE_JSON = `${JSON.stringify(DEFAULT_SAMPLE, null, 2)}\n
 
 export const DEFAULT_CONTEXT = 'prices in USD, 3 items'
 export const DEFAULT_COUNT = 3
+/** Default nested list length when the Items control is set (Orders / products / …). */
+export const DEFAULT_ITEM_COUNT = 3
 export const DEFAULT_SEED = 42
+export const MIN_RECORDS = 1
+export const MAX_RECORDS = 50
+export const MIN_ITEMS_PER_LIST = 1
+export const MAX_ITEMS_PER_LIST = 50
 
 /** One-click playground samples — JSON + context land in the editor (and thus the share hash). */
 export type PlaygroundPresetId =

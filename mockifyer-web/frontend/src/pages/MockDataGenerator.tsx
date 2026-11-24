@@ -7,6 +7,8 @@ import {
   FileJson,
   Link2,
   Loader2,
+  Minus,
+  Plus,
   Radio,
   Shield,
   Sparkles,
@@ -32,7 +34,12 @@ import {
   CHAOS_LEVELS,
   CHAOS_LEVEL_INDEX,
   DEFAULT_COUNT,
+  DEFAULT_ITEM_COUNT,
   DEFAULT_SEED,
+  MAX_ITEMS_PER_LIST,
+  MAX_RECORDS,
+  MIN_ITEMS_PER_LIST,
+  MIN_RECORDS,
   PLAYGROUND_PRESETS,
   TRY_DEMO_COMMAND,
   findPreset,
@@ -40,6 +47,7 @@ import {
   type PlaygroundChaosLevel,
   type PlaygroundPreset,
 } from '@/lib/mock-data-generator/defaults'
+import { fetchSampleFromUrl } from '@/lib/mock-data-generator/fetch-sample'
 import {
   buildSampleCliCommand,
   buildVariantsCliCommand,
@@ -60,8 +68,13 @@ import {
   structuralArrayLabel,
 } from '@/lib/mock-data-generator/field-kinds'
 import type { RealApiExample } from '@/lib/mock-data-generator/real-api-examples'
-import RealApiDemo from '@/components/RealApiDemo'
+import RealApiDemo, { type FetchedSampleSource } from '@/components/RealApiDemo'
 import type { FieldDescriptor, NamedVariant } from '@sgedda/mockifyer-generator'
+
+function clampInt(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return min
+  return Math.min(max, Math.max(min, Math.trunc(value)))
+}
 
 const DEFAULT_PRESET = findPreset('users') ?? PLAYGROUND_PRESETS[0]!
 const DEFAULT_SAMPLE_JSON = presetSampleJson(DEFAULT_PRESET)
@@ -90,6 +103,8 @@ export default function MockDataGenerator() {
   const [inputText, setInputText] = useState(DEFAULT_SAMPLE_JSON)
   const [context, setContext] = useState(DEFAULT_CONTEXT)
   const [count, setCount] = useState(DEFAULT_COUNT)
+  /** Nested list length — always passed to generate (wins over context “N items”). */
+  const [itemCount, setItemCount] = useState(DEFAULT_ITEM_COUNT)
   const [seed, setSeed] = useState<number | string>(DEFAULT_SEED)
   const [level, setLevel] = useState<PlaygroundChaosLevel>('wild')
   const [fields, setFields] = useState<FieldDescriptor[]>([])
@@ -102,6 +117,10 @@ export default function MockDataGenerator() {
   const [shareTooLarge, setShareTooLarge] = useState(false)
   const [engineReady, setEngineReady] = useState(false)
   const [bootstrapped, setBootstrapped] = useState(false)
+  const [fetchUrl, setFetchUrl] = useState('')
+  const [fetchBusy, setFetchBusy] = useState(false)
+  const [fetchError, setFetchError] = useState<string | null>(null)
+  const [fetchedSample, setFetchedSample] = useState<FetchedSampleSource | null>(null)
 
   // Light mode only for this playground (SGE-76)
   useEffect(() => {
@@ -116,9 +135,21 @@ export default function MockDataGenerator() {
     if (state) {
       setInputText(state.input)
       setContext(state.context)
-      setCount(state.count)
+      setCount(clampInt(state.count, MIN_RECORDS, MAX_RECORDS))
+      if (typeof state.itemCount === 'number') {
+        setItemCount(clampInt(state.itemCount, MIN_ITEMS_PER_LIST, MAX_ITEMS_PER_LIST))
+      }
       setSeed(state.seed)
       setLevel(state.level)
+      if (state.sampleUrl) {
+        setFetchUrl(state.sampleUrl)
+        try {
+          const parsed = JSON.parse(state.input) as unknown
+          setFetchedSample({ url: state.sampleUrl, recorded: parsed })
+        } catch {
+          setFetchedSample(null)
+        }
+      }
       if (state.overrides) setOverrides(state.overrides)
       const nextChecked: Record<string, boolean> = {}
       for (const slug of state.checked) {
@@ -140,6 +171,8 @@ export default function MockDataGenerator() {
       context,
       seed,
       count,
+      itemCount,
+      sampleUrl: fetchedSample?.url,
       level,
       checked: checkedSlugs,
       overrides,
@@ -152,7 +185,7 @@ export default function MockDataGenerator() {
     if (window.location.hash !== result.hash) {
       window.history.replaceState(null, '', `${window.location.pathname}${result.hash}`)
     }
-  }, [inputText, context, seed, count, level, checked, overrides])
+  }, [inputText, context, seed, count, itemCount, fetchedSample, level, checked, overrides])
 
   const sampleCli = useMemo(
     () =>
@@ -237,6 +270,8 @@ export default function MockDataGenerator() {
         const generated = await engine.generateAsync(opts.sample, {
           seed,
           count,
+          // Control wins over context phrases like "5 items".
+          itemCount,
           context: opts.contextText.trim() || undefined,
           overrides: opts.kindOverrides,
         })
@@ -270,7 +305,7 @@ export default function MockDataGenerator() {
         setBusy(false)
       }
     },
-    [count, level, seed, toast]
+    [count, itemCount, level, seed, toast]
   )
 
   const handleGenerate = async (opts?: { silent?: boolean }) => {
@@ -316,9 +351,34 @@ export default function MockDataGenerator() {
     setInputText(`${JSON.stringify(example.recorded, null, 2)}\n`)
     setContext(example.context)
     setOverrides({})
+    if (example.id === '__fetched__' && example.sourceUrl) {
+      setFetchedSample({ url: example.sourceUrl, recorded: example.recorded })
+      setFetchUrl(example.sourceUrl)
+    }
     await runGenerate({
       sample: example.recorded,
       contextText: example.context,
+      kindOverrides: {},
+    })
+  }
+
+  const handleFetchFromUrl = async () => {
+    setFetchBusy(true)
+    setFetchError(null)
+    const result = await fetchSampleFromUrl(fetchUrl)
+    setFetchBusy(false)
+    if (!result.ok) {
+      setFetchError(result.message)
+      return
+    }
+    setInputText(result.text)
+    setFetchedSample({ url: result.url, recorded: result.json })
+    setFetchUrl(result.url)
+    setOverrides({})
+    toast({ title: 'Sample fetched', description: result.url })
+    await runGenerate({
+      sample: result.json,
+      contextText: context,
       kindOverrides: {},
     })
   }
@@ -373,37 +433,153 @@ export default function MockDataGenerator() {
   )
 
   return (
-    <div className="bg-white text-zinc-950" data-testid="mock-data-generator-page">
-      <div className="mx-auto max-w-[1200px] px-5 py-8 sm:py-10 space-y-8">
+    <div
+      className="bg-white text-zinc-950 overflow-x-hidden"
+      data-testid="mock-data-generator-page"
+    >
+      <div className="mx-auto max-w-[1200px] px-4 sm:px-5 py-6 sm:py-10 space-y-6 sm:space-y-8">
         <header className="space-y-3" data-testid="playground-intro">
-          <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight flex items-center gap-3">
-            <Wand2 className="h-8 w-8 text-primary" />
+          <h1 className="text-2xl sm:text-4xl font-semibold tracking-tight flex items-center gap-2 sm:gap-3">
+            <Wand2 className="h-7 w-7 sm:h-8 sm:w-8 text-primary shrink-0" />
             Mock data generator
           </h1>
-          <p className="text-muted-foreground text-base max-w-3xl">
+          <p className="text-muted-foreground text-sm sm:text-base max-w-3xl">
             Paste one API response, get realistic data and edge cases. Runs in your browser.
           </p>
-          <div className="flex flex-wrap items-center gap-3 text-sm">
+          <div className="flex flex-col sm:flex-wrap sm:flex-row sm:items-center gap-2 sm:gap-3 text-sm">
             <span
-              className="inline-flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-emerald-800"
+              className="inline-flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-emerald-800 w-fit"
               data-testid="privacy-note"
             >
-              <Shield className="h-3.5 w-3.5" />
-              Nothing leaves your browser
+              <Shield className="h-3.5 w-3.5 shrink-0" />
+              Nothing is sent to Mockifyer
             </span>
-            <span className="text-muted-foreground">
-              No network calls after this page loads
-              {engineReady ? ' — generator loaded locally' : ''}.
+            <span className="text-muted-foreground text-xs sm:text-sm">
+              Generation stays local
+              {engineReady ? ' (engine loaded)' : ''}. Optional: one GET from your browser to a URL
+              you enter below.
             </span>
           </div>
         </header>
 
-        <section className="grid xl:grid-cols-2 gap-6 items-start">
-          <div className="space-y-6">
-          <Card className="border-border">
+        {/* Records + items — above the fold on mobile and desktop */}
+        <section
+          className="rounded-xl border border-border bg-zinc-50/80 p-3 sm:p-4 space-y-3"
+          data-testid="size-controls"
+        >
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="count" className="text-sm font-semibold">
+                Records
+              </Label>
+              <p className="text-xs text-muted-foreground">How many root objects to generate.</p>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="min-h-11 min-w-11 shrink-0"
+                  aria-label="Fewer records"
+                  data-testid="count-decrement"
+                  disabled={busy || count <= MIN_RECORDS}
+                  onClick={() => setCount((n) => clampInt(n - 1, MIN_RECORDS, MAX_RECORDS))}
+                >
+                  <Minus className="h-4 w-4" />
+                </Button>
+                <Input
+                  id="count"
+                  data-testid="count-input"
+                  type="number"
+                  min={MIN_RECORDS}
+                  max={MAX_RECORDS}
+                  className="min-h-11 text-center text-base font-semibold"
+                  value={count}
+                  onChange={(e) =>
+                    setCount(clampInt(Number(e.target.value), MIN_RECORDS, MAX_RECORDS))
+                  }
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="min-h-11 min-w-11 shrink-0"
+                  aria-label="More records"
+                  data-testid="count-increment"
+                  disabled={busy || count >= MAX_RECORDS}
+                  onClick={() => setCount((n) => clampInt(n + 1, MIN_RECORDS, MAX_RECORDS))}
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="item-count" className="text-sm font-semibold">
+                Items per list
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                Length of nested lists (users, items, …). Wins over context like &quot;5 items&quot;.
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="min-h-11 min-w-11 shrink-0"
+                  aria-label="Fewer items per list"
+                  data-testid="item-count-decrement"
+                  disabled={busy || itemCount <= MIN_ITEMS_PER_LIST}
+                  onClick={() =>
+                    setItemCount((n) => clampInt(n - 1, MIN_ITEMS_PER_LIST, MAX_ITEMS_PER_LIST))
+                  }
+                >
+                  <Minus className="h-4 w-4" />
+                </Button>
+                <Input
+                  id="item-count"
+                  data-testid="item-count-input"
+                  type="number"
+                  min={MIN_ITEMS_PER_LIST}
+                  max={MAX_ITEMS_PER_LIST}
+                  className="min-h-11 text-center text-base font-semibold"
+                  value={itemCount}
+                  onChange={(e) =>
+                    setItemCount(
+                      clampInt(Number(e.target.value), MIN_ITEMS_PER_LIST, MAX_ITEMS_PER_LIST)
+                    )
+                  }
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="min-h-11 min-w-11 shrink-0"
+                  aria-label="More items per list"
+                  data-testid="item-count-increment"
+                  disabled={busy || itemCount >= MAX_ITEMS_PER_LIST}
+                  onClick={() =>
+                    setItemCount((n) => clampInt(n + 1, MIN_ITEMS_PER_LIST, MAX_ITEMS_PER_LIST))
+                  }
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </div>
+          <p className="text-sm font-medium" data-testid="size-controls-live">
+            Live result: {count} record{count === 1 ? '' : 's'}
+            {records ? ` → got ${records.length}` : ''} · ~{itemCount} item
+            {itemCount === 1 ? '' : 's'} per list
+          </p>
+        </section>
+
+        <section className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-6 items-start">
+          <div className="space-y-4 sm:space-y-6 min-w-0">
+          <Card className="border-border overflow-hidden">
             <CardHeader className="pb-3">
-              <CardTitle className="text-xl">Sample JSON</CardTitle>
-              <CardDescription>Paste or upload a response body (or a Mockifyer mock document).</CardDescription>
+              <CardTitle className="text-lg sm:text-xl">Sample JSON</CardTitle>
+              <CardDescription>
+                Paste, upload, or fetch a response body (or a Mockifyer mock document).
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2" data-testid="sample-presets">
@@ -419,7 +595,7 @@ export default function MockDataGenerator() {
                 >
                   <SelectTrigger
                     id="preset-select"
-                    className="w-full sm:max-w-sm"
+                    className="w-full min-h-11"
                     data-testid="preset-select"
                   >
                     <SelectValue placeholder="Choose a sample shape…" />
@@ -437,9 +613,8 @@ export default function MockDataGenerator() {
                     ))}
                   </SelectContent>
                 </Select>
-                {/* Keep a few quick chips for common shapes without overflowing mobile */}
                 <div
-                  className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1 sm:flex-wrap sm:overflow-visible"
+                  className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1 [scrollbar-width:thin]"
                   role="group"
                   aria-label="Quick sample presets"
                 >
@@ -449,7 +624,7 @@ export default function MockDataGenerator() {
                       type="button"
                       size="sm"
                       variant="outline"
-                      className="shrink-0"
+                      className="shrink-0 min-h-10"
                       disabled={busy}
                       data-testid={`preset-chip-${preset.id}`}
                       onClick={() => void handlePreset(preset)}
@@ -459,15 +634,70 @@ export default function MockDataGenerator() {
                   ))}
                 </div>
               </div>
+
+              <div className="space-y-2" data-testid="fetch-from-url">
+                <Label htmlFor="fetch-url" className="text-xs text-muted-foreground">
+                  Fetch sample from URL
+                </Label>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <Input
+                    id="fetch-url"
+                    data-testid="fetch-url-input"
+                    className="min-h-11 font-mono text-xs sm:text-sm"
+                    placeholder="https://jsonplaceholder.typicode.com/users/1"
+                    value={fetchUrl}
+                    onChange={(e) => {
+                      setFetchUrl(e.target.value)
+                      setFetchError(null)
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        void handleFetchFromUrl()
+                      }
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="w-full sm:w-auto min-h-11 shrink-0"
+                    data-testid="fetch-url-button"
+                    disabled={fetchBusy || busy || !fetchUrl.trim()}
+                    onClick={() => void handleFetchFromUrl()}
+                  >
+                    {fetchBusy ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Fetching…
+                      </>
+                    ) : (
+                      'Fetch'
+                    )}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  GET only, from your browser to that URL (not via Mockifyer). CORS must allow it.
+                </p>
+                {fetchError ? (
+                  <p
+                    className="text-sm text-destructive rounded-md border border-destructive/30 bg-destructive/5 p-3"
+                    role="alert"
+                    data-testid="fetch-url-error"
+                  >
+                    {fetchError}
+                  </p>
+                ) : null}
+              </div>
+
               <Textarea
                 aria-label="Sample JSON"
                 data-testid="sample-json"
-                className="min-h-[140px] max-h-[200px] font-mono text-xs"
+                className="min-h-[140px] max-h-[200px] font-mono text-xs break-all"
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
                 spellCheck={false}
               />
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-col sm:flex-row flex-wrap gap-2">
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -478,23 +708,30 @@ export default function MockDataGenerator() {
                 <Button
                   type="button"
                   variant="outline"
+                  className="w-full sm:w-auto min-h-11"
                   onClick={() => fileInputRef.current?.click()}
                 >
                   <Upload className="h-4 w-4 mr-2" />
                   Upload JSON
                 </Button>
-                <Button type="button" variant="ghost" onClick={handleResetExample}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="w-full sm:w-auto min-h-11"
+                  onClick={handleResetExample}
+                >
                   Reset example
                 </Button>
               </div>
             </CardContent>
           </Card>
 
-          <Card className="border-border">
+          <Card className="border-border overflow-hidden">
             <CardHeader>
-              <CardTitle className="text-xl">Options</CardTitle>
+              <CardTitle className="text-lg sm:text-xl">Options</CardTitle>
               <CardDescription>
-                Context steers locale, currency, and counts. Seed keeps output deterministic.
+                Context steers locale and currency. Records / Items controls above set sizes
+                (they win over &quot;N items&quot; in context). Seed keeps output deterministic.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -503,35 +740,24 @@ export default function MockDataGenerator() {
                 <Input
                   id="context"
                   data-testid="context-input"
-                  placeholder="swedish users, 5 items"
+                  className="min-h-11"
+                  placeholder="swedish users, prices in SEK"
                   value={context}
                   onChange={(e) => setContext(e.target.value)}
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="count">Count</Label>
-                  <Input
-                    id="count"
-                    data-testid="count-input"
-                    type="number"
-                    min={0}
-                    value={count}
-                    onChange={(e) => setCount(Number(e.target.value) || 0)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="seed">Seed</Label>
-                  <Input
-                    id="seed"
-                    data-testid="seed-input"
-                    value={String(seed)}
-                    onChange={(e) => {
-                      const raw = e.target.value
-                      setSeed(/^-?\d+$/.test(raw) ? Number(raw) : raw)
-                    }}
-                  />
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="seed">Seed</Label>
+                <Input
+                  id="seed"
+                  data-testid="seed-input"
+                  className="min-h-11"
+                  value={String(seed)}
+                  onChange={(e) => {
+                    const raw = e.target.value
+                    setSeed(/^-?\d+$/.test(raw) ? Number(raw) : raw)
+                  }}
+                />
               </div>
 
               <div className="space-y-3" data-testid="chaos-slider-section">
@@ -563,7 +789,7 @@ export default function MockDataGenerator() {
 
               <Button
                 type="button"
-                className="w-full"
+                className="w-full min-h-11"
                 data-testid="generate-button"
                 disabled={busy}
                 onClick={() => void handleGenerate()}
@@ -589,19 +815,23 @@ export default function MockDataGenerator() {
           </Card>
           </div>
 
-          <Card className="border-border xl:sticky xl:top-4" data-testid="results-section">
-            <CardHeader className="flex flex-row items-start justify-between gap-4 pb-3">
-              <div>
-                <CardTitle className="text-xl">Generated records</CardTitle>
+          <Card
+            className="border-border xl:sticky xl:top-4 overflow-hidden min-w-0"
+            data-testid="results-section"
+          >
+            <CardHeader className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 pb-3">
+              <div className="min-w-0">
+                <CardTitle className="text-lg sm:text-xl">Generated records</CardTitle>
                 <CardDescription>
                   Same engine as the CLI — identical output for the same input + seed.
                 </CardDescription>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-col sm:flex-row flex-wrap gap-2 w-full sm:w-auto">
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
+                  className="w-full sm:w-auto min-h-10"
                   disabled={!records}
                   onClick={() => void handleCopyRecords()}
                 >
@@ -612,6 +842,7 @@ export default function MockDataGenerator() {
                   type="button"
                   variant="outline"
                   size="sm"
+                  className="w-full sm:w-auto min-h-10"
                   data-testid="download-json"
                   disabled={!records}
                   onClick={handleDownloadRecords}
@@ -621,11 +852,11 @@ export default function MockDataGenerator() {
                 </Button>
               </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="min-w-0">
               {records ? (
                 <pre
                   data-testid="generated-output"
-                  className="max-h-[min(520px,60vh)] overflow-auto rounded-md border border-border bg-muted/40 p-4 text-xs font-mono"
+                  className="max-h-[min(520px,60vh)] overflow-auto rounded-md border border-border bg-muted/40 p-3 sm:p-4 text-xs font-mono whitespace-pre-wrap break-all"
                 >
                   {JSON.stringify(records, null, 2)}
                 </pre>
@@ -807,38 +1038,40 @@ export default function MockDataGenerator() {
           </section>
         )}
 
-        <section className="grid lg:grid-cols-2 gap-6">
-          <Card className="border-border">
+        <section className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+          <Card className="border-border overflow-hidden min-w-0">
             <CardHeader>
-              <CardTitle className="text-xl">Equivalent local command</CardTitle>
+              <CardTitle className="text-lg sm:text-xl">Equivalent local command</CardTitle>
               <CardDescription>
                 Save your sample as <code className="bg-muted px-1 rounded">sample.json</code>, then
                 run the real bin for identical output.
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4" data-testid="cli-commands">
-              <div>
+            <CardContent className="space-y-4 min-w-0" data-testid="cli-commands">
+              <div className="min-w-0 overflow-x-auto">
                 <p className="text-xs font-medium text-muted-foreground mb-2">Records</p>
-                <CodeBlock code={sampleCli} language="bash" small />
+                <CodeBlock code={sampleCli} language="bash" small className="max-w-full" />
               </div>
-              <div>
+              <div className="min-w-0 overflow-x-auto">
                 <p className="text-xs font-medium text-muted-foreground mb-2">Variants</p>
-                <CodeBlock code={variantsCli} language="bash" small />
+                <CodeBlock code={variantsCli} language="bash" small className="max-w-full" />
               </div>
             </CardContent>
           </Card>
 
-          <Card className="border-border">
+          <Card className="border-border overflow-hidden">
             <CardHeader>
-              <CardTitle className="text-xl">Share this setup</CardTitle>
+              <CardTitle className="text-lg sm:text-xl">Share this setup</CardTitle>
               <CardDescription>
-                Input, context, seed, count, chaos slider, and checklist live in the URL hash.
+                Input, context, seed, records, items per list, sample URL, chaos, and checklist live
+                in the URL hash.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               <Button
                 type="button"
                 variant="outline"
+                className="w-full sm:w-auto min-h-11"
                 data-testid="copy-share-link"
                 onClick={() => void handleCopyShareLink()}
               >
@@ -861,7 +1094,10 @@ export default function MockDataGenerator() {
           </Card>
         </section>
 
-        <RealApiDemo onUseAsSample={(example) => void handleUseRealApiSample(example)} />
+        <RealApiDemo
+          fetchedSample={fetchedSample}
+          onUseAsSample={(example) => void handleUseRealApiSample(example)}
+        />
 
         <section className="border-t border-border pt-10 space-y-4">
           <h2 className="text-2xl font-semibold tracking-tight">How to use this</h2>

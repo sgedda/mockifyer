@@ -18,6 +18,16 @@ export interface PlaygroundShareState {
   context: string
   seed: number | string
   count: number
+  /**
+   * Nested list length (`itemCount`). When set, overrides context phrases like
+   * `"5 items"`. Omitted means “auto” (context / sample length).
+   */
+  itemCount?: number
+  /**
+   * Optional URL the user fetched as the sample source (browser GET).
+   * Display-only provenance for the Real API panel — not re-fetched on load.
+   */
+  sampleUrl?: string
   level: PlaygroundChaosLevel
   /** Variant kind slugs checked in the resilience checklist. */
   checked: string[]
@@ -37,6 +47,12 @@ function compactPayload(state: PlaygroundShareState): Record<string, unknown> {
     n: state.count,
     l: state.level,
     k: state.checked,
+  }
+  if (typeof state.itemCount === 'number' && Number.isFinite(state.itemCount)) {
+    payload.m = state.itemCount
+  }
+  if (state.sampleUrl) {
+    payload.u = state.sampleUrl
   }
   if (state.overrides && Object.keys(state.overrides).length > 0) {
     payload.o = state.overrides
@@ -67,6 +83,9 @@ function expandPayload(raw: Record<string, unknown>): PlaygroundShareState | nul
     context: typeof raw.c === 'string' ? raw.c : '',
     seed: typeof raw.s === 'number' || typeof raw.s === 'string' ? raw.s : 42,
     count: typeof raw.n === 'number' && Number.isFinite(raw.n) ? raw.n : 1,
+    itemCount:
+      typeof raw.m === 'number' && Number.isFinite(raw.m) ? Math.trunc(raw.m) : undefined,
+    sampleUrl: typeof raw.u === 'string' && raw.u.trim() ? raw.u.trim() : undefined,
     level,
     checked,
     overrides,

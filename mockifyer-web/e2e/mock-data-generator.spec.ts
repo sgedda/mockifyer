@@ -66,7 +66,23 @@ test.describe('Mock Data Generator playground', () => {
     expect(zipMatch![1]).not.toMatch(/x\d+/i);
     const latMatch = preview.match(/"lat"\s*:\s*"([^"]+)"/);
     expect(latMatch?.[1]).toMatch(/^-?\d+(\.\d+)?$/);
-    await expect(section.getByText(/nothing is fetched live/i)).toBeVisible();
+    await expect(section.getByText(/nothing is sent to Mockifyer/i)).toBeVisible();
+  });
+
+  test('items-per-list control is visible and updates live label', async ({ page }) => {
+    await expect(page.getByTestId('size-controls')).toBeVisible();
+    await expect(page.getByTestId('item-count-input')).toBeVisible();
+    await page.getByTestId('item-count-increment').click();
+    await expect(page.getByTestId('item-count-input')).toHaveValue('4');
+    await expect(page.getByTestId('size-controls-live')).toContainText(/4 item/i);
+  });
+
+  test('fetch from URL shows CORS-friendly error when blocked', async ({ page }) => {
+    await page.route('https://cors-blocked.example.test/**', (route) => route.abort('failed'));
+    await page.getByTestId('fetch-url-input').fill('https://cors-blocked.example.test/data.json');
+    await page.getByTestId('fetch-url-button').click();
+    await expect(page.getByTestId('fetch-url-error')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('fetch-url-error')).toContainText(/CORS|Paste|Mockifyer/i);
   });
 
   test('shows productName for items[*].name and structural array for $.items', async ({ page }) => {
@@ -152,6 +168,35 @@ test.describe('Mock Data Generator playground', () => {
     const hasDark = await page.evaluate(() => document.documentElement.classList.contains('dark'));
     expect(hasDark).toBe(false);
   });
+});
+
+test.describe('Mock Data Generator mobile', () => {
+  for (const width of [360, 390, 430] as const) {
+    test(`no horizontal overflow at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 800 });
+      await page.goto('/tools/mock-data-generator');
+      await expect(page.getByTestId('mock-data-generator-page')).toBeVisible();
+      await expect(page.getByTestId('size-controls')).toBeVisible();
+      await expect(page.getByTestId('item-count-input')).toBeVisible();
+      await expect(page.getByTestId('generated-output')).toBeVisible({ timeout: 30_000 });
+
+      const overflow = await page.evaluate(() => {
+        const doc = document.documentElement;
+        return {
+          scrollWidth: doc.scrollWidth,
+          clientWidth: doc.clientWidth,
+        };
+      });
+      expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth + 1);
+
+      // Real API stacks; JSON panes scroll inside themselves
+      await page.getByTestId('real-api-section').scrollIntoViewIfNeeded();
+      await expect(page.getByTestId('real-api-recorded')).toBeVisible();
+      const recordedBox = await page.getByTestId('real-api-recorded').boundingBox();
+      expect(recordedBox).toBeTruthy();
+      expect(recordedBox!.width).toBeLessThanOrEqual(width);
+    });
+  }
 });
 
 test.describe('Start page mock-data teaser', () => {

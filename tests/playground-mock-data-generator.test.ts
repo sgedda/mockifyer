@@ -69,12 +69,14 @@ const SAMPLE_MOCK = {
 };
 
 describe('playground shareable URL state', () => {
-  it('round-trips input, context, seed, count, slider, and checklist', () => {
+  it('round-trips input, context, seed, count, itemCount, sampleUrl, slider, and checklist', () => {
     const encoded = encodeShareHash({
       input: JSON.stringify(DEFAULT_SAMPLE, null, 2),
       context: 'prices in SEK, 20 orders',
       seed: 42,
       count: 5,
+      itemCount: 4,
+      sampleUrl: 'https://jsonplaceholder.typicode.com/users/1',
       level: 'wild',
       checked: ['empty-lists', 'http-404'],
       overrides: { '$.email': 'email' },
@@ -88,6 +90,8 @@ describe('playground shareable URL state', () => {
       context: 'prices in SEK, 20 orders',
       seed: 42,
       count: 5,
+      itemCount: 4,
+      sampleUrl: 'https://jsonplaceholder.typicode.com/users/1',
       level: 'wild',
       checked: ['empty-lists', 'http-404'],
       overrides: { '$.email': 'email' },

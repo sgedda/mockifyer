@@ -1,9 +1,10 @@
 /**
- * Side-by-side: static recorded public-API response vs generated mocks.
- * No live network — samples are bundled constants.
+ * Side-by-side: recorded API response vs generated mocks.
+ * Built-in examples are static. A user-fetched URL (from the tool page) can
+ * appear as an extra source — that GET already happened in the browser.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowRight, Loader2, Radio } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -23,19 +24,48 @@ import {
 } from '@/lib/mock-data-generator/real-api-examples'
 import { loadGeneratorEngine } from '@/lib/mock-data-generator/engine'
 
-interface RealApiDemoProps {
-  onUseAsSample?: (example: RealApiExample) => void
+const FETCHED_ID = '__fetched__'
+
+export interface FetchedSampleSource {
+  url: string
+  recorded: unknown
 }
 
-export default function RealApiDemo({ onUseAsSample }: RealApiDemoProps) {
-  const [exampleId, setExampleId] = useState(DEFAULT_REAL_API_EXAMPLE.id)
+interface RealApiDemoProps {
+  onUseAsSample?: (example: RealApiExample) => void
+  /** Sample the user fetched via browser GET on the tool page. */
+  fetchedSample?: FetchedSampleSource | null
+}
+
+export default function RealApiDemo({ onUseAsSample, fetchedSample }: RealApiDemoProps) {
+  const [exampleId, setExampleId] = useState(
+    fetchedSample ? FETCHED_ID : DEFAULT_REAL_API_EXAMPLE.id
+  )
   const [generatedPreview, setGeneratedPreview] = useState<unknown | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const seq = useRef(0)
 
-  const example =
-    REAL_API_EXAMPLES.find((item) => item.id === exampleId) ?? DEFAULT_REAL_API_EXAMPLE
+  useEffect(() => {
+    if (fetchedSample) {
+      setExampleId(FETCHED_ID)
+    }
+  }, [fetchedSample?.url, fetchedSample])
+
+  const example: RealApiExample = useMemo(() => {
+    if (exampleId === FETCHED_ID && fetchedSample) {
+      return {
+        id: FETCHED_ID,
+        name: 'Your URL',
+        sourceUrl: fetchedSample.url,
+        capturedNote: 'Fetched from your browser on demand — not sent to Mockifyer.',
+        context: '',
+        recorded: fetchedSample.recorded,
+      }
+    }
+    return REAL_API_EXAMPLES.find((item) => item.id === exampleId) ?? DEFAULT_REAL_API_EXAMPLE
+  }, [exampleId, fetchedSample])
+
   const sampleIsArray = Array.isArray(example.recorded)
 
   const runGenerate = useCallback(async (next: RealApiExample) => {
@@ -47,10 +77,8 @@ export default function RealApiDemo({ onUseAsSample }: RealApiDemoProps) {
       const rootIsArray = Array.isArray(next.recorded)
       const records = await engine.generateAsync(next.recorded, {
         seed: DEFAULT_SEED,
-        // Object roots: one variant so the panel mirrors `{…}` not `[{…}]`.
-        // Array roots: a short list (count applies to array samples).
         count: rootIsArray ? 2 : 1,
-        context: next.context,
+        context: next.context || undefined,
       })
       if (token !== seq.current) return
       setGeneratedPreview(mirrorGeneratedRoot(next.recorded, records))
@@ -69,39 +97,41 @@ export default function RealApiDemo({ onUseAsSample }: RealApiDemoProps) {
 
   return (
     <section
-      className="border border-border rounded-xl bg-white px-5 py-8 sm:px-8 space-y-5"
+      className="border border-border rounded-xl bg-white px-4 py-6 sm:px-8 sm:py-8 space-y-5 overflow-x-hidden"
       data-testid="real-api-section"
       aria-labelledby="real-api-heading"
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="space-y-2 max-w-2xl">
+        <div className="space-y-2 max-w-2xl min-w-0">
           <div className="inline-flex items-center gap-2 text-sm font-medium text-primary">
-            <Radio className="h-4 w-4" aria-hidden />
+            <Radio className="h-4 w-4 shrink-0" aria-hidden />
             Real API → mock data
           </div>
-          <h2 id="real-api-heading" className="text-2xl font-semibold tracking-tight">
+          <h2 id="real-api-heading" className="text-xl sm:text-2xl font-semibold tracking-tight">
             Recorded from a real API, then generated
           </h2>
           <p className="text-sm text-muted-foreground">
-            These samples are static captures bundled with the page — nothing is fetched live.
-            With Mockifyer you record the real API once, then generate variants from the recorded
-            mock file (same structure, fresh values, edge cases).
+            Built-in examples are static captures. If you fetched a URL above, that one GET left your
+            browser for that host only — nothing is sent to Mockifyer. Record once with Mockifyer,
+            then generate variants from the mock file.
           </p>
         </div>
         <div className="w-full sm:w-56 shrink-0 space-y-1">
           <label htmlFor="real-api-example" className="text-xs font-medium text-muted-foreground">
             Example
           </label>
-          <Select
-            value={exampleId}
-            onValueChange={(value) => {
-              setExampleId(value)
-            }}
-          >
-            <SelectTrigger id="real-api-example" data-testid="real-api-example-select">
+          <Select value={exampleId} onValueChange={setExampleId}>
+            <SelectTrigger
+              id="real-api-example"
+              className="min-h-11"
+              data-testid="real-api-example-select"
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
+              {fetchedSample ? (
+                <SelectItem value={FETCHED_ID}>Your URL</SelectItem>
+              ) : null}
               {REAL_API_EXAMPLES.map((item) => (
                 <SelectItem key={item.id} value={item.id}>
                   {item.name}
@@ -112,21 +142,21 @@ export default function RealApiDemo({ onUseAsSample }: RealApiDemoProps) {
         </div>
       </div>
 
-      <p className="text-xs text-muted-foreground">
-        Source (display only):{' '}
+      <p className="text-xs text-muted-foreground break-words">
+        Source:{' '}
         <span className="font-mono break-all">{example.sourceUrl}</span>
         <span className="mx-1.5">·</span>
         {example.capturedNote}
       </p>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div className="space-y-2" data-testid="real-api-recorded">
+      <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
+        <div className="space-y-2 min-w-0" data-testid="real-api-recorded">
           <h3 className="text-sm font-semibold">Recorded from real API</h3>
-          <pre className="max-h-[280px] overflow-auto rounded-lg border border-border bg-zinc-50 p-3 text-xs font-mono">
+          <pre className="max-h-[280px] overflow-auto rounded-lg border border-border bg-zinc-50 p-3 text-xs font-mono whitespace-pre-wrap break-all">
             {JSON.stringify(example.recorded, null, 2)}
           </pre>
         </div>
-        <div className="space-y-2 relative" data-testid="real-api-generated">
+        <div className="space-y-2 relative min-w-0" data-testid="real-api-generated">
           <h3 className="text-sm font-semibold">Your mock data, same structure</h3>
           <p className="text-xs text-muted-foreground">
             {sampleIsArray
@@ -145,7 +175,7 @@ export default function RealApiDemo({ onUseAsSample }: RealApiDemoProps) {
             </div>
           ) : null}
           {generatedPreview != null ? (
-            <pre className="max-h-[280px] overflow-auto rounded-lg border border-border bg-zinc-50 p-3 text-xs font-mono">
+            <pre className="max-h-[280px] overflow-auto rounded-lg border border-border bg-zinc-50 p-3 text-xs font-mono whitespace-pre-wrap break-all">
               {JSON.stringify(generatedPreview, null, 2)}
             </pre>
           ) : null}
@@ -158,11 +188,12 @@ export default function RealApiDemo({ onUseAsSample }: RealApiDemoProps) {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3 pt-1">
+      <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-3 pt-1">
         {onUseAsSample ? (
           <Button
             type="button"
             size="sm"
+            className="w-full sm:w-auto min-h-11"
             data-testid="real-api-use-sample"
             onClick={() => onUseAsSample(example)}
           >
@@ -171,7 +202,7 @@ export default function RealApiDemo({ onUseAsSample }: RealApiDemoProps) {
         ) : null}
         <Link
           to="/getting-started"
-          className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline underline-offset-4"
+          className="inline-flex items-center justify-center sm:justify-start gap-1.5 text-sm font-medium text-primary hover:underline underline-offset-4 min-h-11"
         >
           How to record a real API
           <ArrowRight className="h-3.5 w-3.5" />
