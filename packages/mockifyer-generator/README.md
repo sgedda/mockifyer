@@ -156,13 +156,18 @@ Requires a Mockifyer mock document (`request` + `response`). Bare JSON is reject
 ### `sample` — generate records from sample / context
 
 ```bash
-mockifyer-generate sample --context 'swedish users, 10 items' --seed 7
+# 1 user-shaped record with 5 nested items (not 5 records)
+mockifyer-generate sample --context 'swedish users, 5 items' --seed 7
+
+# 10 order records, each with 3 line items, EUR
+mockifyer-generate sample --context '10 orders, 3 items each, prices in EUR' --seed 7
+
 mockifyer-generate sample ./user.json --count 5 --locale sv --out users.json
 ```
 
 | Flag | Meaning |
 |------|---------|
-| `--context` | Free-text context (locale / count / currency / enum mix) |
+| `--context` | Free-text context. `'N items'` / `'N items each'` → nested `items[]` length; `'N orders/users/…'` → record count. Entity words (`users` / `orders` / `products`) pick a built-in shape when no sample file is given. |
 | `--count` | Record count (overrides context when set) |
 | `--locale` | `en` \| `sv` \| `de` \| `fr` \| `es` (unknown → error) |
 | `--seed` | Deterministic seed |

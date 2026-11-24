@@ -59,6 +59,28 @@ function varyArrayLength(sampleLen: number, rng: Prng): number {
   return rng.int(min, max);
 }
 
+/** Keys treated as line-item arrays when applying {@link GenerateOptions.itemCount}. */
+const LINE_ITEM_ARRAY_KEYS = new Set([
+  'items',
+  'lineitems',
+  'lines',
+  'products',
+  'entries',
+  'details',
+  'orderitems',
+  'orderlineitems',
+  'skus',
+  'goods',
+]);
+
+function normalizeKey(key: string): string {
+  return key.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+}
+
+function isLineItemArrayKey(key: string): boolean {
+  return LINE_ITEM_ARRAY_KEYS.has(normalizeKey(key));
+}
+
 function joinPath(parent: string, key: string | number, arrayItem = false): string {
   if (arrayItem) {
     return `${parent}[*]`;
@@ -74,6 +96,8 @@ interface SynthEnv {
   rng: Prng;
   faker: Faker;
   hints: ValueHints;
+  /** Exact length for nested line-item arrays when set. */
+  itemCount?: number;
 }
 
 function synthesizeValue(
@@ -94,7 +118,10 @@ function synthesizeValue(
   }
 
   if (Array.isArray(sample)) {
-    const len = varyArrayLength(sample.length, rng);
+    const len =
+      env.itemCount !== undefined && isLineItemArrayKey(key)
+        ? env.itemCount
+        : varyArrayLength(sample.length, rng);
     if (len === 0) {
       return [];
     }
@@ -145,6 +172,7 @@ function synthesizeValue(
  */
 export function resolveGenerateSettings(options: GenerateOptions): {
   count: number;
+  itemCount?: number;
   seed: number | string;
   locale: string;
   currency?: string;
@@ -159,8 +187,10 @@ export function resolveGenerateSettings(options: GenerateOptions): {
     parsed.currency ??
     LOCALE_DEFAULT_CURRENCY[locale as SupportedLocale];
   const count = options.count ?? parsed.count ?? 1;
+  const itemCount = options.itemCount ?? parsed.itemCount;
   return {
     count,
+    itemCount,
     seed: options.seed ?? 0,
     locale,
     currency,
@@ -208,35 +238,82 @@ export function infer(sample: unknown, overrides?: FieldKindOverrides): InferRes
  * });
  * ```
  */
+const DEFAULT_LINE_ITEM = { id: 10, name: 'Widget', qty: 1, price: 9.99 };
+
+function hasLineItemArray(value: unknown): boolean {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return false;
+  }
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    if (isLineItemArrayKey(key) && Array.isArray(child)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * When context asks for `N items` but the sample has no line-item array
+ * (e.g. user shape), attach a small template so {@link itemCount} can apply.
+ */
+function ensureLineItemTemplate(sample: unknown, itemCount?: number): unknown {
+  if (itemCount === undefined) {
+    return sample;
+  }
+  if (sample === null || typeof sample !== 'object' || Array.isArray(sample)) {
+    return sample;
+  }
+  if (hasLineItemArray(sample)) {
+    return sample;
+  }
+  return { ...(sample as Record<string, unknown>), items: [DEFAULT_LINE_ITEM] };
+}
+
 export function generate(sample: unknown, options: GenerateOptions = {}): unknown[] {
   const settings = resolveGenerateSettings(options);
-  const { count, seed, locale, currency, enumMix, overrides } = settings;
+  const { count, itemCount, seed, locale, currency, enumMix, overrides } = settings;
 
   if (!Number.isInteger(count) || count < 0) {
     throw new Error(`generate(): count must be a non-negative integer, got ${count}`);
+  }
+  if (itemCount !== undefined && (!Number.isInteger(itemCount) || itemCount < 0)) {
+    throw new Error(
+      `generate(): itemCount must be a non-negative integer, got ${itemCount}`
+    );
   }
   if (count === 0) {
     return [];
   }
 
+  const shapedSample = ensureLineItemTemplate(sample, itemCount);
+
   // Fail fast before synthesizing if locale is missing (createSeededFaker would throw too).
   createSeededFaker(seed, locale);
 
-  const inferred = inferFields(sample, overrides);
+  const inferred = inferFields(shapedSample, overrides);
   const map = descriptorMap(inferred.fields);
   const rootRng = createMulberry32(seed);
   const hints: ValueHints = { currency, enumMix };
+  const synthBase: Pick<SynthEnv, 'map' | 'hints' | 'itemCount'> = {
+    map,
+    hints,
+    itemCount,
+  };
 
   const records: unknown[] = [];
 
-  if (inferred.rootIsArray && Array.isArray(sample)) {
-    const templates = sample.length > 0 ? sample : [{}];
+  if (inferred.rootIsArray && Array.isArray(shapedSample)) {
+    const templates = shapedSample.length > 0 ? shapedSample : [{}];
     for (let i = 0; i < count; i++) {
       const recordSeed = hashPair(seed, i);
       const rng = createMulberry32(recordSeed);
       const faker = createSeededFaker(recordSeed, locale);
       const template = templates[i % templates.length];
-      const raw = synthesizeValue(template, '$[*]', '', { map, rng, faker, hints });
+      const raw = synthesizeValue(template, '$[*]', '', {
+        ...synthBase,
+        rng,
+        faker,
+      });
       records.push(applyRelatedFieldConsistency(raw, { currency }));
       void rootRng.next();
     }
@@ -247,7 +324,11 @@ export function generate(sample: unknown, options: GenerateOptions = {}): unknow
     const recordSeed = hashPair(seed, i);
     const rng = createMulberry32(recordSeed);
     const faker = createSeededFaker(recordSeed, locale);
-    const raw = synthesizeValue(sample, '$', '', { map, rng, faker, hints });
+    const raw = synthesizeValue(shapedSample, '$', '', {
+      ...synthBase,
+      rng,
+      faker,
+    });
     records.push(applyRelatedFieldConsistency(raw, { currency }));
     void rootRng.next();
   }

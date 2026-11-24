@@ -44,10 +44,17 @@ export {
   parseContext,
   resolveLocaleCode,
   tryResolveLocale,
+  defaultSampleForEntity,
+  DEFAULT_ENTITY_SAMPLES,
   SUPPORTED_LOCALES,
   LOCALE_DEFAULT_CURRENCY,
 } from './context';
-export type { EnumMix, ParsedContext, SupportedLocale } from './context';
+export type {
+  EnumMix,
+  ParsedContext,
+  SupportedLocale,
+  ContextEntity,
+} from './context';
 export {
   applyRelatedFieldConsistency,
   emailLocalPartFromName,

@@ -241,9 +241,16 @@ describe('generator CLI — sample', () => {
       cap.io
     );
     expect(code).toBe(EXIT_OK);
-    const parsed = JSON.parse(cap.stdout) as unknown[];
+    const parsed = JSON.parse(cap.stdout) as Array<{
+      items?: unknown[];
+      currency?: string;
+      phone?: string;
+    }>;
     expect(Array.isArray(parsed)).toBe(true);
-    expect(parsed.length).toBe(3);
+    // "3 items" → nested length; users → 1 record (user shape + injected items)
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0]!.items).toHaveLength(3);
+    expect(typeof parsed[0]!.phone).toBe('string');
   });
 
   it('writes to --out file and is seed-deterministic', async () => {

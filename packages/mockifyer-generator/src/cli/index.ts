@@ -11,8 +11,10 @@ import * as path from 'path';
 import {
   ALL_VARIANT_KINDS,
   VARIANT_KIND_SLUGS,
+  defaultSampleForEntity,
   generateAsync,
   isMockDataLike,
+  parseContext,
   tryResolveLocale,
   variants,
   type ChaosLevel,
@@ -38,19 +40,6 @@ const SLUG_TO_KIND: Record<string, VariantKind> = Object.fromEntries(
     ([kind, slug]) => [slug, kind]
   )
 ) as Record<string, VariantKind>;
-
-/** Default shape when `sample` is invoked with only `--context`. */
-const DEFAULT_SAMPLE = {
-  id: 1,
-  name: 'Ada Lovelace',
-  email: 'ada@example.com',
-  status: 'active',
-  currency: 'USD',
-  total: 19.99,
-  items: [{ id: 10, name: 'Widget', qty: 2, price: 9.99 }],
-  createdAt: '2024-01-01T00:00:00.000Z',
-  updatedAt: '2024-01-02T00:00:00.000Z',
-};
 
 export interface CliIo {
   stdout: { write(chunk: string): void };
@@ -265,8 +254,11 @@ variants options
   --scramble-ids         Allow mutating identifier fields (default: only at nightmare)
 
 sample options
-  --context <text>       Free-text context, e.g. 'swedish users, 10 items'
-  --count <n>            Number of records (default 1, or from context)
+  --context <text>       Free-text context, e.g. 'swedish users, 5 items'
+                         'N items' = nested items[] length; 'N orders/users' = record count.
+                         Entity words (users/orders/products) pick a built-in shape when
+                         no sample file is given.
+  --count <n>            Number of records (default 1, or from 'N orders/users/…')
   --locale <code>        Locale: en|sv|de|fr|es (or aliases like swedish)
   --seed <n|string>      Deterministic seed
   --out <file>           Write JSON to file instead of stdout
@@ -278,7 +270,8 @@ EXIT CODES
 EXAMPLES
   mockifyer-generate variants ./mock.json --level wild --seed 42 --dry-run
   mockifyer-generate variants ./mock.json --out ./mock-data --scenario-prefix trip
-  mockifyer-generate sample --context 'swedish users, 10 items' --seed 7
+  mockifyer-generate sample --context 'swedish users, 5 items' --seed 7
+  mockifyer-generate sample --context '10 orders, 3 items each, prices in EUR' --seed 7
   mockifyer-generate sample ./user.json --count 5 --locale sv --out users.json
 `;
 }
@@ -384,7 +377,10 @@ async function runSample(
     locale = resolved;
   }
 
-  const sample = samplePath ? readJsonFile(samplePath) : DEFAULT_SAMPLE;
+  const parsed = context ? parseContext(context) : {};
+  const sample = samplePath
+    ? readJsonFile(samplePath)
+    : defaultSampleForEntity(parsed.entity);
   const count = countRaw !== undefined ? parseCount(countRaw, 1) : undefined;
 
   const records = await generateAsync(sample, {
