@@ -53,7 +53,11 @@ npx @sgedda/mockifyer-dashboard --path ./mock-data
 
 ## MCP (@sgedda/mockifyer-mcp)
 
-Requires running dashboard. Tools: `mockifyer_get_mock_ai_context`, `mockifyer_search_mocks`, `mockifyer_set_field_overrides`, `mockifyer_list_scenarios`, etc.
+```bash
+npx @sgedda/mockifyer-mcp
+```
+
+Requires a running dashboard. Tools: `mockifyer_get_mock_ai_context`, `mockifyer_search_mocks`, `mockifyer_set_field_overrides`, `mockifyer_list_scenarios`, etc. (Goes live once published to npm.)
 
 ## Links
 

@@ -143,8 +143,8 @@ npx @sgedda/mockifyer-dashboard --provider redis --redis-url redis://127.0.0.1:6
                   code={`{
   "mcpServers": {
     "mockifyer": {
-      "command": "node",
-      "args": ["/path/to/mockifyer/packages/mockifyer-mcp/dist/cli.js"],
+      "command": "npx",
+      "args": ["@sgedda/mockifyer-mcp"],
       "env": { "MOCKIFYER_DASHBOARD_URL": "http://localhost:3002" }
     }
   }

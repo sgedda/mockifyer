@@ -22,7 +22,13 @@
     "testing",
     "http",
     "intercept",
-    "axios"
+    "axios",
+    "api-mocking",
+    "record-replay",
+    "vcr",
+    "msw-alternative",
+    "http-recording",
+    "nodejs"
   ],
   "author": {
     "name": "Sebastian Gedda",
