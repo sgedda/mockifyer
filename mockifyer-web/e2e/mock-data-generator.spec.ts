@@ -16,8 +16,21 @@ test.describe('Mock Data Generator playground', () => {
     ).toBeVisible();
     await expect(page.getByTestId('privacy-note')).toBeVisible();
     await expect(page.getByTestId('sample-json')).toBeVisible();
+    await expect(page.getByTestId('sample-presets')).toBeVisible();
     await expect(page.getByTestId('chaos-slider')).toBeVisible();
+    await expect(page.getByTestId('record-cta')).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Got a real API\?/i })).toBeVisible();
   });
+
+  for (const preset of ['users', 'orders', 'weather'] as const) {
+    test(`preset ${preset} loads sample and generates`, async ({ page }) => {
+      await page.getByTestId(`preset-${preset}`).click();
+      await expect(page.getByTestId('results-section')).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByTestId('generated-output')).not.toHaveText('[]');
+      const context = await page.getByTestId('context-input').inputValue();
+      expect(context.length).toBeGreaterThan(0);
+    });
+  }
 
   test('shows productName for items[*].name and structural array for $.items', async ({ page }) => {
     await expect(page.getByTestId('field-kinds')).toBeVisible({ timeout: 15_000 });

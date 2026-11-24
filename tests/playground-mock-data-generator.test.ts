@@ -27,6 +27,9 @@ import {
 import {
   DEFAULT_SAMPLE,
   MAX_SHARE_HASH_LENGTH,
+  PLAYGROUND_PRESETS,
+  TRY_DEMO_COMMAND,
+  presetSampleJson,
 } from '../mockifyer-web/frontend/src/lib/mock-data-generator/defaults';
 import {
   FIELD_KIND_OPTIONS,
@@ -154,6 +157,44 @@ describe('playground field-kind dropdown options', () => {
     expect(editable.some((f) => f.path === '$.items')).toBe(false);
     const items = structural.find((f) => f.path === '$.items')!;
     expect(structuralArrayLabel(items, fields)).toBe('array of objects');
+  });
+});
+
+describe('playground sample presets', () => {
+  it.each(PLAYGROUND_PRESETS.map((p) => [p.id, p] as const))(
+    'preset %s generates at least one record',
+    async (_id, preset) => {
+      const records = await generateAsync(preset.sample, {
+        seed: 42,
+        count: 2,
+        context: preset.context,
+      });
+      expect(Array.isArray(records)).toBe(true);
+      expect(records.length).toBeGreaterThan(0);
+      expect(presetSampleJson(preset)).toContain('{');
+    }
+  );
+
+  it('loads into shareable editor state (input + context round-trip)', () => {
+    const orders = PLAYGROUND_PRESETS.find((p) => p.id === 'orders')!;
+    const encoded = encodeShareHash({
+      input: presetSampleJson(orders),
+      context: orders.context,
+      count: 3,
+      seed: 42,
+      level: 'wild',
+      overrides: {},
+      checked: [],
+    });
+    expect(encoded.ok).toBe(true);
+    if (!encoded.ok) return;
+    const decoded = decodeShareHash(encoded.hash);
+    expect(decoded?.context).toBe(orders.context);
+    expect(JSON.parse(decoded!.input)).toEqual(JSON.parse(presetSampleJson(orders)));
+  });
+
+  it('exposes the try demo command for the CTA', () => {
+    expect(TRY_DEMO_COMMAND).toBe('npx -p @sgedda/mockifyer-core mockifyer try');
   });
 });
 

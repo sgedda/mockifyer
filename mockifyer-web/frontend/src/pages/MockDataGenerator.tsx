@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
+  ArrowRight,
   Copy,
   Download,
   FileJson,
   Link2,
   Loader2,
+  Radio,
   Shield,
   Sparkles,
   Upload,
@@ -33,7 +35,11 @@ import {
   DEFAULT_COUNT,
   DEFAULT_SAMPLE_JSON,
   DEFAULT_SEED,
+  PLAYGROUND_PRESETS,
+  TRY_DEMO_COMMAND,
+  presetSampleJson,
   type PlaygroundChaosLevel,
+  type PlaygroundPreset,
 } from '@/lib/mock-data-generator/defaults'
 import {
   buildSampleCliCommand,
@@ -206,51 +212,83 @@ export default function MockDataGenerator() {
     }
   }
 
+  const runGenerate = useCallback(
+    async (opts: {
+      sample: unknown
+      contextText: string
+      kindOverrides: Record<string, string>
+    }) => {
+      setError(null)
+      setBusy(true)
+      try {
+        const engine = await loadGeneratorEngine()
+        setEngineReady(true)
+        const generated = await engine.generateAsync(opts.sample, {
+          seed,
+          count,
+          context: opts.contextText.trim() || undefined,
+          overrides: opts.kindOverrides,
+        })
+        setRecords(generated)
+
+        const variants = engine.variants(opts.sample, {
+          seed,
+          chaosLevel: level,
+        })
+        setNamedVariants(variants)
+
+        // Keep checklist selections for kinds that still exist; drop stale ones
+        setChecked((prev) => {
+          const next: Record<string, boolean> = {}
+          for (const v of variants) {
+            if (prev[v.name]) next[v.name] = true
+          }
+          return next
+        })
+
+        toast({
+          title: 'Generated',
+          description: `${generated.length} record(s), ${variants.length} edge-case variant(s)`,
+        })
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        setError(message)
+      } finally {
+        setBusy(false)
+      }
+    },
+    [count, level, seed, toast]
+  )
+
   const handleGenerate = async () => {
-    setError(null)
     const parsed = parseSampleJson(inputText)
     if (!parsed.ok) {
       setError(`Invalid JSON: ${parsed.error}`)
       return
     }
+    await runGenerate({
+      sample: parsed.value,
+      contextText: context,
+      kindOverrides: overrides,
+    })
+  }
 
-    setBusy(true)
-    try {
-      const engine = await loadGeneratorEngine()
-      setEngineReady(true)
-      const generated = await engine.generateAsync(parsed.value, {
-        seed,
-        count,
-        context: context.trim() || undefined,
-        overrides,
-      })
-      setRecords(generated)
+  const handlePreset = async (preset: PlaygroundPreset) => {
+    const json = presetSampleJson(preset)
+    setInputText(json)
+    setContext(preset.context)
+    setOverrides({})
+    await runGenerate({
+      sample: preset.sample,
+      contextText: preset.context,
+      kindOverrides: {},
+    })
+  }
 
-      const variants = engine.variants(parsed.value, {
-        seed,
-        chaosLevel: level,
-      })
-      setNamedVariants(variants)
-
-      // Keep checklist selections for kinds that still exist; drop stale ones
-      setChecked((prev) => {
-        const next: Record<string, boolean> = {}
-        for (const v of variants) {
-          if (prev[v.name]) next[v.name] = true
-        }
-        return next
-      })
-
-      toast({
-        title: 'Generated',
-        description: `${generated.length} record(s), ${variants.length} edge-case variant(s)`,
-      })
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      setError(message)
-    } finally {
-      setBusy(false)
-    }
+  const handleResetExample = () => {
+    setInputText(DEFAULT_SAMPLE_JSON)
+    setContext(DEFAULT_CONTEXT)
+    setOverrides({})
   }
 
   const handleCopyRecords = async () => {
@@ -329,6 +367,27 @@ export default function MockDataGenerator() {
               <CardDescription>Paste or upload a response body (or a Mockifyer mock document).</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div
+                className="flex flex-wrap items-center gap-2"
+                data-testid="sample-presets"
+                role="group"
+                aria-label="Sample presets"
+              >
+                <span className="text-xs text-muted-foreground mr-1">Try a sample:</span>
+                {PLAYGROUND_PRESETS.map((preset) => (
+                  <Button
+                    key={preset.id}
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={busy}
+                    data-testid={`preset-${preset.id}`}
+                    onClick={() => void handlePreset(preset)}
+                  >
+                    {preset.label}
+                  </Button>
+                ))}
+              </div>
               <Textarea
                 aria-label="Sample JSON"
                 data-testid="sample-json"
@@ -353,11 +412,7 @@ export default function MockDataGenerator() {
                   <Upload className="h-4 w-4 mr-2" />
                   Upload JSON
                 </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => setInputText(DEFAULT_SAMPLE_JSON)}
-                >
+                <Button type="button" variant="ghost" onClick={handleResetExample}>
                   Reset example
                 </Button>
               </div>
@@ -741,6 +796,47 @@ export default function MockDataGenerator() {
               to record and replay the real shape.
             </li>
           </ol>
+        </section>
+
+        <section
+          className="border border-border rounded-xl bg-zinc-50/80 px-6 py-10 sm:px-10 space-y-5"
+          data-testid="record-cta"
+        >
+          <div className="flex items-start gap-3">
+            <Radio className="h-8 w-8 text-primary shrink-0 mt-1" aria-hidden />
+            <div className="space-y-2 max-w-3xl">
+              <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight">
+                Got a real API? Record it with Mockifyer
+              </h2>
+              <p className="text-muted-foreground text-base">
+                Capture live responses once, then replay them offline — selective recording keeps
+                traffic on the real API until you activate a mock.
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-4">
+            <Button asChild data-testid="record-cta-getting-started">
+              <Link to="/getting-started">
+                Start recording
+                <ArrowRight className="h-4 w-4 ml-2" />
+              </Link>
+            </Button>
+            <button
+              type="button"
+              className="text-sm text-primary underline-offset-4 hover:underline font-medium"
+              data-testid="record-cta-try-demo"
+              onClick={() => {
+                void navigator.clipboard.writeText(TRY_DEMO_COMMAND).then(() => {
+                  toast({
+                    title: 'Copied try command',
+                    description: TRY_DEMO_COMMAND,
+                  })
+                })
+              }}
+            >
+              Or try the demo: <code className="text-xs bg-white border px-1.5 py-0.5 rounded">{TRY_DEMO_COMMAND}</code>
+            </button>
+          </div>
         </section>
       </div>
     </div>
