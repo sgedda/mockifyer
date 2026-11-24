@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
-import { Github, ArrowRight, PlayCircle, Database, Code2, Sparkles, Construction, Target, Zap, GitBranch, Terminal, Play, Radio, LayoutDashboard, TrendingUp, CheckCircle2, Map, ExternalLink } from 'lucide-react'
+import { Github, ArrowRight, PlayCircle, Database, Code2, Sparkles, Construction, Target, Zap, GitBranch, Terminal, Play, Radio, LayoutDashboard, TrendingUp, CheckCircle2, Map, ExternalLink, Loader2 } from 'lucide-react'
 import CodeBlock from '@/components/CodeBlock'
 import RunItButton from '@/components/RunItButton'
 import {
@@ -9,6 +9,8 @@ import {
   WANDERWEIRD_ATLAS_HREF,
   WANDERWEIRD_ATLAS_SHOWCASE,
 } from '@/lib/seo-config'
+
+const StartPageMockGenerator = lazy(() => import('@/components/StartPageMockGenerator'))
 
 const STACKBLITZ_QUICKSTART_URL =
   'https://stackblitz.com/github/sgedda/mockifyer/tree/main/examples/stackblitz-quickstart'
@@ -230,6 +232,20 @@ export default function Introduction() {
           </div>
         </div>
       </section>
+
+      {/* Compact mock-data teaser — lazy chunk; engine loads after idle/visible */}
+      <Suspense
+        fallback={
+          <section className="bg-white border-b border-zinc-200 px-5 py-14" aria-busy="true">
+            <div className="mx-auto max-w-[1200px] flex items-center gap-2 text-sm text-zinc-500">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading mock data preview…
+            </div>
+          </section>
+        }
+      >
+        <StartPageMockGenerator />
+      </Suspense>
 
       {/* Atlas showcase — real WanderWeird traffic map */}
       <section

@@ -22,6 +22,17 @@ test.describe('Mock Data Generator playground', () => {
     await expect(page.getByRole('heading', { name: /Got a real API\?/i })).toBeVisible();
   });
 
+  test('auto-generates default Users preset above the fold', async ({ page }) => {
+    await expect(page.getByTestId('results-section')).toBeVisible();
+    await expect(page.getByTestId('generated-output')).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId('generated-output')).toContainText('"email"');
+    await expect(page.getByTestId('context-input')).toHaveValue(/swedish users/i);
+    const box = await page.getByTestId('generated-output').boundingBox();
+    expect(box).toBeTruthy();
+    // Above the fold on a typical laptop viewport (Playwright default ~720–900 tall)
+    expect(box!.y).toBeLessThan(900);
+  });
+
   for (const preset of ['users', 'orders', 'weather'] as const) {
     test(`preset ${preset} loads sample and generates`, async ({ page }) => {
       await page.getByTestId(`preset-${preset}`).click();
@@ -33,6 +44,7 @@ test.describe('Mock Data Generator playground', () => {
   }
 
   test('shows productName for items[*].name and structural array for $.items', async ({ page }) => {
+    await page.getByTestId('preset-orders').click();
     await expect(page.getByTestId('field-kinds')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId('structural-$.items')).toContainText(/array of objects/i);
     const nameKind = page.getByTestId('kind-$.items[*].name');
@@ -52,8 +64,7 @@ test.describe('Mock Data Generator playground', () => {
   });
 
   test('downloads generated JSON', async ({ page }) => {
-    await page.getByTestId('generate-button').click();
-    await expect(page.getByTestId('download-json')).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId('download-json')).toBeEnabled({ timeout: 30_000 });
 
     const downloadPromise = page.waitForEvent('download');
     await page.getByTestId('download-json').click();
@@ -90,7 +101,6 @@ test.describe('Mock Data Generator playground', () => {
 
   test('share link copy and ZIP download work in Chromium', async ({ page, context }) => {
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-    await page.getByTestId('generate-button').click();
     await expect(page.getByTestId('download-variants-zip')).toBeVisible({ timeout: 30_000 });
 
     await expect.poll(() => page.url()).toMatch(/#mdg1\./);
@@ -115,5 +125,31 @@ test.describe('Mock Data Generator playground', () => {
   test('is light-mode only (no dark class on document)', async ({ page }) => {
     const hasDark = await page.evaluate(() => document.documentElement.classList.contains('dark'));
     expect(hasDark).toBe(false);
+  });
+});
+
+test.describe('Start page mock-data teaser', () => {
+  test('shows live output with presets and links to the full generator', async ({ page }) => {
+    await page.goto('/');
+    const teaser = page.getByTestId('start-page-mock-generator');
+    await expect(teaser).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('start-presets')).toBeVisible();
+    await expect(page.getByTestId('start-generated-output')).toBeVisible();
+    await expect(page.getByTestId('start-generated-output')).toContainText('"email"', {
+      timeout: 30_000,
+    });
+
+    await page.getByTestId('start-preset-orders').click();
+    await expect(page.getByTestId('start-context')).toHaveValue(/prices in USD/i);
+    await expect(page.getByTestId('start-generated-output')).toContainText('"total"', {
+      timeout: 30_000,
+    });
+
+    const href = await page.getByTestId('start-open-full-generator').getAttribute('href');
+    expect(href).toMatch(/^\/tools\/mock-data-generator#mdg1\./);
+
+    await page.getByTestId('start-open-full-generator').click();
+    await expect(page).toHaveURL(/\/tools\/mock-data-generator#mdg1\./);
+    await expect(page.getByTestId('context-input')).toHaveValue(/prices in USD/i);
   });
 });
