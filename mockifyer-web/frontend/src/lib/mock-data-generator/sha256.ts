@@ -1,18 +1,13 @@
 /**
  * Minimal sync SHA-256 (browser + Node) for Mockifyer mock filename hashes.
  * Matches Node `crypto.createHash('sha256')` hex digests.
+ * Uses TextEncoder only — no Node `Buffer`.
  */
+
+import { utf8Encode } from './bytes'
 
 function rotr(n: number, x: number): number {
   return (x >>> n) | (x << (32 - n))
-}
-
-function utf8Bytes(text: string): Uint8Array {
-  if (typeof TextEncoder !== 'undefined') {
-    return new TextEncoder().encode(text)
-  }
-  // Node test fallback without TextEncoder polyfill
-  return Uint8Array.from(Buffer.from(text, 'utf8'))
 }
 
 /**
@@ -32,7 +27,7 @@ export function sha256Hex(input: string): string {
     0xc67178f2,
   ])
 
-  const data = utf8Bytes(input)
+  const data = utf8Encode(input)
   const bitLen = data.length * 8
   const withPad = data.length + 1 + 8
   const totalLen = Math.ceil(withPad / 64) * 64

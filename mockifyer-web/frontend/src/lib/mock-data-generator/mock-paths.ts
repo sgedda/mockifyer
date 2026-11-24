@@ -5,33 +5,21 @@
  */
 
 import type { GeneratedMockData } from '@sgedda/mockifyer-generator'
+import { utf8ByteLength, utf8Decode, utf8Encode } from './bytes'
 import { sha256Hex } from './sha256'
 
 const RECORDING_IDENTITY_HASH_HEX_LENGTH = 12
 const MAX_FILE_NAME_BYTES = 255
 
-function utf8ByteLength(text: string): number {
-  if (typeof TextEncoder !== 'undefined') {
-    return new TextEncoder().encode(text).length
-  }
-  return Buffer.byteLength(text, 'utf8')
-}
-
 function truncateUtf8ToBytes(text: string, maxBytes: number): string {
   if (maxBytes <= 0) return ''
-  const bytes =
-    typeof TextEncoder !== 'undefined'
-      ? new TextEncoder().encode(text)
-      : Uint8Array.from(Buffer.from(text, 'utf8'))
+  const bytes = utf8Encode(text)
   if (bytes.length <= maxBytes) return text
   let end = maxBytes
   while (end > 0 && (bytes[end]! & 0xc0) === 0x80) {
     end -= 1
   }
-  if (typeof TextDecoder !== 'undefined') {
-    return new TextDecoder().decode(bytes.subarray(0, end))
-  }
-  return Buffer.from(bytes.subarray(0, end)).toString('utf8')
+  return utf8Decode(bytes.subarray(0, end))
 }
 
 function clampFsPathSegment(segment: string): string {

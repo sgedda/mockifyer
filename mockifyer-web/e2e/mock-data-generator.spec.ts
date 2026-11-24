@@ -88,6 +88,30 @@ test.describe('Mock Data Generator playground', () => {
     await expect(firstVariant).toBeChecked();
   });
 
+  test('share link copy and ZIP download work in Chromium', async ({ page, context }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.getByTestId('generate-button').click();
+    await expect(page.getByTestId('download-variants-zip')).toBeVisible({ timeout: 30_000 });
+
+    await expect.poll(() => page.url()).toMatch(/#mdg1\./);
+    await page.getByTestId('copy-share-link').click();
+    const clipboard = await page.evaluate(() => navigator.clipboard.readText());
+    expect(clipboard).toMatch(/#mdg1\./);
+    expect(clipboard).toContain('/tools/mock-data-generator');
+
+    const downloadPromise = page.waitForEvent('download');
+    await page.getByTestId('download-variants-zip').click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toBe('mockifyer-variants.zip');
+    const target = path.join(test.info().outputDir, download.suggestedFilename());
+    await download.saveAs(target);
+    const bytes = fs.readFileSync(target);
+    expect(bytes.length).toBeGreaterThan(100);
+    // ZIP local file header magic
+    expect(bytes[0]).toBe(0x50);
+    expect(bytes[1]).toBe(0x4b);
+  });
+
   test('is light-mode only (no dark class on document)', async ({ page }) => {
     const hasDark = await page.evaluate(() => document.documentElement.classList.contains('dark'));
     expect(hasDark).toBe(false);

@@ -4,6 +4,7 @@
  */
 
 import { deflateSync, inflateSync, strFromU8, strToU8 } from 'fflate'
+import { fromBase64Url, toBase64Url } from './bytes'
 import {
   CHAOS_LEVELS,
   MAX_SHARE_HASH_LENGTH,
@@ -27,33 +28,6 @@ export interface PlaygroundShareState {
 export type EncodeShareResult =
   | { ok: true; hash: string }
   | { ok: false; reason: 'too_large'; approximateLength: number }
-
-function toBase64Url(bytes: Uint8Array): string {
-  let binary = ''
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]!)
-  }
-  const b64 =
-    typeof btoa === 'function'
-      ? btoa(binary)
-      : Buffer.from(bytes).toString('base64')
-  return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
-}
-
-function fromBase64Url(text: string): Uint8Array {
-  const padded = text.replace(/-/g, '+').replace(/_/g, '/')
-  const padLen = (4 - (padded.length % 4)) % 4
-  const b64 = padded + '='.repeat(padLen)
-  if (typeof atob === 'function') {
-    const binary = atob(b64)
-    const out = new Uint8Array(binary.length)
-    for (let i = 0; i < binary.length; i++) {
-      out[i] = binary.charCodeAt(i)
-    }
-    return out
-  }
-  return new Uint8Array(Buffer.from(b64, 'base64'))
-}
 
 function compactPayload(state: PlaygroundShareState): Record<string, unknown> {
   const payload: Record<string, unknown> = {
