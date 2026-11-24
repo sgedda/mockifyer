@@ -1,10 +1,15 @@
 import {
   applyRelatedFieldConsistency,
   createSeededFaker,
+  defaultSampleForEntity,
+  emailLocalPartFromName,
+  FieldKind,
   generate,
   generateAsync,
+  inferFieldKind,
   loadLocale,
   isLocaleLoaded,
+  isLineItemProductNamePath,
   parseContext,
   resolveLocaleCode,
   weightedPick,
@@ -21,6 +26,7 @@ describe('parseContext', () => {
       locale: 'sv',
       currency: 'SEK',
       count: 20,
+      entity: 'user',
       enumMix: { values: ['paid', 'refunded', 'failed'] },
     });
   });
@@ -40,6 +46,53 @@ describe('parseContext', () => {
     expect(parseContext('en-US users').locale).toBe('en');
     expect(resolveLocaleCode('svenska')).toBe('sv');
     expect(resolveLocaleCode('unknown-xx')).toBe('en');
+  });
+
+  it('does not treat bare short codes as locale in ordinary words', () => {
+    expect(parseContext('en lista med svenska användare').locale).toBe('sv');
+    expect(parseContext('en lista med users').locale).toBeUndefined();
+    expect(parseContext('locale sv').locale).toBe('sv');
+    expect(parseContext('lang: de').locale).toBe('de');
+    expect(parseContext('sv').locale).toBe('sv');
+    expect(parseContext('sv-SE').locale).toBe('sv');
+  });
+
+  it('treats N items as itemCount, not record count', () => {
+    expect(parseContext('swedish users, 5 items')).toEqual({
+      locale: 'sv',
+      entity: 'user',
+      itemCount: 5,
+    });
+    expect(parseContext('10 orders, 3 items each, prices in EUR')).toEqual({
+      count: 10,
+      itemCount: 3,
+      currency: 'EUR',
+      entity: 'order',
+    });
+    expect(parseContext('5 line items').itemCount).toBe(5);
+    expect(parseContext('5 line items').count).toBeUndefined();
+    expect(parseContext('3 products in each').itemCount).toBe(3);
+    expect(parseContext('3 products in each').count).toBeUndefined();
+    expect(parseContext('10 products')).toEqual({
+      count: 10,
+      entity: 'product',
+    });
+  });
+
+  it('infers entity for built-in sample shapes', () => {
+    expect(parseContext('swedish users').entity).toBe('user');
+    expect(parseContext('customers in Berlin').entity).toBe('user');
+    expect(parseContext('10 orders').entity).toBe('order');
+    expect(parseContext('catalog of products').entity).toBe('product');
+    expect(parseContext('random dataset').entity).toBeUndefined();
+    const user = defaultSampleForEntity('user') as Record<string, unknown>;
+    expect(user).toHaveProperty('email');
+    expect(user).toHaveProperty('phone');
+    expect(user).not.toHaveProperty('items');
+    const product = defaultSampleForEntity('product') as Record<string, unknown>;
+    expect(product).toHaveProperty('sku');
+    expect(product).toHaveProperty('price');
+    expect(defaultSampleForEntity(undefined)).toHaveProperty('items');
   });
 
   it('returns empty object for blank input', () => {
@@ -323,5 +376,89 @@ describe('generator — determinism with context', () => {
       weightedPick(b, values, weights),
       weightedPick(b, values, weights),
     ]);
+  });
+});
+
+describe('generator — person/product consistency', () => {
+  beforeAll(async () => {
+    await loadLocale('sv');
+  });
+
+  it('emailLocalPartFromName strips accents and joins with dots', () => {
+    expect(emailLocalPartFromName('Pernilla Olofsson')).toBe('pernilla.olofsson');
+    expect(emailLocalPartFromName('José María')).toBe('jose.maria');
+  });
+
+  it('infers items[*].name as ProductName, root name as FullName', () => {
+    expect(isLineItemProductNamePath('$.items[*].name', 'name')).toBe(true);
+    expect(inferFieldKind('name', ['Widget'], '$.items[*].name').kind).toBe(
+      FieldKind.ProductName
+    );
+    expect(inferFieldKind('name', ['Ada Lovelace'], '$.name').kind).toBe(FieldKind.FullName);
+  });
+
+  it('swedish context defaults currency to SEK and aligns email with name', async () => {
+    const sample = {
+      id: 1,
+      name: 'Ada Lovelace',
+      email: 'ada@example.com',
+      status: 'active',
+      currency: 'USD',
+      total: 19.99,
+      items: [{ id: 10, name: 'Widget', qty: 2, price: 9.99 }],
+    };
+    const records = (await generateAsync(sample, {
+      seed: 7,
+      context: 'swedish users, 5 items',
+    })) as Array<{
+      name: string;
+      email: string;
+      currency: string;
+      items: Array<{ name: string }>;
+    }>;
+
+    // "5 items" → nested items length; record count defaults to 1
+    expect(records).toHaveLength(1);
+    const record = records[0]!;
+    expect(record.currency).toBe('SEK');
+    expect(record.items).toHaveLength(5);
+    const local = emailLocalPartFromName(record.name);
+    expect(record.email).toBe(`${local}@${record.email.split('@')[1]}`);
+    expect(record.email.startsWith(`${local}@`)).toBe(true);
+    for (const item of record.items) {
+      // Product titles from faker.commerce — not "First Last" person shapes
+      expect(item.name).not.toMatch(/^(Dr\.|Prof\.|Mr\.|Mrs\.|Ms\.)\s/);
+      expect(item.name.split(/\s+/).length).toBeLessThanOrEqual(5);
+      // Must not equal the parent person name
+      expect(item.name).not.toBe(record.name);
+    }
+  });
+
+  it('applies itemCount and record count from context phrases', async () => {
+    const sample = {
+      id: 1,
+      status: 'open',
+      currency: 'USD',
+      total: 10,
+      items: [{ id: 1, name: 'Widget', qty: 1, price: 10 }],
+    };
+    const records = (await generateAsync(sample, {
+      seed: 7,
+      context: '10 orders, 3 items each, prices in EUR',
+    })) as Array<{ currency: string; items: unknown[] }>;
+    expect(records).toHaveLength(10);
+    for (const record of records) {
+      expect(record.currency).toBe('EUR');
+      expect(record.items).toHaveLength(3);
+    }
+  });
+
+  it('applyRelatedFieldConsistency rewrites email from name', () => {
+    const record = {
+      name: 'Pernilla Olofsson',
+      email: 'random.other@corp.example',
+    };
+    applyRelatedFieldConsistency(record);
+    expect(record.email).toBe('pernilla.olofsson@corp.example');
   });
 });

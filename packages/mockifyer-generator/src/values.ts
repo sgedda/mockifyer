@@ -126,6 +126,8 @@ export function generateValueForKind(
       return faker.person.lastName();
     case FieldKind.FullName:
       return faker.person.fullName();
+    case FieldKind.ProductName:
+      return faker.commerce.productName();
     case FieldKind.Uuid:
       return faker.string.uuid();
     case FieldKind.IntegerId: {

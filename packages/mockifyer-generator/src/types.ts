@@ -8,6 +8,8 @@ export enum FieldKind {
   FirstName = 'firstName',
   LastName = 'lastName',
   FullName = 'fullName',
+  /** Product / SKU title (e.g. `items[*].name`), not a person name. */
+  ProductName = 'productName',
   Uuid = 'uuid',
   IntegerId = 'integerId',
   Money = 'money',
@@ -66,6 +68,11 @@ export type FieldKindOverrides = Record<string, FieldKind | string>;
 export interface GenerateOptions {
   /** Number of root records to produce (default 1; may also come from context). */
   count?: number;
+  /**
+   * Exact length for nested line-item arrays (`items`, `lineItems`, …).
+   * From context `"5 items"` / `"3 items each"` when not set explicitly.
+   */
+  itemCount?: number;
   /** Seed for the PRNG; same seed + sample + options ⇒ identical output. */
   seed?: number | string;
   /** Path → kind overrides (highest precedence). */
@@ -76,6 +83,7 @@ export interface GenerateOptions {
    * Free-text context, e.g.
    * `"Swedish users, prices in SEK, 20 orders, mix of paid/refunded/failed"`.
    * Parsed offline via {@link parseContext}; no network/AI.
+   * `"N items"` sets nested item array length, not root record count.
    */
   context?: string;
   /** Faker locale — name or code, e.g. `"Swedish"` / `"sv"` / `"sv-SE"`. */

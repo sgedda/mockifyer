@@ -5,6 +5,7 @@
  * - ids carried through nested objects (order.id → items[*].orderId, userId ↔ user.id)
  * - created / createdAt ≤ updated / updatedAt (and start ≤ end)
  * - currency fields consistent when a currency option is set
+ * - email local-part derived from the same record's person name when both exist
  */
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -35,6 +36,14 @@ const UNIT_PRICE_KEYS = new Set(['price', 'unitprice', 'unit_price', 'unitcost']
 const LINE_AMOUNT_KEYS = new Set(['price', 'amount', 'total', 'linetotal', 'lineamount', 'cost']);
 
 const CURRENCY_KEYS = new Set(['currency', 'currencycode', 'curr']);
+
+const EMAIL_KEYS = new Set(['email', 'emailaddress', 'useremail', 'mail']);
+
+const FULL_NAME_KEYS = new Set(['name', 'fullname', 'displayname', 'customername']);
+
+const FIRST_NAME_KEYS = new Set(['firstname', 'fname', 'givenname', 'first']);
+
+const LAST_NAME_KEYS = new Set(['lastname', 'lname', 'surname', 'familyname', 'last']);
 
 const DATE_PAIRS: Array<[string, string]> = [
   ['created', 'updated'],
@@ -231,6 +240,73 @@ function applyCurrency(obj: Record<string, unknown>, currency: string): void {
 }
 
 /**
+ * ASCII-ish email local-part from a display name
+ * (`Pernilla Olofsson` → `pernilla.olofsson`, `José María` → `jose.maria`).
+ */
+export function emailLocalPartFromName(name: string): string {
+  const ascii = name
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/ß/g, 'ss')
+    .replace(/æ/gi, 'ae')
+    .replace(/œ/gi, 'oe')
+    .replace(/ð/gi, 'd')
+    .replace(/þ/gi, 'th');
+  const local = ascii
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '.')
+    .replace(/^\.+|\.+$/g, '')
+    .replace(/\.{2,}/g, '.');
+  return local || 'user';
+}
+
+function personNameFromRecord(obj: Record<string, unknown>): string | null {
+  const fullKey = findKey(obj, FULL_NAME_KEYS);
+  if (fullKey && typeof obj[fullKey] === 'string' && String(obj[fullKey]).trim()) {
+    return String(obj[fullKey]).trim();
+  }
+  const firstKey = findKey(obj, FIRST_NAME_KEYS);
+  const lastKey = findKey(obj, LAST_NAME_KEYS);
+  const first = firstKey && typeof obj[firstKey] === 'string' ? String(obj[firstKey]).trim() : '';
+  const last = lastKey && typeof obj[lastKey] === 'string' ? String(obj[lastKey]).trim() : '';
+  const combined = `${first} ${last}`.trim();
+  return combined || null;
+}
+
+function emailDomainFromExisting(email: unknown): string {
+  if (typeof email === 'string') {
+    const at = email.lastIndexOf('@');
+    if (at > 0 && at < email.length - 1) {
+      const domain = email.slice(at + 1).trim().toLowerCase();
+      if (domain.includes('.')) {
+        return domain;
+      }
+    }
+  }
+  return 'example.com';
+}
+
+/**
+ * Align email fields with the person name on the same object.
+ * Nested line-item objects without a person name are left alone.
+ */
+function applyEmailFromPersonName(obj: Record<string, unknown>): void {
+  const name = personNameFromRecord(obj);
+  if (!name) {
+    return;
+  }
+  const emailKeys = findKeys(obj, EMAIL_KEYS);
+  if (emailKeys.length === 0) {
+    return;
+  }
+  const local = emailLocalPartFromName(name);
+  for (const key of emailKeys) {
+    const domain = emailDomainFromExisting(obj[key]);
+    obj[key] = `${local}@${domain}`;
+  }
+}
+
+/**
  * Mutate a generated record (object or array tree) so related fields stay consistent.
  */
 export function applyRelatedFieldConsistency(
@@ -260,6 +336,7 @@ export function applyRelatedFieldConsistency(
   if (options.currency) {
     applyCurrency(value, options.currency);
   }
+  applyEmailFromPersonName(value);
 
   return value;
 }

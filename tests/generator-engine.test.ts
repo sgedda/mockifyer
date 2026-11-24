@@ -246,13 +246,13 @@ describe('generator engine — PRNG / faker helpers', () => {
 
 describe('generator engine — browser-safe / no Node globals', () => {
   it('browser entry source files do not import Node-only modules', () => {
-    // `src/node/**` is the Node-only subpath export — excluded from this check.
+    // `src/node/**` and `src/cli/**` are Node-only entries — excluded from this check.
     const files: string[] = [];
     const walk = (dir: string) => {
       for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
         const full = path.join(dir, entry.name);
         if (entry.isDirectory()) {
-          if (entry.name === 'node') continue;
+          if (entry.name === 'node' || entry.name === 'cli') continue;
           walk(full);
         } else if (entry.name.endsWith('.ts')) {
           files.push(full);
