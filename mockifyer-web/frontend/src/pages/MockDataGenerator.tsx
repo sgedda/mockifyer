@@ -47,7 +47,6 @@ import {
   type PlaygroundChaosLevel,
   type PlaygroundPreset,
 } from '@/lib/mock-data-generator/defaults'
-import { fetchSampleFromUrl } from '@/lib/mock-data-generator/fetch-sample'
 import {
   buildSampleCliCommand,
   buildVariantsCliCommand,
@@ -68,7 +67,7 @@ import {
   structuralArrayLabel,
 } from '@/lib/mock-data-generator/field-kinds'
 import type { RealApiExample } from '@/lib/mock-data-generator/real-api-examples'
-import RealApiDemo, { type FetchedSampleSource } from '@/components/RealApiDemo'
+import RealApiDemo from '@/components/RealApiDemo'
 import type { FieldDescriptor, NamedVariant } from '@sgedda/mockifyer-generator'
 
 function clampInt(value: number, min: number, max: number): number {
@@ -117,10 +116,6 @@ export default function MockDataGenerator() {
   const [shareTooLarge, setShareTooLarge] = useState(false)
   const [engineReady, setEngineReady] = useState(false)
   const [bootstrapped, setBootstrapped] = useState(false)
-  const [fetchUrl, setFetchUrl] = useState('')
-  const [fetchBusy, setFetchBusy] = useState(false)
-  const [fetchError, setFetchError] = useState<string | null>(null)
-  const [fetchedSample, setFetchedSample] = useState<FetchedSampleSource | null>(null)
 
   // Light mode only for this playground (SGE-76)
   useEffect(() => {
@@ -141,15 +136,6 @@ export default function MockDataGenerator() {
       }
       setSeed(state.seed)
       setLevel(state.level)
-      if (state.sampleUrl) {
-        setFetchUrl(state.sampleUrl)
-        try {
-          const parsed = JSON.parse(state.input) as unknown
-          setFetchedSample({ url: state.sampleUrl, recorded: parsed })
-        } catch {
-          setFetchedSample(null)
-        }
-      }
       if (state.overrides) setOverrides(state.overrides)
       const nextChecked: Record<string, boolean> = {}
       for (const slug of state.checked) {
@@ -172,7 +158,6 @@ export default function MockDataGenerator() {
       seed,
       count,
       itemCount,
-      sampleUrl: fetchedSample?.url,
       level,
       checked: checkedSlugs,
       overrides,
@@ -185,7 +170,7 @@ export default function MockDataGenerator() {
     if (window.location.hash !== result.hash) {
       window.history.replaceState(null, '', `${window.location.pathname}${result.hash}`)
     }
-  }, [inputText, context, seed, count, itemCount, fetchedSample, level, checked, overrides])
+  }, [inputText, context, seed, count, itemCount, level, checked, overrides])
 
   const sampleCli = useMemo(
     () =>
@@ -351,34 +336,9 @@ export default function MockDataGenerator() {
     setInputText(`${JSON.stringify(example.recorded, null, 2)}\n`)
     setContext(example.context)
     setOverrides({})
-    if (example.id === '__fetched__' && example.sourceUrl) {
-      setFetchedSample({ url: example.sourceUrl, recorded: example.recorded })
-      setFetchUrl(example.sourceUrl)
-    }
     await runGenerate({
       sample: example.recorded,
       contextText: example.context,
-      kindOverrides: {},
-    })
-  }
-
-  const handleFetchFromUrl = async () => {
-    setFetchBusy(true)
-    setFetchError(null)
-    const result = await fetchSampleFromUrl(fetchUrl)
-    setFetchBusy(false)
-    if (!result.ok) {
-      setFetchError(result.message)
-      return
-    }
-    setInputText(result.text)
-    setFetchedSample({ url: result.url, recorded: result.json })
-    setFetchUrl(result.url)
-    setOverrides({})
-    toast({ title: 'Sample fetched', description: result.url })
-    await runGenerate({
-      sample: result.json,
-      contextText: context,
       kindOverrides: {},
     })
   }
@@ -452,12 +412,11 @@ export default function MockDataGenerator() {
               data-testid="privacy-note"
             >
               <Shield className="h-3.5 w-3.5 shrink-0" />
-              Nothing is sent to Mockifyer
+              Nothing leaves your browser
             </span>
             <span className="text-muted-foreground text-xs sm:text-sm">
-              Generation stays local
-              {engineReady ? ' (engine loaded)' : ''}. Optional: one GET from your browser to a URL
-              you enter below.
+              Generation stays local{engineReady ? ' (engine loaded)' : ''}. Paste or upload a
+              sample — nothing is sent to Mockifyer.
             </span>
           </div>
         </header>
@@ -574,17 +533,73 @@ export default function MockDataGenerator() {
 
         <section className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-6 items-start">
           <div className="space-y-4 sm:space-y-6 min-w-0">
-          <Card className="border-border overflow-hidden">
+          <Card className="border-border overflow-hidden" data-testid="sample-json-card">
             <CardHeader className="pb-3">
-              <CardTitle className="text-lg sm:text-xl">Sample JSON</CardTitle>
+              <CardTitle className="text-lg sm:text-xl">Paste or upload sample JSON</CardTitle>
               <CardDescription>
-                Paste, upload, or fetch a response body (or a Mockifyer mock document).
+                Drop in a response body (or a Mockifyer mock document). Everything stays in this
+                tab.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="space-y-2" data-testid="sample-input-actions">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="application/json,.json"
+                  className="hidden"
+                  onChange={(e) => void handleUpload(e.target.files?.[0] ?? null)}
+                />
+                <div className="flex flex-col sm:flex-row flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    className="w-full sm:w-auto min-h-11"
+                    data-testid="upload-json-button"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <Upload className="h-4 w-4 mr-2" />
+                    Upload JSON
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full sm:w-auto min-h-11"
+                    data-testid="focus-paste-button"
+                    onClick={() => {
+                      const el = document.querySelector<HTMLTextAreaElement>(
+                        '[data-testid="sample-json"]'
+                      )
+                      el?.focus()
+                      el?.select()
+                    }}
+                  >
+                    <FileJson className="h-4 w-4 mr-2" />
+                    Paste JSON
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="w-full sm:w-auto min-h-11"
+                    onClick={handleResetExample}
+                  >
+                    Reset example
+                  </Button>
+                </div>
+              </div>
+
+              <Textarea
+                aria-label="Sample JSON"
+                data-testid="sample-json"
+                className="min-h-[180px] max-h-[280px] font-mono text-xs sm:text-sm break-all border-2 border-primary/20 focus-visible:border-primary"
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                spellCheck={false}
+                placeholder='{"users":[{"name":"…","email":"…"}]}'
+              />
+
               <div className="space-y-2" data-testid="sample-presets">
                 <Label htmlFor="preset-select" className="text-xs text-muted-foreground">
-                  Try a sample
+                  Or try a built-in sample
                 </Label>
                 <Select
                   disabled={busy}
@@ -633,95 +648,6 @@ export default function MockDataGenerator() {
                     </Button>
                   ))}
                 </div>
-              </div>
-
-              <div className="space-y-2" data-testid="fetch-from-url">
-                <Label htmlFor="fetch-url" className="text-xs text-muted-foreground">
-                  Fetch sample from URL
-                </Label>
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <Input
-                    id="fetch-url"
-                    data-testid="fetch-url-input"
-                    className="min-h-11 font-mono text-xs sm:text-sm"
-                    placeholder="https://jsonplaceholder.typicode.com/users/1"
-                    value={fetchUrl}
-                    onChange={(e) => {
-                      setFetchUrl(e.target.value)
-                      setFetchError(null)
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault()
-                        void handleFetchFromUrl()
-                      }
-                    }}
-                  />
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    className="w-full sm:w-auto min-h-11 shrink-0"
-                    data-testid="fetch-url-button"
-                    disabled={fetchBusy || busy || !fetchUrl.trim()}
-                    onClick={() => void handleFetchFromUrl()}
-                  >
-                    {fetchBusy ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Fetching…
-                      </>
-                    ) : (
-                      'Fetch'
-                    )}
-                  </Button>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  GET only, from your browser to that URL (not via Mockifyer). CORS must allow it.
-                </p>
-                {fetchError ? (
-                  <p
-                    className="text-sm text-destructive rounded-md border border-destructive/30 bg-destructive/5 p-3"
-                    role="alert"
-                    data-testid="fetch-url-error"
-                  >
-                    {fetchError}
-                  </p>
-                ) : null}
-              </div>
-
-              <Textarea
-                aria-label="Sample JSON"
-                data-testid="sample-json"
-                className="min-h-[140px] max-h-[200px] font-mono text-xs break-all"
-                value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
-                spellCheck={false}
-              />
-              <div className="flex flex-col sm:flex-row flex-wrap gap-2">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="application/json,.json"
-                  className="hidden"
-                  onChange={(e) => void handleUpload(e.target.files?.[0] ?? null)}
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full sm:w-auto min-h-11"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <Upload className="h-4 w-4 mr-2" />
-                  Upload JSON
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="w-full sm:w-auto min-h-11"
-                  onClick={handleResetExample}
-                >
-                  Reset example
-                </Button>
               </div>
             </CardContent>
           </Card>
@@ -1063,8 +989,8 @@ export default function MockDataGenerator() {
             <CardHeader>
               <CardTitle className="text-lg sm:text-xl">Share this setup</CardTitle>
               <CardDescription>
-                Input, context, seed, records, items per list, sample URL, chaos, and checklist live
-                in the URL hash.
+                Input, context, seed, records, items per list, chaos, and checklist live in the URL
+                hash.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -1094,10 +1020,7 @@ export default function MockDataGenerator() {
           </Card>
         </section>
 
-        <RealApiDemo
-          fetchedSample={fetchedSample}
-          onUseAsSample={(example) => void handleUseRealApiSample(example)}
-        />
+        <RealApiDemo onUseAsSample={(example) => void handleUseRealApiSample(example)} />
 
         <section className="border-t border-border pt-10 space-y-4">
           <h2 className="text-2xl font-semibold tracking-tight">How to use this</h2>

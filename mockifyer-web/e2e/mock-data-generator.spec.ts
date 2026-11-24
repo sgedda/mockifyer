@@ -77,12 +77,13 @@ test.describe('Mock Data Generator playground', () => {
     await expect(page.getByTestId('size-controls-live')).toContainText(/4 item/i);
   });
 
-  test('fetch from URL shows CORS-friendly error when blocked', async ({ page }) => {
-    await page.route('https://cors-blocked.example.test/**', (route) => route.abort('failed'));
-    await page.getByTestId('fetch-url-input').fill('https://cors-blocked.example.test/data.json');
-    await page.getByTestId('fetch-url-button').click();
-    await expect(page.getByTestId('fetch-url-error')).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByTestId('fetch-url-error')).toContainText(/CORS|Paste|Mockifyer/i);
+  test('paste and upload are prominent; no URL fetch UI', async ({ page }) => {
+    await expect(page.getByTestId('sample-json-card')).toBeVisible();
+    await expect(page.getByTestId('upload-json-button')).toBeVisible();
+    await expect(page.getByTestId('focus-paste-button')).toBeVisible();
+    await expect(page.getByTestId('sample-json')).toBeVisible();
+    await expect(page.getByTestId('fetch-url-input')).toHaveCount(0);
+    await expect(page.getByTestId('privacy-note')).toContainText(/Nothing leaves your browser/i);
   });
 
   test('shows productName for items[*].name and structural array for $.items', async ({ page }) => {

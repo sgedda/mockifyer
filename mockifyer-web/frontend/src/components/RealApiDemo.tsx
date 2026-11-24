@@ -1,10 +1,9 @@
 /**
- * Side-by-side: recorded API response vs generated mocks.
- * Built-in examples are static. A user-fetched URL (from the tool page) can
- * appear as an extra source — that GET already happened in the browser.
+ * Side-by-side: static recorded public-API response vs generated mocks.
+ * No live network — samples are bundled constants.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowRight, Loader2, Radio } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -24,48 +23,19 @@ import {
 } from '@/lib/mock-data-generator/real-api-examples'
 import { loadGeneratorEngine } from '@/lib/mock-data-generator/engine'
 
-const FETCHED_ID = '__fetched__'
-
-export interface FetchedSampleSource {
-  url: string
-  recorded: unknown
-}
-
 interface RealApiDemoProps {
   onUseAsSample?: (example: RealApiExample) => void
-  /** Sample the user fetched via browser GET on the tool page. */
-  fetchedSample?: FetchedSampleSource | null
 }
 
-export default function RealApiDemo({ onUseAsSample, fetchedSample }: RealApiDemoProps) {
-  const [exampleId, setExampleId] = useState(
-    fetchedSample ? FETCHED_ID : DEFAULT_REAL_API_EXAMPLE.id
-  )
+export default function RealApiDemo({ onUseAsSample }: RealApiDemoProps) {
+  const [exampleId, setExampleId] = useState(DEFAULT_REAL_API_EXAMPLE.id)
   const [generatedPreview, setGeneratedPreview] = useState<unknown | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const seq = useRef(0)
 
-  useEffect(() => {
-    if (fetchedSample) {
-      setExampleId(FETCHED_ID)
-    }
-  }, [fetchedSample?.url, fetchedSample])
-
-  const example: RealApiExample = useMemo(() => {
-    if (exampleId === FETCHED_ID && fetchedSample) {
-      return {
-        id: FETCHED_ID,
-        name: 'Your URL',
-        sourceUrl: fetchedSample.url,
-        capturedNote: 'Fetched from your browser on demand — not sent to Mockifyer.',
-        context: '',
-        recorded: fetchedSample.recorded,
-      }
-    }
-    return REAL_API_EXAMPLES.find((item) => item.id === exampleId) ?? DEFAULT_REAL_API_EXAMPLE
-  }, [exampleId, fetchedSample])
-
+  const example =
+    REAL_API_EXAMPLES.find((item) => item.id === exampleId) ?? DEFAULT_REAL_API_EXAMPLE
   const sampleIsArray = Array.isArray(example.recorded)
 
   const runGenerate = useCallback(async (next: RealApiExample) => {
@@ -111,9 +81,9 @@ export default function RealApiDemo({ onUseAsSample, fetchedSample }: RealApiDem
             Recorded from a real API, then generated
           </h2>
           <p className="text-sm text-muted-foreground">
-            Built-in examples are static captures. If you fetched a URL above, that one GET left your
-            browser for that host only — nothing is sent to Mockifyer. Record once with Mockifyer,
-            then generate variants from the mock file.
+            These samples are static captures bundled with the page — nothing is sent to Mockifyer
+            and nothing is fetched live. With Mockifyer you record the real API once, then generate
+            variants from the recorded mock file (same structure, fresh values, edge cases).
           </p>
         </div>
         <div className="w-full sm:w-56 shrink-0 space-y-1">
@@ -129,9 +99,6 @@ export default function RealApiDemo({ onUseAsSample, fetchedSample }: RealApiDem
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {fetchedSample ? (
-                <SelectItem value={FETCHED_ID}>Your URL</SelectItem>
-              ) : null}
               {REAL_API_EXAMPLES.map((item) => (
                 <SelectItem key={item.id} value={item.id}>
                   {item.name}
@@ -143,7 +110,7 @@ export default function RealApiDemo({ onUseAsSample, fetchedSample }: RealApiDem
       </div>
 
       <p className="text-xs text-muted-foreground break-words">
-        Source:{' '}
+        Source (display only):{' '}
         <span className="font-mono break-all">{example.sourceUrl}</span>
         <span className="mx-1.5">·</span>
         {example.capturedNote}
