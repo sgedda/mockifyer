@@ -617,6 +617,7 @@ const HTML_ROUTES_FALLBACK = [
   '/guides/react-native-without-msw',
   '/guides/browser-record-replay',
   '/guides/streaming',
+  '/tools/mock-data-generator',
 ];
 
 function getKnownHtmlRoutes(): string[] {

@@ -148,6 +148,15 @@ var PAGE_SEO = {
     description: "Compare Mockifyer with MSW, Polly.js, and Nock. Learn when record-replay fits better than in-code handlers for API testing.",
     path: "/comparisons"
   },
+  "/tools/mock-data-generator": {
+    title: "Mock Data Generator \u2014 JSON to Realistic Mocks",
+    description: "Paste one JSON sample and generate realistic records plus edge-case variants in your browser. Seeded, offline, shareable \u2014 then record the real API.",
+    path: "/tools/mock-data-generator"
+  },
+  /**
+   * Static Atlas HTML (not an SPA route). Prerender skips /atlas/* and Express
+   * serves frontend/public/atlas/wanderweird/index.html. Listed for SEO/sitemap.
+   */
   "/atlas/wanderweird": {
     title: "WanderWeird Atlas \u2014 Live Architecture Map",
     description: "Interactive Mockifyer Atlas generated from real WanderWeird E2E traffic: endpoints, request chains, and mocked vs live flows.",
@@ -179,7 +188,8 @@ var CONTENT_ROUTES_WITH_FULL_BODY = /* @__PURE__ */ new Set([
   "/comparisons",
   "/faq",
   "/getting-started",
-  "/e2e-tutorial"
+  "/e2e-tutorial",
+  "/tools/mock-data-generator"
 ]);
 
 // mockifyer-web/scripts/verify-prerender.ts

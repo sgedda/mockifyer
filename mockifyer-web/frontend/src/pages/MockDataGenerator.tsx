@@ -1,0 +1,749 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
+import {
+  Copy,
+  Download,
+  FileJson,
+  Link2,
+  Loader2,
+  Shield,
+  Sparkles,
+  Upload,
+  Wand2,
+} from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { useToast } from '@/components/ui/use-toast'
+import CodeBlock from '@/components/CodeBlock'
+import { useTheme } from '@/lib/use-theme'
+import {
+  CHAOS_LEVELS,
+  CHAOS_LEVEL_INDEX,
+  DEFAULT_CONTEXT,
+  DEFAULT_COUNT,
+  DEFAULT_SAMPLE_JSON,
+  DEFAULT_SEED,
+  type PlaygroundChaosLevel,
+} from '@/lib/mock-data-generator/defaults'
+import {
+  buildSampleCliCommand,
+  buildVariantsCliCommand,
+} from '@/lib/mock-data-generator/cli-command'
+import {
+  decodeShareHash,
+  encodeShareHash,
+  isPlaygroundShareHash,
+} from '@/lib/mock-data-generator/share-state'
+import {
+  downloadJsonText,
+  downloadVariantMocksZip,
+} from '@/lib/mock-data-generator/download'
+import { loadGeneratorEngine } from '@/lib/mock-data-generator/engine'
+import type { FieldDescriptor, NamedVariant } from '@sgedda/mockifyer-generator'
+
+const FIELD_KIND_OPTIONS = [
+  'email',
+  'firstName',
+  'lastName',
+  'fullName',
+  'uuid',
+  'integerId',
+  'money',
+  'currency',
+  'date',
+  'isoTimestamp',
+  'enum',
+  'url',
+  'phone',
+  'street',
+  'city',
+  'zip',
+  'country',
+  'boolean',
+  'freeText',
+  'number',
+  'integer',
+  'null',
+  'unknown',
+] as const
+
+function parseSampleJson(text: string): { ok: true; value: unknown } | { ok: false; error: string } {
+  try {
+    return { ok: true, value: JSON.parse(text) as unknown }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    return { ok: false, error: message }
+  }
+}
+
+function variantLabel(kind: string, name: string): string {
+  return `${name} (${kind})`
+}
+
+export default function MockDataGenerator() {
+  const { toast } = useToast()
+  const { setTheme } = useTheme()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const shareHydrated = useRef(false)
+
+  const [inputText, setInputText] = useState(DEFAULT_SAMPLE_JSON)
+  const [context, setContext] = useState(DEFAULT_CONTEXT)
+  const [count, setCount] = useState(DEFAULT_COUNT)
+  const [seed, setSeed] = useState<number | string>(DEFAULT_SEED)
+  const [level, setLevel] = useState<PlaygroundChaosLevel>('wild')
+  const [fields, setFields] = useState<FieldDescriptor[]>([])
+  const [overrides, setOverrides] = useState<Record<string, string>>({})
+  const [records, setRecords] = useState<unknown[] | null>(null)
+  const [namedVariants, setNamedVariants] = useState<NamedVariant[]>([])
+  const [checked, setChecked] = useState<Record<string, boolean>>({})
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [shareTooLarge, setShareTooLarge] = useState(false)
+  const [engineReady, setEngineReady] = useState(false)
+
+  // Light mode only for this playground (SGE-76)
+  useEffect(() => {
+    setTheme('light')
+  }, [setTheme])
+
+  // Hydrate from shareable URL hash once
+  useEffect(() => {
+    if (shareHydrated.current) return
+    shareHydrated.current = true
+    const state = decodeShareHash(window.location.hash)
+    if (!state) return
+    setInputText(state.input)
+    setContext(state.context)
+    setCount(state.count)
+    setSeed(state.seed)
+    setLevel(state.level)
+    if (state.overrides) setOverrides(state.overrides)
+    const nextChecked: Record<string, boolean> = {}
+    for (const slug of state.checked) {
+      nextChecked[slug] = true
+    }
+    setChecked(nextChecked)
+  }, [])
+
+  // Persist shareable state in the hash (skip when too large)
+  useEffect(() => {
+    if (!shareHydrated.current) return
+    const checkedSlugs = Object.entries(checked)
+      .filter(([, on]) => on)
+      .map(([slug]) => slug)
+    const result = encodeShareHash({
+      input: inputText,
+      context,
+      seed,
+      count,
+      level,
+      checked: checkedSlugs,
+      overrides,
+    })
+    if (!result.ok) {
+      setShareTooLarge(true)
+      return
+    }
+    setShareTooLarge(false)
+    if (window.location.hash !== result.hash) {
+      window.history.replaceState(null, '', `${window.location.pathname}${result.hash}`)
+    }
+  }, [inputText, context, seed, count, level, checked, overrides])
+
+  const sampleCli = useMemo(
+    () =>
+      buildSampleCliCommand({
+        seed,
+        count,
+        context,
+      }),
+    [seed, count, context]
+  )
+
+  const variantsCli = useMemo(
+    () =>
+      buildVariantsCliCommand({
+        seed,
+        level,
+      }),
+    [seed, level]
+  )
+
+  const checkedCount = useMemo(
+    () => Object.values(checked).filter(Boolean).length,
+    [checked]
+  )
+
+  const inferKinds = useCallback(async (sample: unknown, nextOverrides: Record<string, string>) => {
+    const engine = await loadGeneratorEngine()
+    setEngineReady(true)
+    const inferred = engine.infer(sample, nextOverrides)
+    setFields(inferred.fields)
+  }, [])
+
+  // Infer kinds when input / overrides change (debounced lightly via effect)
+  useEffect(() => {
+    const parsed = parseSampleJson(inputText)
+    if (!parsed.ok) {
+      setFields([])
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      try {
+        await inferKinds(parsed.value, overrides)
+      } catch (err) {
+        if (!cancelled) {
+          const message = err instanceof Error ? err.message : String(err)
+          setError(message)
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [inputText, overrides, inferKinds])
+
+  const handleUpload = async (file: File | null) => {
+    if (!file) return
+    try {
+      const text = await file.text()
+      parseSampleJson(text) // validate
+      setInputText(text.endsWith('\n') ? text : `${text}\n`)
+      toast({ title: 'Sample loaded', description: file.name })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      toast({ title: 'Invalid JSON file', description: message, variant: 'destructive' })
+    }
+  }
+
+  const handleGenerate = async () => {
+    setError(null)
+    const parsed = parseSampleJson(inputText)
+    if (!parsed.ok) {
+      setError(`Invalid JSON: ${parsed.error}`)
+      return
+    }
+
+    setBusy(true)
+    try {
+      const engine = await loadGeneratorEngine()
+      setEngineReady(true)
+      const generated = await engine.generateAsync(parsed.value, {
+        seed,
+        count,
+        context: context.trim() || undefined,
+        overrides,
+      })
+      setRecords(generated)
+
+      const variants = engine.variants(parsed.value, {
+        seed,
+        chaosLevel: level,
+      })
+      setNamedVariants(variants)
+
+      // Keep checklist selections for kinds that still exist; drop stale ones
+      setChecked((prev) => {
+        const next: Record<string, boolean> = {}
+        for (const v of variants) {
+          if (prev[v.name]) next[v.name] = true
+        }
+        return next
+      })
+
+      toast({
+        title: 'Generated',
+        description: `${generated.length} record(s), ${variants.length} edge-case variant(s)`,
+      })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setError(message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleCopyRecords = async () => {
+    if (!records) return
+    await navigator.clipboard.writeText(`${JSON.stringify(records, null, 2)}\n`)
+    toast({ title: 'Copied generated JSON' })
+  }
+
+  const handleDownloadRecords = () => {
+    if (!records) return
+    downloadJsonText(`${JSON.stringify(records, null, 2)}\n`, 'mockifyer-generated.json')
+  }
+
+  const handleDownloadVariantsZip = async () => {
+    if (namedVariants.length === 0) return
+    await downloadVariantMocksZip(namedVariants)
+    toast({
+      title: 'Downloaded mock files',
+      description:
+        'ZIP mirrors CLI scenario paths (same naming as writeVariantScenarios). Unzip into mock-data/.',
+    })
+  }
+
+  const handleCopyShareLink = async () => {
+    if (shareTooLarge) {
+      toast({
+        title: 'Input too large for a URL',
+        description: 'Shrink the sample JSON, then try again.',
+        variant: 'destructive',
+      })
+      return
+    }
+    await navigator.clipboard.writeText(window.location.href)
+    toast({ title: 'Share link copied' })
+  }
+
+  const onOverrideKind = (path: string, kind: string) => {
+    setOverrides((prev) => ({ ...prev, [path]: kind }))
+  }
+
+  const sliderIndex = CHAOS_LEVEL_INDEX[level]
+
+  return (
+    <div className="bg-white text-zinc-950" data-testid="mock-data-generator-page">
+      <div className="mx-auto max-w-[1200px] px-5 py-16 space-y-10">
+        <header className="space-y-4">
+          <p className="text-sm font-medium text-primary">Tools</p>
+          <h1 className="text-4xl sm:text-5xl font-semibold tracking-tight flex items-center gap-3">
+            <Wand2 className="h-10 w-10 text-primary" />
+            Mock data generator
+          </h1>
+          <p className="text-muted-foreground text-lg max-w-3xl">
+            Paste one JSON sample, tweak inferred field kinds, and generate realistic records plus
+            edge-case variants — fully offline in your browser.
+          </p>
+          <div className="flex flex-wrap items-center gap-3 text-sm">
+            <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-emerald-800">
+              <Shield className="h-3.5 w-3.5" />
+              Nothing leaves your browser
+            </span>
+            <span className="text-muted-foreground">
+              No network calls after this page loads{engineReady ? ' (generator chunk loaded locally)' : ''}.
+            </span>
+          </div>
+        </header>
+
+        <section className="grid lg:grid-cols-2 gap-6">
+          <Card className="border-border">
+            <CardHeader>
+              <CardTitle className="text-xl">Sample JSON</CardTitle>
+              <CardDescription>Paste or upload a response body (or a Mockifyer mock document).</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Textarea
+                aria-label="Sample JSON"
+                data-testid="sample-json"
+                className="min-h-[280px] font-mono text-xs"
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                spellCheck={false}
+              />
+              <div className="flex flex-wrap gap-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="application/json,.json"
+                  className="hidden"
+                  onChange={(e) => void handleUpload(e.target.files?.[0] ?? null)}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Upload className="h-4 w-4 mr-2" />
+                  Upload JSON
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => setInputText(DEFAULT_SAMPLE_JSON)}
+                >
+                  Reset example
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-border">
+            <CardHeader>
+              <CardTitle className="text-xl">Options</CardTitle>
+              <CardDescription>
+                Context steers locale, currency, and counts. Seed keeps output deterministic.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="context">Context</Label>
+                <Input
+                  id="context"
+                  data-testid="context-input"
+                  placeholder="swedish users, 5 items"
+                  value={context}
+                  onChange={(e) => setContext(e.target.value)}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="count">Count</Label>
+                  <Input
+                    id="count"
+                    data-testid="count-input"
+                    type="number"
+                    min={0}
+                    value={count}
+                    onChange={(e) => setCount(Number(e.target.value) || 0)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="seed">Seed</Label>
+                  <Input
+                    id="seed"
+                    data-testid="seed-input"
+                    value={String(seed)}
+                    onChange={(e) => {
+                      const raw = e.target.value
+                      setSeed(/^-?\d+$/.test(raw) ? Number(raw) : raw)
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-3" data-testid="chaos-slider-section">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="chaos">Chaos level</Label>
+                  <span className="text-sm font-medium capitalize" data-testid="chaos-level-label">
+                    {level}
+                  </span>
+                </div>
+                <input
+                  id="chaos"
+                  data-testid="chaos-slider"
+                  type="range"
+                  min={0}
+                  max={CHAOS_LEVELS.length - 1}
+                  step={1}
+                  value={sliderIndex}
+                  onChange={(e) => setLevel(CHAOS_LEVELS[Number(e.target.value)]!)}
+                  className="w-full accent-primary"
+                />
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  {CHAOS_LEVELS.map((name) => (
+                    <span key={name} className="capitalize">
+                      {name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <Button
+                type="button"
+                className="w-full"
+                data-testid="generate-button"
+                disabled={busy}
+                onClick={() => void handleGenerate()}
+              >
+                {busy ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Generating…
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-4 w-4 mr-2" />
+                    Generate
+                  </>
+                )}
+              </Button>
+              {error && (
+                <p className="text-sm text-destructive" role="alert" data-testid="generate-error">
+                  {error}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        </section>
+
+        <section>
+          <Card className="border-border">
+            <CardHeader>
+              <CardTitle className="text-xl">Inferred field kinds</CardTitle>
+              <CardDescription>
+                Edit a kind to steer generation. Overrides are included in the shareable URL.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {fields.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Paste valid JSON to infer fields.</p>
+              ) : (
+                <div className="overflow-x-auto" data-testid="field-kinds">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border text-left text-muted-foreground">
+                        <th className="py-2 pr-4 font-medium">Path</th>
+                        <th className="py-2 pr-4 font-medium">Kind</th>
+                        <th className="py-2 font-medium">Confidence</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {fields.map((field) => {
+                        const current = overrides[field.path] ?? field.kind
+                        return (
+                          <tr key={field.path} className="border-b border-border/70">
+                            <td className="py-2 pr-4 font-mono text-xs">{field.path}</td>
+                            <td className="py-2 pr-4 min-w-[160px]">
+                              <Select
+                                value={String(current)}
+                                onValueChange={(value) => onOverrideKind(field.path, value)}
+                              >
+                                <SelectTrigger
+                                  className="h-8"
+                                  aria-label={`Kind for ${field.path}`}
+                                  data-testid={`kind-${field.path}`}
+                                >
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {FIELD_KIND_OPTIONS.map((kind) => (
+                                    <SelectItem key={kind} value={kind}>
+                                      {kind}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </td>
+                            <td className="py-2 text-muted-foreground">
+                              {overrides[field.path] ? 'override' : field.confidence.toFixed(2)}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </section>
+
+        {records && (
+          <section className="space-y-6" data-testid="results-section">
+            <Card className="border-border">
+              <CardHeader className="flex flex-row items-start justify-between gap-4">
+                <div>
+                  <CardTitle className="text-xl">Generated records</CardTitle>
+                  <CardDescription>
+                    Same engine as the CLI — identical output for the same input + seed.
+                  </CardDescription>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={() => void handleCopyRecords()}>
+                    <Copy className="h-4 w-4 mr-1.5" />
+                    Copy JSON
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    data-testid="download-json"
+                    onClick={handleDownloadRecords}
+                  >
+                    <Download className="h-4 w-4 mr-1.5" />
+                    Download JSON
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <pre
+                  data-testid="generated-output"
+                  className="max-h-[420px] overflow-auto rounded-md border border-border bg-muted/40 p-4 text-xs font-mono"
+                >
+                  {JSON.stringify(records, null, 2)}
+                </pre>
+              </CardContent>
+            </Card>
+
+            <Card className="border-border" data-testid="variants-section">
+              <CardHeader className="flex flex-row items-start justify-between gap-4">
+                <div>
+                  <CardTitle className="text-xl">Edge-case variants</CardTitle>
+                  <CardDescription>
+                    Chaos slider at <span className="font-medium capitalize">{level}</span> — identifier
+                    fields stay stable until nightmare (same as the CLI).
+                  </CardDescription>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  data-testid="download-variants-zip"
+                  disabled={namedVariants.length === 0}
+                  onClick={() => void handleDownloadVariantsZip()}
+                >
+                  <FileJson className="h-4 w-4 mr-1.5" />
+                  Download mock files (ZIP)
+                </Button>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-xs text-muted-foreground">
+                  ZIP choice: browsers cannot write a folder tree in one click, so we package the same
+                  CLI layout (<code className="bg-muted px-1 rounded">scenario/host/…/METHOD_….json</code>)
+                  via an in-browser zip — no Node APIs, paths match{' '}
+                  <code className="bg-muted px-1 rounded">writeVariantScenarios</code>.
+                </p>
+                {namedVariants.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No variants at this chaos level.</p>
+                ) : (
+                  <ul className="space-y-2" data-testid="variant-list">
+                    {namedVariants.map((v) => (
+                      <li
+                        key={v.name}
+                        className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-sm"
+                      >
+                        <span className="font-mono text-xs">{variantLabel(v.kind, v.name)}</span>
+                        <span className="text-muted-foreground">
+                          status {v.mock.response.status}
+                          {v.mock.responseDelayMs ? ` · delay ${v.mock.responseDelayMs}ms` : ''}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </CardContent>
+            </Card>
+
+            {namedVariants.length > 0 && (
+              <Card className="border-border" data-testid="resilience-checklist">
+                <CardHeader>
+                  <CardTitle className="text-xl">Resilience checklist</CardTitle>
+                  <CardDescription>
+                    Your API shape has {namedVariants.length} edge case
+                    {namedVariants.length === 1 ? '' : 's'}. How many does your app handle?
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <p className="text-sm font-medium" data-testid="resilience-score">
+                    {checkedCount} / {namedVariants.length} handled
+                  </p>
+                  <ul className="space-y-2">
+                    {namedVariants.map((v) => (
+                      <li key={v.name}>
+                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                          <input
+                            type="checkbox"
+                            data-testid={`checklist-${v.name}`}
+                            checked={Boolean(checked[v.name])}
+                            onChange={(e) =>
+                              setChecked((prev) => ({ ...prev, [v.name]: e.target.checked }))
+                            }
+                            className="h-4 w-4 accent-primary"
+                          />
+                          <span>{v.name}</span>
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
+                </CardContent>
+              </Card>
+            )}
+          </section>
+        )}
+
+        <section className="grid lg:grid-cols-2 gap-6">
+          <Card className="border-border">
+            <CardHeader>
+              <CardTitle className="text-xl">Equivalent local command</CardTitle>
+              <CardDescription>
+                Save your sample as <code className="bg-muted px-1 rounded">sample.json</code>, then
+                run the real bin for identical output.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4" data-testid="cli-commands">
+              <div>
+                <p className="text-xs font-medium text-muted-foreground mb-2">Records</p>
+                <CodeBlock code={sampleCli} language="bash" small />
+              </div>
+              <div>
+                <p className="text-xs font-medium text-muted-foreground mb-2">Variants</p>
+                <CodeBlock code={variantsCli} language="bash" small />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-border">
+            <CardHeader>
+              <CardTitle className="text-xl">Share this setup</CardTitle>
+              <CardDescription>
+                Input, context, seed, count, chaos slider, and checklist live in the URL hash.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Button
+                type="button"
+                variant="outline"
+                data-testid="copy-share-link"
+                onClick={() => void handleCopyShareLink()}
+              >
+                <Link2 className="h-4 w-4 mr-2" />
+                Copy share link
+              </Button>
+              {shareTooLarge && (
+                <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2" data-testid="share-too-large">
+                  This sample is too large to fit in a shareable URL. Shrink the JSON (or remove bulky
+                  fields), then copy the link again. Your work stays in this tab.
+                </p>
+              )}
+              {!isPlaygroundShareHash(typeof window !== 'undefined' ? window.location.hash : '') &&
+                !shareTooLarge && (
+                  <p className="text-xs text-muted-foreground">
+                    Edit options or generate to refresh the shareable hash.
+                  </p>
+                )}
+            </CardContent>
+          </Card>
+        </section>
+
+        <section className="border-t border-border pt-10 space-y-4">
+          <h2 className="text-2xl font-semibold tracking-tight">How to use this</h2>
+          <p className="text-muted-foreground max-w-3xl">
+            No API yet? Generate realistic mocks from one sample, then{' '}
+            <Link to="/getting-started" className="text-primary underline-offset-4 hover:underline">
+              record the real one
+            </Link>{' '}
+            when the backend exists. Drop downloaded scenario folders into{' '}
+            <code className="bg-muted px-1 rounded">mock-data/</code> and switch scenarios in your app
+            or the dashboard.
+          </p>
+          <ol className="list-decimal list-inside text-sm text-muted-foreground space-y-2 max-w-3xl">
+            <li>Paste a JSON response (or a recorded Mockifyer mock).</li>
+            <li>Optionally add context like &quot;swedish users, 5 items&quot; and set a seed.</li>
+            <li>Correct inferred field kinds, set the chaos slider, then Generate.</li>
+            <li>Copy JSON for quick use, or download variants as Mockifyer mock files.</li>
+            <li>
+              When you have a live API, follow{' '}
+              <Link to="/getting-started" className="text-primary underline-offset-4 hover:underline">
+                Getting Started
+              </Link>{' '}
+              to record and replay the real shape.
+            </li>
+          </ol>
+        </section>
+      </div>
+    </div>
+  )
+}

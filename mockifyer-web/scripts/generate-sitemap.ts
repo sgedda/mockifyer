@@ -36,6 +36,7 @@ const ROUTE_CONFIG: Record<string, RouteMeta> = {
   '/guides/streaming': { priority: '0.7', changefreq: 'monthly' },
   '/atlas/wanderweird': { priority: '0.7', changefreq: 'monthly' },
   '/contact': { priority: '0.5', changefreq: 'yearly' },
+  '/tools/mock-data-generator': { priority: '0.8', changefreq: 'monthly' },
 };
 
 /**

@@ -156,6 +156,15 @@ var PAGE_SEO = {
     description: "Compare Mockifyer with MSW, Polly.js, and Nock. Learn when record-replay fits better than in-code handlers for API testing.",
     path: "/comparisons"
   },
+  "/tools/mock-data-generator": {
+    title: "Mock Data Generator \u2014 JSON to Realistic Mocks",
+    description: "Paste one JSON sample and generate realistic records plus edge-case variants in your browser. Seeded, offline, shareable \u2014 then record the real API.",
+    path: "/tools/mock-data-generator"
+  },
+  /**
+   * Static Atlas HTML (not an SPA route). Prerender skips /atlas/* and Express
+   * serves frontend/public/atlas/wanderweird/index.html. Listed for SEO/sitemap.
+   */
   "/atlas/wanderweird": {
     title: "WanderWeird Atlas \u2014 Live Architecture Map",
     description: "Interactive Mockifyer Atlas generated from real WanderWeird E2E traffic: endpoints, request chains, and mocked vs live flows.",
@@ -236,7 +245,8 @@ var CONTENT_ROUTES_WITH_FULL_BODY = /* @__PURE__ */ new Set([
   "/comparisons",
   "/faq",
   "/getting-started",
-  "/e2e-tutorial"
+  "/e2e-tutorial",
+  "/tools/mock-data-generator"
 ]);
 var NAV_LINKS = [
   { href: "/", label: "Home" },
@@ -248,7 +258,8 @@ var NAV_LINKS = [
   { href: "/packages", label: "Packages" },
   { href: "/dashboard", label: "Dashboard" },
   { href: "/e2e-tutorial", label: "E2E Tutorial" },
-  { href: "/contact", label: "Contact" }
+  { href: "/contact", label: "Contact" },
+  { href: "/tools/mock-data-generator", label: "Mock Data Generator" }
 ];
 function relatedGuideLinks(currentPath) {
   return GUIDE_ITEMS.filter((guide) => guide.href !== currentPath).map((guide) => ({
@@ -503,6 +514,41 @@ function buildE2ETutorialBody() {
     ]
   };
 }
+function buildMockDataGeneratorBody() {
+  const seo = seoOrThrow("/tools/mock-data-generator");
+  return {
+    h1: "Mock Data Generator",
+    summary: seo.description,
+    sections: [
+      {
+        heading: "Generate from one sample",
+        paragraphs: [
+          "Paste or upload a JSON response, add optional context (for example swedish users or prices in SEK), set a count and seed, then generate realistic records with the same shape.",
+          "Inferred field kinds are editable. Edge-case variants follow a chaos slider from realistic to nightmare. Identifier fields stay stable until nightmare, matching the CLI."
+        ]
+      },
+      {
+        heading: "Nothing leaves your browser",
+        paragraphs: [
+          "The playground uses the same @sgedda/mockifyer-generator engine as the local CLI. Generation runs offline after the page loads \u2014 no account and no server round-trip for your sample JSON.",
+          "Download plain JSON or Mockifyer mock scenario files, copy a shareable URL with compressed state in the hash, and repeat locally with npx -p @sgedda/mockifyer-generator mockifyer-generate."
+        ]
+      },
+      {
+        heading: "Then record the real API",
+        paragraphs: [
+          "No API yet? Generate from one sample, then follow Getting Started to record the real one when the backend exists. Generated scenarios drop into mock-data/ beside recorded mocks."
+        ]
+      }
+    ],
+    links: [
+      { href: "/getting-started", label: "Getting Started" },
+      ...NAV_LINKS.filter(
+        (link) => link.href !== "/tools/mock-data-generator" && link.href !== "/getting-started"
+      )
+    ]
+  };
+}
 function getPrerenderBodyContent(routePath) {
   if (!CONTENT_ROUTES_WITH_FULL_BODY.has(routePath)) {
     return null;
@@ -521,6 +567,9 @@ function getPrerenderBodyContent(routePath) {
   }
   if (routePath === "/e2e-tutorial") {
     return buildE2ETutorialBody();
+  }
+  if (routePath === "/tools/mock-data-generator") {
+    return buildMockDataGeneratorBody();
   }
   const guide = GUIDE_BODIES[routePath];
   if (!guide) {

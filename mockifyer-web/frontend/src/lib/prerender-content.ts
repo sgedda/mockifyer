@@ -41,6 +41,7 @@ export const CONTENT_ROUTES_WITH_FULL_BODY = new Set([
   '/faq',
   '/getting-started',
   '/e2e-tutorial',
+  '/tools/mock-data-generator',
 ])
 
 const NAV_LINKS: PrerenderLink[] = [
@@ -54,6 +55,7 @@ const NAV_LINKS: PrerenderLink[] = [
   { href: '/dashboard', label: 'Dashboard' },
   { href: '/e2e-tutorial', label: 'E2E Tutorial' },
   { href: '/contact', label: 'Contact' },
+  { href: '/tools/mock-data-generator', label: 'Mock Data Generator' },
 ]
 
 function relatedGuideLinks(currentPath: string): PrerenderLink[] {
@@ -326,6 +328,43 @@ function buildE2ETutorialBody(): PrerenderBodyContent {
   }
 }
 
+function buildMockDataGeneratorBody(): PrerenderBodyContent {
+  const seo = seoOrThrow('/tools/mock-data-generator')
+  return {
+    h1: 'Mock Data Generator',
+    summary: seo.description,
+    sections: [
+      {
+        heading: 'Generate from one sample',
+        paragraphs: [
+          'Paste or upload a JSON response, add optional context (for example swedish users or prices in SEK), set a count and seed, then generate realistic records with the same shape.',
+          'Inferred field kinds are editable. Edge-case variants follow a chaos slider from realistic to nightmare. Identifier fields stay stable until nightmare, matching the CLI.',
+        ],
+      },
+      {
+        heading: 'Nothing leaves your browser',
+        paragraphs: [
+          'The playground uses the same @sgedda/mockifyer-generator engine as the local CLI. Generation runs offline after the page loads — no account and no server round-trip for your sample JSON.',
+          'Download plain JSON or Mockifyer mock scenario files, copy a shareable URL with compressed state in the hash, and repeat locally with npx -p @sgedda/mockifyer-generator mockifyer-generate.',
+        ],
+      },
+      {
+        heading: 'Then record the real API',
+        paragraphs: [
+          'No API yet? Generate from one sample, then follow Getting Started to record the real one when the backend exists. Generated scenarios drop into mock-data/ beside recorded mocks.',
+        ],
+      },
+    ],
+    links: [
+      { href: '/getting-started', label: 'Getting Started' },
+      ...NAV_LINKS.filter(
+        (link) =>
+          link.href !== '/tools/mock-data-generator' && link.href !== '/getting-started'
+      ),
+    ],
+  }
+}
+
 /**
  * Return full prerender body content for a route, or null for lighter pages.
  */
@@ -348,6 +387,9 @@ export function getPrerenderBodyContent(routePath: string): PrerenderBodyContent
   }
   if (routePath === '/e2e-tutorial') {
     return buildE2ETutorialBody()
+  }
+  if (routePath === '/tools/mock-data-generator') {
+    return buildMockDataGeneratorBody()
   }
 
   const guide = GUIDE_BODIES[routePath]
