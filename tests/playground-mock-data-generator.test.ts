@@ -32,6 +32,10 @@ import {
   presetSampleJson,
 } from '../mockifyer-web/frontend/src/lib/mock-data-generator/defaults';
 import {
+  REAL_API_EXAMPLES,
+  mirrorGeneratedRoot,
+} from '../mockifyer-web/frontend/src/lib/mock-data-generator/real-api-examples';
+import {
   FIELD_KIND_OPTIONS,
   kindOptionsIncluding,
   partitionFieldRows,
@@ -287,21 +291,90 @@ describe('playground sample presets', () => {
     );
   });
 
-  it('jsonplaceholder real-API preset keeps user shape (email/name)', async () => {
+  it('jsonplaceholder real-API preset: kinds + object root shape', async () => {
     const jp = PLAYGROUND_PRESETS.find((p) => p.id === 'jsonplaceholder')!;
     expect(jp.realApi?.sourceUrl).toContain('jsonplaceholder');
+    expect(Array.isArray(jp.sample)).toBe(false);
+
     const { fields } = infer(jp.sample);
     const byPath = Object.fromEntries(fields.map((f) => [f.path, f]));
     expect(byPath['$.email']?.kind).toBe(FieldKind.Email);
     expect(byPath['$.phone']?.kind).toBe(FieldKind.Phone);
-    const [record] = (await generateAsync(jp.sample, {
+    expect(byPath['$.website']?.kind).toBe(FieldKind.Url);
+    expect(byPath['$.address.zipcode']?.kind).toBe(FieldKind.Zip);
+    expect(byPath['$.address.geo.lat']?.kind).toBe(FieldKind.Latitude);
+    expect(byPath['$.address.geo.lng']?.kind).toBe(FieldKind.Longitude);
+    expect(byPath['$.company.name']?.kind).toBe(FieldKind.FreeText);
+
+    const records = await generateAsync(jp.sample, {
       seed: 42,
       count: 1,
       context: jp.context,
-    })) as Array<{ email: string; name: string; address: { city: string } }>;
+    });
+    expect(records).toHaveLength(1);
+    const record = records[0] as {
+      email: string;
+      name: string;
+      phone: string;
+      website: string;
+      address: { zipcode: string; city: string; geo: { lat: string; lng: string } };
+      company: { name: string; catchPhrase: string; bs: string };
+    };
+    expect(typeof record).toBe('object');
+    expect(Array.isArray(record)).toBe(false);
     expect(record.email).toContain('@');
     expect(typeof record.name).toBe('string');
     expect(typeof record.address.city).toBe('string');
+    expect(record.address.zipcode).toMatch(/^\d/);
+    expect(record.address.zipcode).not.toMatch(/x\d+/i);
+    expect(typeof record.address.geo.lat).toBe('string');
+    expect(typeof record.address.geo.lng).toBe('string');
+    const lat = Number(record.address.geo.lat);
+    const lng = Number(record.address.geo.lng);
+    expect(lat).toBeGreaterThanOrEqual(-90);
+    expect(lat).toBeLessThanOrEqual(90);
+    expect(lng).toBeGreaterThanOrEqual(-180);
+    expect(lng).toBeLessThanOrEqual(180);
+    expect(record.website).toMatch(/^https?:\/\//i);
+    expect(typeof record.company.name).toBe('string');
+    expect(record.company.name).not.toMatch(/@.+\./); // not an email
+    expect(typeof record.company.catchPhrase).toBe('string');
+    expect(typeof record.company.bs).toBe('string');
+  });
+
+  it('open-meteo real-API sample: kinds + object root shape', async () => {
+    const meteo = REAL_API_EXAMPLES.find((e) => e.id === 'open-meteo-stockholm')!;
+    expect(Array.isArray(meteo.recorded)).toBe(false);
+
+    const { fields } = infer(meteo.recorded);
+    const byPath = Object.fromEntries(fields.map((f) => [f.path, f]));
+    expect(byPath['$.latitude']?.kind).toBe(FieldKind.Latitude);
+    expect(byPath['$.longitude']?.kind).toBe(FieldKind.Longitude);
+    expect(byPath['$.current.temperature_2m']?.kind).toBe(FieldKind.Number);
+    expect(byPath['$.timezone']?.kind).toBeDefined();
+
+    const records = await generateAsync(meteo.recorded, {
+      seed: 42,
+      count: 1,
+      context: meteo.context,
+    });
+    expect(records).toHaveLength(1);
+    const preview = mirrorGeneratedRoot(meteo.recorded, records);
+    expect(Array.isArray(preview)).toBe(false);
+    const record = preview as {
+      latitude: number;
+      longitude: number;
+      current: { temperature_2m: number };
+      timezone: string;
+    };
+    expect(typeof record.latitude).toBe('number');
+    expect(typeof record.longitude).toBe('number');
+    expect(record.latitude).toBeGreaterThanOrEqual(-90);
+    expect(record.latitude).toBeLessThanOrEqual(90);
+    expect(record.longitude).toBeGreaterThanOrEqual(-180);
+    expect(record.longitude).toBeLessThanOrEqual(180);
+    expect(typeof record.current.temperature_2m).toBe('number');
+    expect(typeof record.timezone).toBe('string');
   });
 
   it('loads into shareable editor state (input + context round-trip)', () => {

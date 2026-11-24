@@ -18,6 +18,7 @@ import { DEFAULT_SEED } from '@/lib/mock-data-generator/defaults'
 import {
   DEFAULT_REAL_API_EXAMPLE,
   REAL_API_EXAMPLES,
+  mirrorGeneratedRoot,
   type RealApiExample,
 } from '@/lib/mock-data-generator/real-api-examples'
 import { loadGeneratorEngine } from '@/lib/mock-data-generator/engine'
@@ -28,13 +29,14 @@ interface RealApiDemoProps {
 
 export default function RealApiDemo({ onUseAsSample }: RealApiDemoProps) {
   const [exampleId, setExampleId] = useState(DEFAULT_REAL_API_EXAMPLE.id)
-  const [generated, setGenerated] = useState<unknown[] | null>(null)
+  const [generatedPreview, setGeneratedPreview] = useState<unknown | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const seq = useRef(0)
 
   const example =
     REAL_API_EXAMPLES.find((item) => item.id === exampleId) ?? DEFAULT_REAL_API_EXAMPLE
+  const sampleIsArray = Array.isArray(example.recorded)
 
   const runGenerate = useCallback(async (next: RealApiExample) => {
     const token = ++seq.current
@@ -42,17 +44,20 @@ export default function RealApiDemo({ onUseAsSample }: RealApiDemoProps) {
     setError(null)
     try {
       const engine = await loadGeneratorEngine()
+      const rootIsArray = Array.isArray(next.recorded)
       const records = await engine.generateAsync(next.recorded, {
         seed: DEFAULT_SEED,
-        count: 2,
+        // Object roots: one variant so the panel mirrors `{…}` not `[{…}]`.
+        // Array roots: a short list (count applies to array samples).
+        count: rootIsArray ? 2 : 1,
         context: next.context,
       })
       if (token !== seq.current) return
-      setGenerated(records)
+      setGeneratedPreview(mirrorGeneratedRoot(next.recorded, records))
     } catch (err) {
       if (token !== seq.current) return
       setError(err instanceof Error ? err.message : String(err))
-      setGenerated(null)
+      setGeneratedPreview(null)
     } finally {
       if (token === seq.current) setBusy(false)
     }
@@ -123,23 +128,28 @@ export default function RealApiDemo({ onUseAsSample }: RealApiDemoProps) {
         </div>
         <div className="space-y-2 relative" data-testid="real-api-generated">
           <h3 className="text-sm font-semibold">Your mock data, same structure</h3>
+          <p className="text-xs text-muted-foreground">
+            {sampleIsArray
+              ? 'Sample root is an array — count produces multiple items with the same element shape.'
+              : 'Sample root is an object — showing one generated object (same keys). Count applies when the sample root is an array.'}
+          </p>
           {error ? (
             <p className="text-sm text-destructive" role="alert">
               {error}
             </p>
           ) : null}
-          {!generated && !error ? (
+          {!generatedPreview && !error ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground p-3">
               <Loader2 className="h-4 w-4 animate-spin" />
               Generating…
             </div>
           ) : null}
-          {generated ? (
+          {generatedPreview != null ? (
             <pre className="max-h-[280px] overflow-auto rounded-lg border border-border bg-zinc-50 p-3 text-xs font-mono">
-              {JSON.stringify(generated, null, 2)}
+              {JSON.stringify(generatedPreview, null, 2)}
             </pre>
           ) : null}
-          {busy && generated ? (
+          {busy && generatedPreview != null ? (
             <div className="absolute top-8 right-2 rounded-md bg-white/90 border px-2 py-1 text-xs flex items-center gap-1.5">
               <Loader2 className="h-3 w-3 animate-spin" />
               Updating…

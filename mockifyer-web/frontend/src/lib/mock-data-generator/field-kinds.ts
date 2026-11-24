@@ -30,6 +30,8 @@ export const FIELD_KIND_OPTIONS = [
   'city',
   'zip',
   'country',
+  'latitude',
+  'longitude',
   'boolean',
   'freeText',
   'number',

@@ -57,6 +57,17 @@ describe('generator engine — field-kind inference', () => {
     expect(inferFieldKind('email_verified', [true]).kind).toBe(FieldKind.Boolean);
   });
 
+  it('does not treat ZIP+4 or decimal coordinates as phones', () => {
+    expect(inferFieldKind('zipcode', ['92998-3874']).kind).toBe(FieldKind.Zip);
+    expect(inferFieldKind('lat', ['-37.3159'], '$.address.geo.lat').kind).toBe(
+      FieldKind.Latitude
+    );
+    expect(inferFieldKind('lng', ['81.1496'], '$.address.geo.lng').kind).toBe(
+      FieldKind.Longitude
+    );
+    expect(inferFieldKind('phone', ['1-770-736-8031 x56442']).kind).toBe(FieldKind.Phone);
+  });
+
   it('returns path descriptors with confidence for a nested sample', () => {
     const sample = {
       user: {

@@ -237,6 +237,20 @@ export function generateValueForKind(
       return faker.location.city();
     case FieldKind.Zip:
       return faker.location.zipCode();
+    case FieldKind.Latitude: {
+      const asString = samples.some((s) => typeof s === 'string');
+      const value = faker.location.latitude({ min: -90, max: 90 });
+      const num = typeof value === 'number' ? value : Number(value);
+      const rounded = Number.isFinite(num) ? Math.round(num * 1e4) / 1e4 : 0;
+      return asString ? String(rounded) : rounded;
+    }
+    case FieldKind.Longitude: {
+      const asString = samples.some((s) => typeof s === 'string');
+      const value = faker.location.longitude({ min: -180, max: 180 });
+      const num = typeof value === 'number' ? value : Number(value);
+      const rounded = Number.isFinite(num) ? Math.round(num * 1e4) / 1e4 : 0;
+      return asString ? String(rounded) : rounded;
+    }
     case FieldKind.Country:
       // Locale context pins ISO country (e.g. swedish → SE) over sample enums /
       // random faker country codes (GU, PW, …).

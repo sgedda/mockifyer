@@ -55,9 +55,17 @@ test.describe('Mock Data Generator playground', () => {
     const section = page.getByTestId('real-api-section');
     await expect(section).toBeVisible();
     await expect(page.getByTestId('real-api-recorded')).toContainText('Leanne Graham');
-    await expect(page.getByTestId('real-api-generated')).toContainText('"email"', {
-      timeout: 30_000,
-    });
+    const generated = page.getByTestId('real-api-generated');
+    await expect(generated).toContainText('"email"', { timeout: 30_000 });
+    // Object sample → object preview (not a wrapper array)
+    const preview = await generated.locator('pre').innerText();
+    expect(preview.trimStart().startsWith('{')).toBe(true);
+    expect(preview).toContain('"zipcode"');
+    const zipMatch = preview.match(/"zipcode"\s*:\s*"([^"]+)"/);
+    expect(zipMatch?.[1]).toBeTruthy();
+    expect(zipMatch![1]).not.toMatch(/x\d+/i);
+    const latMatch = preview.match(/"lat"\s*:\s*"([^"]+)"/);
+    expect(latMatch?.[1]).toMatch(/^-?\d+(\.\d+)?$/);
     await expect(section.getByText(/nothing is fetched live/i)).toBeVisible();
   });
 

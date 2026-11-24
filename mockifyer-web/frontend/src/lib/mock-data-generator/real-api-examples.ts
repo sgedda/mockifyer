@@ -69,3 +69,15 @@ export const REAL_API_EXAMPLES: readonly RealApiExample[] = [
 ] as const
 
 export const DEFAULT_REAL_API_EXAMPLE = REAL_API_EXAMPLES[0]!
+
+/**
+ * `generate` always returns `unknown[]` (one synthetic record per count).
+ * For the side-by-side “same structure” panel, mirror the sample root:
+ * object sample → one object; array sample → the records array.
+ */
+export function mirrorGeneratedRoot(sample: unknown, records: unknown[]): unknown {
+  if (Array.isArray(sample)) {
+    return records
+  }
+  return records[0] ?? null
+}
