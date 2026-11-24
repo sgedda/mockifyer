@@ -9,10 +9,22 @@ test.describe('Mock Data Generator playground', () => {
 
   test('renders the playground page', async ({ page }) => {
     await expect(page.getByTestId('mock-data-generator-page')).toBeVisible();
+    await expect(page.getByTestId('playground-intro')).toBeVisible();
     await expect(page.getByRole('heading', { name: /Mock data generator/i })).toBeVisible();
-    await expect(page.getByText(/Nothing leaves your browser/i)).toBeVisible();
+    await expect(
+      page.getByText(/Paste one API response, get realistic data and edge cases/i)
+    ).toBeVisible();
+    await expect(page.getByTestId('privacy-note')).toBeVisible();
     await expect(page.getByTestId('sample-json')).toBeVisible();
     await expect(page.getByTestId('chaos-slider')).toBeVisible();
+  });
+
+  test('shows productName for items[*].name and structural array for $.items', async ({ page }) => {
+    await expect(page.getByTestId('field-kinds')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('structural-$.items')).toContainText(/array of objects/i);
+    const nameKind = page.getByTestId('kind-$.items[*].name');
+    await expect(nameKind).toBeVisible();
+    await expect(nameKind).toContainText('productName');
   });
 
   test('generates records and variants at wild', async ({ page }) => {

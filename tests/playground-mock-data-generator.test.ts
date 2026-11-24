@@ -6,7 +6,9 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import {
+  FieldKind,
   generateAsync,
+  infer,
   serializeMock,
   variants,
 } from '@sgedda/mockifyer-generator';
@@ -26,6 +28,12 @@ import {
   DEFAULT_SAMPLE,
   MAX_SHARE_HASH_LENGTH,
 } from '../mockifyer-web/frontend/src/lib/mock-data-generator/defaults';
+import {
+  FIELD_KIND_OPTIONS,
+  kindOptionsIncluding,
+  partitionFieldRows,
+  structuralArrayLabel,
+} from '../mockifyer-web/frontend/src/lib/mock-data-generator/field-kinds';
 
 const SAMPLE = {
   id: 1,
@@ -117,6 +125,35 @@ describe('playground determinism', () => {
     const mild = variants(SAMPLE, { seed: 7, chaosLevel: 'mild' });
     const wild = variants(SAMPLE, { seed: 7, chaosLevel: 'wild' });
     expect(wild.length).toBeGreaterThan(mild.length);
+  });
+});
+
+describe('playground field-kind dropdown options', () => {
+  it('lists every FieldKind enum value (no blank Select for inferred kinds)', () => {
+    const optionSet = new Set<string>(FIELD_KIND_OPTIONS);
+    for (const kind of Object.values(FieldKind)) {
+      expect(optionSet.has(kind)).toBe(true);
+    }
+    expect(optionSet.has(FieldKind.ProductName)).toBe(true);
+  });
+
+  it('includes productName for $.items[*].name from the default sample shape', () => {
+    const { fields } = infer(DEFAULT_SAMPLE);
+    const nameField = fields.find((f) => f.path === '$.items[*].name');
+    expect(nameField).toBeDefined();
+    expect(nameField!.kind).toBe(FieldKind.ProductName);
+    const options = kindOptionsIncluding(nameField!.kind);
+    expect(options).toContain('productName');
+    expect(options).toContain(nameField!.kind);
+  });
+
+  it('treats $.items as a structural array row, not an editable unknown kind', () => {
+    const { fields } = infer(DEFAULT_SAMPLE);
+    const { editable, structural } = partitionFieldRows(fields);
+    expect(structural.some((f) => f.path === '$.items')).toBe(true);
+    expect(editable.some((f) => f.path === '$.items')).toBe(false);
+    const items = structural.find((f) => f.path === '$.items')!;
+    expect(structuralArrayLabel(items, fields)).toBe('array of objects');
   });
 });
 

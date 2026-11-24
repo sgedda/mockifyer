@@ -49,33 +49,12 @@ import {
   downloadVariantMocksZip,
 } from '@/lib/mock-data-generator/download'
 import { loadGeneratorEngine } from '@/lib/mock-data-generator/engine'
+import {
+  kindOptionsIncluding,
+  partitionFieldRows,
+  structuralArrayLabel,
+} from '@/lib/mock-data-generator/field-kinds'
 import type { FieldDescriptor, NamedVariant } from '@sgedda/mockifyer-generator'
-
-const FIELD_KIND_OPTIONS = [
-  'email',
-  'firstName',
-  'lastName',
-  'fullName',
-  'uuid',
-  'integerId',
-  'money',
-  'currency',
-  'date',
-  'isoTimestamp',
-  'enum',
-  'url',
-  'phone',
-  'street',
-  'city',
-  'zip',
-  'country',
-  'boolean',
-  'freeText',
-  'number',
-  'integer',
-  'null',
-  'unknown',
-] as const
 
 function parseSampleJson(text: string): { ok: true; value: unknown } | { ok: false; error: string } {
   try {
@@ -290,8 +269,7 @@ export default function MockDataGenerator() {
     await downloadVariantMocksZip(namedVariants)
     toast({
       title: 'Downloaded mock files',
-      description:
-        'ZIP mirrors CLI scenario paths (same naming as writeVariantScenarios). Unzip into mock-data/.',
+      description: "Ready to drop into your project's mock-data folder.",
     })
   }
 
@@ -313,27 +291,33 @@ export default function MockDataGenerator() {
   }
 
   const sliderIndex = CHAOS_LEVEL_INDEX[level]
+  const { editable: editableFields, structural: structuralFields } = useMemo(
+    () => partitionFieldRows(fields),
+    [fields]
+  )
 
   return (
     <div className="bg-white text-zinc-950" data-testid="mock-data-generator-page">
       <div className="mx-auto max-w-[1200px] px-5 py-16 space-y-10">
-        <header className="space-y-4">
-          <p className="text-sm font-medium text-primary">Tools</p>
+        <header className="space-y-4" data-testid="playground-intro">
           <h1 className="text-4xl sm:text-5xl font-semibold tracking-tight flex items-center gap-3">
             <Wand2 className="h-10 w-10 text-primary" />
             Mock data generator
           </h1>
           <p className="text-muted-foreground text-lg max-w-3xl">
-            Paste one JSON sample, tweak inferred field kinds, and generate realistic records plus
-            edge-case variants — fully offline in your browser.
+            Paste one API response, get realistic data and edge cases. Runs in your browser.
           </p>
           <div className="flex flex-wrap items-center gap-3 text-sm">
-            <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-emerald-800">
+            <span
+              className="inline-flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-emerald-800"
+              data-testid="privacy-note"
+            >
               <Shield className="h-3.5 w-3.5" />
               Nothing leaves your browser
             </span>
             <span className="text-muted-foreground">
-              No network calls after this page loads{engineReady ? ' (generator chunk loaded locally)' : ''}.
+              No network calls after this page loads
+              {engineReady ? ' — generator loaded locally' : ''}.
             </span>
           </div>
         </header>
@@ -501,14 +485,31 @@ export default function MockDataGenerator() {
                       </tr>
                     </thead>
                     <tbody>
-                      {fields.map((field) => {
-                        const current = overrides[field.path] ?? field.kind
+                      {structuralFields.map((field) => (
+                        <tr
+                          key={field.path}
+                          className="border-b border-border/70"
+                          data-testid={`structural-${field.path}`}
+                        >
+                          <td className="py-2 pr-4 font-mono text-xs">{field.path}</td>
+                          <td className="py-2 pr-4 text-muted-foreground">
+                            {structuralArrayLabel(field, fields)}
+                            {typeof field.arrayLength === 'number'
+                              ? ` · length ${field.arrayLength}`
+                              : ''}
+                          </td>
+                          <td className="py-2 text-muted-foreground">—</td>
+                        </tr>
+                      ))}
+                      {editableFields.map((field) => {
+                        const current = String(overrides[field.path] ?? field.kind)
+                        const options = kindOptionsIncluding(current)
                         return (
                           <tr key={field.path} className="border-b border-border/70">
                             <td className="py-2 pr-4 font-mono text-xs">{field.path}</td>
                             <td className="py-2 pr-4 min-w-[160px]">
                               <Select
-                                value={String(current)}
+                                value={current}
                                 onValueChange={(value) => onOverrideKind(field.path, value)}
                               >
                                 <SelectTrigger
@@ -516,10 +517,10 @@ export default function MockDataGenerator() {
                                   aria-label={`Kind for ${field.path}`}
                                   data-testid={`kind-${field.path}`}
                                 >
-                                  <SelectValue />
+                                  <SelectValue placeholder={current} />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  {FIELD_KIND_OPTIONS.map((kind) => (
+                                  {options.map((kind) => (
                                     <SelectItem key={kind} value={kind}>
                                       {kind}
                                     </SelectItem>
@@ -601,10 +602,8 @@ export default function MockDataGenerator() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <p className="text-xs text-muted-foreground">
-                  ZIP choice: browsers cannot write a folder tree in one click, so we package the same
-                  CLI layout (<code className="bg-muted px-1 rounded">scenario/host/…/METHOD_….json</code>)
-                  via an in-browser zip — no Node APIs, paths match{' '}
-                  <code className="bg-muted px-1 rounded">writeVariantScenarios</code>.
+                  Downloads a ZIP with files in Mockifyer&apos;s mock-data layout, ready to drop into
+                  your project.
                 </p>
                 {namedVariants.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No variants at this chaos level.</p>

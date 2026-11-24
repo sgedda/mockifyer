@@ -38,16 +38,10 @@ export default defineConfig({
       input: {
         main: path.resolve(__dirname, 'index.html'),
       },
-      output: {
-        manualChunks(id) {
-          // Keep the generator engine (+ faker) out of the main SPA bundle.
-          // Loaded on demand via loadGeneratorEngine() on the playground route.
-          if (id.includes('packages/mockifyer-generator') || id.includes('@faker-js/faker')) {
-            return 'mock-data-generator'
-          }
-          return undefined
-        },
-      },
+      // No manualChunks for @faker-js/faker: naming lazy locale entries pulls shared
+      // base chunks into those async files, then the static `locale/en` import loads
+      // them eagerly. Let Rollup keep en+shared with the generator dynamic import,
+      // and sv/de/fr/es as exclusive async chunks (see faker.ts loadLocale).
     },
   },
 })
