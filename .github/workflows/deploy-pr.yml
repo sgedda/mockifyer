@@ -62,6 +62,11 @@ jobs:
               run: |
                   cd frontend
                   npm install --legacy-peer-deps --no-audit --no-fund --ignore-scripts
+                  # Path-aliased generator sources resolve @faker-js/faker from the
+                  # package tree (not frontend/node_modules). Install those deps so
+                  # `tsc && vite build` succeeds on the CI runner.
+                  npm --prefix ../../packages/mockifyer-generator ci --ignore-scripts
+                  test -d ../../packages/mockifyer-generator/node_modules/@faker-js/faker
                   test -d node_modules/@types/react-dom
                   test -d node_modules/typescript
                   test -d node_modules/vite
