@@ -35,15 +35,11 @@ import {
   DEFAULT_SEED,
   PLAYGROUND_PRESETS,
   TRY_DEMO_COMMAND,
+  findPreset,
   presetSampleJson,
   type PlaygroundChaosLevel,
   type PlaygroundPreset,
 } from '@/lib/mock-data-generator/defaults'
-
-const DEFAULT_PRESET =
-  PLAYGROUND_PRESETS.find((preset) => preset.id === 'users') ?? PLAYGROUND_PRESETS[0]!
-const DEFAULT_SAMPLE_JSON = presetSampleJson(DEFAULT_PRESET)
-const DEFAULT_CONTEXT = DEFAULT_PRESET.context
 import {
   buildSampleCliCommand,
   buildVariantsCliCommand,
@@ -63,7 +59,13 @@ import {
   partitionFieldRows,
   structuralArrayLabel,
 } from '@/lib/mock-data-generator/field-kinds'
+import type { RealApiExample } from '@/lib/mock-data-generator/real-api-examples'
+import RealApiDemo from '@/components/RealApiDemo'
 import type { FieldDescriptor, NamedVariant } from '@sgedda/mockifyer-generator'
+
+const DEFAULT_PRESET = findPreset('users') ?? PLAYGROUND_PRESETS[0]!
+const DEFAULT_SAMPLE_JSON = presetSampleJson(DEFAULT_PRESET)
+const DEFAULT_CONTEXT = DEFAULT_PRESET.context
 
 function parseSampleJson(text: string): { ok: true; value: unknown } | { ok: false; error: string } {
   try {
@@ -305,6 +307,22 @@ export default function MockDataGenerator() {
     })
   }
 
+  const handleUseRealApiSample = async (example: RealApiExample) => {
+    const preset = example.preset
+    if (preset) {
+      await handlePreset(preset)
+      return
+    }
+    setInputText(`${JSON.stringify(example.recorded, null, 2)}\n`)
+    setContext(example.context)
+    setOverrides({})
+    await runGenerate({
+      sample: example.recorded,
+      contextText: example.context,
+      kindOverrides: {},
+    })
+  }
+
   const handleResetExample = () => {
     setInputText(DEFAULT_SAMPLE_JSON)
     setContext(DEFAULT_CONTEXT)
@@ -388,26 +406,58 @@ export default function MockDataGenerator() {
               <CardDescription>Paste or upload a response body (or a Mockifyer mock document).</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div
-                className="flex flex-wrap items-center gap-2"
-                data-testid="sample-presets"
-                role="group"
-                aria-label="Sample presets"
-              >
-                <span className="text-xs text-muted-foreground mr-1">Try a sample:</span>
-                {PLAYGROUND_PRESETS.map((preset) => (
-                  <Button
-                    key={preset.id}
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={busy}
-                    data-testid={`preset-${preset.id}`}
-                    onClick={() => void handlePreset(preset)}
+              <div className="space-y-2" data-testid="sample-presets">
+                <Label htmlFor="preset-select" className="text-xs text-muted-foreground">
+                  Try a sample
+                </Label>
+                <Select
+                  disabled={busy}
+                  onValueChange={(id) => {
+                    const preset = findPreset(id)
+                    if (preset) void handlePreset(preset)
+                  }}
+                >
+                  <SelectTrigger
+                    id="preset-select"
+                    className="w-full sm:max-w-sm"
+                    data-testid="preset-select"
                   >
-                    {preset.label}
-                  </Button>
-                ))}
+                    <SelectValue placeholder="Choose a sample shape…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PLAYGROUND_PRESETS.map((preset) => (
+                      <SelectItem
+                        key={preset.id}
+                        value={preset.id}
+                        data-testid={`preset-${preset.id}`}
+                      >
+                        {preset.label}
+                        {preset.realApi ? ' · real API' : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {/* Keep a few quick chips for common shapes without overflowing mobile */}
+                <div
+                  className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1 sm:flex-wrap sm:overflow-visible"
+                  role="group"
+                  aria-label="Quick sample presets"
+                >
+                  {PLAYGROUND_PRESETS.filter((p) => p.teaser).map((preset) => (
+                    <Button
+                      key={preset.id}
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="shrink-0"
+                      disabled={busy}
+                      data-testid={`preset-chip-${preset.id}`}
+                      onClick={() => void handlePreset(preset)}
+                    >
+                      {preset.label}
+                    </Button>
+                  ))}
+                </div>
               </div>
               <Textarea
                 aria-label="Sample JSON"
@@ -810,6 +860,8 @@ export default function MockDataGenerator() {
             </CardContent>
           </Card>
         </section>
+
+        <RealApiDemo onUseAsSample={(example) => void handleUseRealApiSample(example)} />
 
         <section className="border-t border-border pt-10 space-y-4">
           <h2 className="text-2xl font-semibold tracking-tight">How to use this</h2>

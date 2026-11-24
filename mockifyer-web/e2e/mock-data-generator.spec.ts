@@ -37,7 +37,13 @@ test.describe('Mock Data Generator playground', () => {
 
   for (const preset of ['users', 'orders', 'weather'] as const) {
     test(`preset ${preset} loads sample and generates`, async ({ page }) => {
-      await page.getByTestId(`preset-${preset}`).click();
+      const chip = page.getByTestId(`preset-chip-${preset}`);
+      if (await chip.count()) {
+        await chip.click();
+      } else {
+        await page.getByTestId('preset-select').click();
+        await page.getByTestId(`preset-${preset}`).click();
+      }
       await expect(page.getByTestId('results-section')).toBeVisible({ timeout: 30_000 });
       await expect(page.getByTestId('generated-output')).not.toHaveText('[]');
       const context = await page.getByTestId('context-input').inputValue();
@@ -45,8 +51,18 @@ test.describe('Mock Data Generator playground', () => {
     });
   }
 
+  test('real API section shows recorded vs generated side by side', async ({ page }) => {
+    const section = page.getByTestId('real-api-section');
+    await expect(section).toBeVisible();
+    await expect(page.getByTestId('real-api-recorded')).toContainText('Leanne Graham');
+    await expect(page.getByTestId('real-api-generated')).toContainText('"email"', {
+      timeout: 30_000,
+    });
+    await expect(section.getByText(/nothing is fetched live/i)).toBeVisible();
+  });
+
   test('shows productName for items[*].name and structural array for $.items', async ({ page }) => {
-    await page.getByTestId('preset-orders').click();
+    await page.getByTestId('preset-chip-orders').click();
     await expect(page.getByTestId('field-kinds')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId('structural-$.items')).toContainText(/array of objects/i);
     const nameKind = page.getByTestId('kind-$.items[*].name');

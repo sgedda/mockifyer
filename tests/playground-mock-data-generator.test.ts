@@ -175,6 +175,135 @@ describe('playground sample presets', () => {
     }
   );
 
+  it('keeps teaser presets to at most four', () => {
+    const teaser = PLAYGROUND_PRESETS.filter((p) => p.teaser);
+    expect(teaser.length).toBeGreaterThanOrEqual(3);
+    expect(teaser.length).toBeLessThanOrEqual(4);
+    expect(teaser.map((p) => p.id)).toEqual(
+      expect.arrayContaining(['users', 'orders', 'products', 'jsonplaceholder'])
+    );
+  });
+
+  it('products preset preserves catalog shape and money/sku kinds', async () => {
+    const products = PLAYGROUND_PRESETS.find((p) => p.id === 'products')!;
+    const { fields } = infer(products.sample);
+    const byPath = Object.fromEntries(fields.map((f) => [f.path, f]));
+    expect(byPath['$.products[*].sku']?.kind).toBeDefined();
+    expect(byPath['$.products[*].name']?.kind).toBe(FieldKind.ProductName);
+    expect(byPath['$.products[*].price']?.kind).toBe(FieldKind.Money);
+    expect(byPath['$.products[*].currency']?.kind).toBe(FieldKind.Currency);
+    const [record] = (await generateAsync(products.sample, {
+      seed: 7,
+      count: 1,
+      context: products.context,
+    })) as Array<{ products: Array<{ sku: string; price: number; currency: string }> }>;
+    expect(record.products.length).toBeGreaterThanOrEqual(1);
+    expect(typeof record.products[0]!.sku).toBe('string');
+    expect(typeof record.products[0]!.price).toBe('number');
+    expect(record.products[0]!.currency).toBe('EUR');
+  });
+
+  it('blog preset keeps posts + comments arrays non-empty', async () => {
+    const blog = PLAYGROUND_PRESETS.find((p) => p.id === 'blog')!;
+    const [record] = (await generateAsync(blog.sample, {
+      seed: 3,
+      count: 1,
+      context: blog.context,
+    })) as Array<{
+      posts: Array<{ title: string; comments: Array<{ body: string }> }>;
+    }>;
+    expect(record.posts.length).toBeGreaterThanOrEqual(1);
+    expect(record.posts[0]!.comments.length).toBeGreaterThanOrEqual(1);
+    expect(typeof record.posts[0]!.title).toBe('string');
+  });
+
+  it('payments preset steers status via enum mix', async () => {
+    const payments = PLAYGROUND_PRESETS.find((p) => p.id === 'payments')!;
+    const records = (await generateAsync(payments.sample, {
+      seed: 11,
+      count: 12,
+      context: payments.context,
+    })) as Array<{ transactions: Array<{ status: string; amount: number }> }>;
+    const statuses = new Set(
+      records.flatMap((r) => r.transactions.map((t) => t.status))
+    );
+    for (const status of statuses) {
+      expect(['paid', 'refunded', 'failed']).toContain(status);
+    }
+    expect(records[0]!.transactions.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('flights preset preserves booking keys', async () => {
+    const flights = PLAYGROUND_PRESETS.find((p) => p.id === 'flights')!;
+    const [record] = (await generateAsync(flights.sample, {
+      seed: 5,
+      count: 1,
+      context: flights.context,
+    })) as Array<{
+      bookings: Array<{ from: string; to: string; confirmationCode: string }>;
+    }>;
+    expect(record.bookings[0]).toEqual(
+      expect.objectContaining({
+        from: expect.any(String),
+        to: expect.any(String),
+        confirmationCode: expect.any(String),
+      })
+    );
+  });
+
+  it('paginated preset keeps page/total/next alongside items', async () => {
+    const paginated = PLAYGROUND_PRESETS.find((p) => p.id === 'paginated')!;
+    const { fields } = infer(paginated.sample);
+    expect(fields.some((f) => f.path === '$.items')).toBe(true);
+    const [record] = (await generateAsync(paginated.sample, {
+      seed: 2,
+      count: 1,
+    })) as Array<{
+      items: unknown[];
+      page: number;
+      total: number;
+      next: string;
+    }>;
+    expect(record.items.length).toBeGreaterThanOrEqual(1);
+    expect(typeof record.page).toBe('number');
+    expect(typeof record.total).toBe('number');
+    expect(typeof record.next).toBe('string');
+  });
+
+  it('error preset preserves error envelope keys', async () => {
+    const errorPreset = PLAYGROUND_PRESETS.find((p) => p.id === 'error')!;
+    const [record] = (await generateAsync(errorPreset.sample, {
+      seed: 9,
+      count: 1,
+    })) as Array<{
+      error: { code: string; message: string; status: number };
+    }>;
+    expect(record.error).toEqual(
+      expect.objectContaining({
+        code: expect.any(String),
+        message: expect.any(String),
+        status: expect.any(Number),
+      })
+    );
+  });
+
+  it('jsonplaceholder real-API preset keeps user shape (email/name)', async () => {
+    const jp = PLAYGROUND_PRESETS.find((p) => p.id === 'jsonplaceholder')!;
+    expect(jp.realApi?.sourceUrl).toContain('jsonplaceholder');
+    const { fields } = infer(jp.sample);
+    const byPath = Object.fromEntries(fields.map((f) => [f.path, f]));
+    expect(byPath['$.email']?.kind).toBe(FieldKind.Email);
+    expect(byPath['$.phone']?.kind).toBe(FieldKind.Phone);
+    const [record] = (await generateAsync(jp.sample, {
+      seed: 42,
+      count: 1,
+      context: jp.context,
+    })) as Array<{ email: string; name: string; address: { city: string } }>;
+    expect(record.email).toContain('@');
+    expect(typeof record.name).toBe('string');
+    expect(typeof record.address.city).toBe('string');
+  });
+
   it('loads into shareable editor state (input + context round-trip)', () => {
     const orders = PLAYGROUND_PRESETS.find((p) => p.id === 'orders')!;
     const encoded = encodeShareHash({

@@ -21,11 +21,32 @@ export const DEFAULT_COUNT = 3
 export const DEFAULT_SEED = 42
 
 /** One-click playground samples — JSON + context land in the editor (and thus the share hash). */
+export type PlaygroundPresetId =
+  | 'users'
+  | 'orders'
+  | 'weather'
+  | 'products'
+  | 'blog'
+  | 'payments'
+  | 'flights'
+  | 'paginated'
+  | 'error'
+  | 'jsonplaceholder'
+
 export interface PlaygroundPreset {
-  id: 'users' | 'orders' | 'weather'
+  id: PlaygroundPresetId
   label: string
   context: string
   sample: unknown
+  /** Shown on the start-page teaser (keep to 3–4). */
+  teaser?: boolean
+  /** Static capture from a well-known public API (no live browser fetch). */
+  realApi?: {
+    name: string
+    /** Documented origin URL — for display only; never fetched from the playground. */
+    sourceUrl: string
+    capturedNote: string
+  }
 }
 
 export const PLAYGROUND_PRESETS: readonly PlaygroundPreset[] = [
@@ -33,6 +54,7 @@ export const PLAYGROUND_PRESETS: readonly PlaygroundPreset[] = [
     id: 'users',
     label: 'Users',
     context: 'swedish users, EU phone numbers',
+    teaser: true,
     sample: {
       users: [
         {
@@ -52,7 +74,58 @@ export const PLAYGROUND_PRESETS: readonly PlaygroundPreset[] = [
     id: 'orders',
     label: 'Orders',
     context: DEFAULT_CONTEXT,
+    teaser: true,
     sample: DEFAULT_SAMPLE,
+  },
+  {
+    id: 'products',
+    label: 'Products',
+    context: 'catalog of products, prices in EUR',
+    teaser: true,
+    sample: {
+      products: [
+        {
+          id: 'sku-1001',
+          sku: 'NB-A5',
+          name: 'A5 Notebook',
+          category: 'stationery',
+          price: 12.5,
+          currency: 'EUR',
+          inStock: true,
+        },
+      ],
+    },
+  },
+  {
+    id: 'jsonplaceholder',
+    label: 'JSONPlaceholder',
+    context: 'english users',
+    teaser: true,
+    realApi: {
+      name: 'JSONPlaceholder',
+      sourceUrl: 'https://jsonplaceholder.typicode.com/users/1',
+      capturedNote: 'Static capture of GET /users/1 — not fetched live in the browser.',
+    },
+    sample: {
+      id: 1,
+      name: 'Leanne Graham',
+      username: 'Bret',
+      email: 'Sincere@april.biz',
+      address: {
+        street: 'Kulas Light',
+        suite: 'Apt. 556',
+        city: 'Gwenborough',
+        zipcode: '92998-3874',
+        geo: { lat: '-37.3159', lng: '81.1496' },
+      },
+      phone: '1-770-736-8031 x56442',
+      website: 'hildegard.org',
+      company: {
+        name: 'Romaguera-Crona',
+        catchPhrase: 'Multi-layered client-server neural-net',
+        bs: 'harness real-time e-markets',
+      },
+    },
   },
   {
     id: 'weather',
@@ -69,10 +142,109 @@ export const PLAYGROUND_PRESETS: readonly PlaygroundPreset[] = [
       },
     },
   },
+  {
+    id: 'blog',
+    label: 'Blog',
+    context: 'blog posts with comments',
+    sample: {
+      posts: [
+        {
+          id: 101,
+          title: 'Shipping mocks offline',
+          author: 'Ada Lovelace',
+          body: 'How we keep E2E green when the network is blocked.',
+          publishedAt: '2024-06-01T10:00:00.000Z',
+          comments: [
+            {
+              id: 1,
+              author: 'Grace Hopper',
+              body: 'Love the deterministic seeds.',
+              createdAt: '2024-06-01T12:00:00.000Z',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    id: 'payments',
+    label: 'Payments',
+    context: 'mix of paid/refunded/failed, prices in USD',
+    sample: {
+      transactions: [
+        {
+          id: 'txn_01HXYZ',
+          amount: 49.99,
+          currency: 'USD',
+          status: 'paid',
+          method: 'card',
+          customerEmail: 'ada@example.com',
+          createdAt: '2024-05-20T09:15:00.000Z',
+        },
+      ],
+    },
+  },
+  {
+    id: 'flights',
+    label: 'Flights',
+    context: 'European cities',
+    sample: {
+      bookings: [
+        {
+          confirmationCode: 'ABC123',
+          passengerName: 'Ada Lovelace',
+          from: 'ARN',
+          to: 'LHR',
+          departureAt: '2024-07-12T06:40:00.000Z',
+          arrivalAt: '2024-07-12T08:55:00.000Z',
+          seat: '12A',
+          status: 'confirmed',
+        },
+      ],
+    },
+  },
+  {
+    id: 'paginated',
+    label: 'Paginated',
+    context: '10 users',
+    sample: {
+      items: [
+        { id: 1, name: 'Ada Lovelace', email: 'ada@example.com' },
+        { id: 2, name: 'Grace Hopper', email: 'grace@example.com' },
+      ],
+      page: 1,
+      pageSize: 20,
+      total: 48,
+      next: '/api/users?page=2',
+    },
+  },
+  {
+    id: 'error',
+    label: 'Error',
+    context: 'mix of failed/pending',
+    sample: {
+      error: {
+        code: 'RATE_LIMITED',
+        message: 'Too many requests. Retry after the indicated delay.',
+        status: 429,
+        retryAfterSec: 30,
+        requestId: 'req_7c9e6679',
+      },
+    },
+  },
 ] as const
+
+/** Presets shown on the start-page teaser (3–4). */
+export const TEASER_PRESETS: readonly PlaygroundPreset[] = PLAYGROUND_PRESETS.filter(
+  (preset) => preset.teaser
+)
 
 export function presetSampleJson(preset: PlaygroundPreset): string {
   return `${JSON.stringify(preset.sample, null, 2)}\n`
+}
+
+export function findPreset(id: string): PlaygroundPreset | undefined {
+  return PLAYGROUND_PRESETS.find((preset) => preset.id === id)
 }
 
 export const CHAOS_LEVELS = ['realistic', 'mild', 'wild', 'nightmare'] as const

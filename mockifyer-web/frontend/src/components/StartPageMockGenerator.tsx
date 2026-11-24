@@ -11,15 +11,15 @@ import { Input } from '@/components/ui/input'
 import {
   DEFAULT_COUNT,
   DEFAULT_SEED,
-  PLAYGROUND_PRESETS,
+  TEASER_PRESETS,
+  findPreset,
   presetSampleJson,
   type PlaygroundPreset,
 } from '@/lib/mock-data-generator/defaults'
 import { encodeShareHash } from '@/lib/mock-data-generator/share-state'
 import { loadGeneratorEngine } from '@/lib/mock-data-generator/engine'
 
-const START_PRESET =
-  PLAYGROUND_PRESETS.find((preset) => preset.id === 'users') ?? PLAYGROUND_PRESETS[0]!
+const START_PRESET = findPreset('users') ?? TEASER_PRESETS[0]!
 
 function buildFullGeneratorHref(opts: {
   preset: PlaygroundPreset
@@ -89,8 +89,7 @@ export default function StartPageMockGenerator() {
   const engineStarted = useRef(false)
   const generateSeq = useRef(0)
 
-  const preset =
-    PLAYGROUND_PRESETS.find((item) => item.id === presetId) ?? START_PRESET
+  const preset = findPreset(presetId) ?? START_PRESET
 
   const runGenerate = useCallback(
     async (next: { preset: PlaygroundPreset; context: string; seed: number }) => {
@@ -153,7 +152,7 @@ export default function StartPageMockGenerator() {
   }, [runGenerate])
 
   const onPreset = (nextId: PlaygroundPreset['id']) => {
-    const next = PLAYGROUND_PRESETS.find((item) => item.id === nextId) ?? START_PRESET
+    const next = findPreset(nextId) ?? START_PRESET
     setPresetId(next.id)
     setContext(next.context)
     void runGenerate({ preset: next, context: next.context, seed })
@@ -200,7 +199,7 @@ export default function StartPageMockGenerator() {
               aria-label="Sample presets"
               data-testid="start-presets"
             >
-              {PLAYGROUND_PRESETS.map((item) => (
+              {TEASER_PRESETS.map((item) => (
                 <Button
                   key={item.id}
                   type="button"
