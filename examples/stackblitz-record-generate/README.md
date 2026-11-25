@@ -8,9 +8,7 @@ Runnable WebContainer (Node) demo:
 
 Uses published npm packages for fetch/core. The generator is listed as an **optionalDependency** because it is **not on npm yet**.
 
-[![Open in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz.svg)](https://stackblitz.com/github/sgedda/mockifyer/tree/cursor/stackblitz-record-generate-1232/examples/stackblitz-record-generate)
-
-> After merge, switch the badge URL to `…/tree/main/examples/stackblitz-record-generate`.
+[![Open in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz.svg)](https://stackblitz.com/github/sgedda/mockifyer/tree/main/examples/stackblitz-record-generate)
 
 ## What runs on open
 
@@ -78,12 +76,10 @@ Do not publish from this example. Tag/publish from the package workflow when rea
 
 **Does not work:** `mockifyer-dashboard` (native SQLite), Redis, React Native, Docker.
 
-## Open in StackBlitz snippet (for mockifyer-web later)
-
-PR #575 owns `/tools/mock-data-generator`. Snippet to link from that page (branch → `main` after merge):
+## Open in StackBlitz snippet
 
 ```html
-<a href="https://stackblitz.com/github/sgedda/mockifyer/tree/cursor/stackblitz-record-generate-1232/examples/stackblitz-record-generate">
+<a href="https://stackblitz.com/github/sgedda/mockifyer/tree/main/examples/stackblitz-record-generate">
   <img alt="Open in StackBlitz" src="https://developer.stackblitz.com/img/open_in_stackblitz.svg" />
 </a>
 ```
@@ -91,5 +87,5 @@ PR #575 owns `/tools/mock-data-generator`. Snippet to link from that page (branc
 Markdown:
 
 ```md
-[![Open in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz.svg)](https://stackblitz.com/github/sgedda/mockifyer/tree/cursor/stackblitz-record-generate-1232/examples/stackblitz-record-generate)
+[![Open in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz.svg)](https://stackblitz.com/github/sgedda/mockifyer/tree/main/examples/stackblitz-record-generate)
 ```
