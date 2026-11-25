@@ -18,7 +18,7 @@ Use Mockifyer when you need reliable integration tests without depending on live
 - [Configuration Reference](https://mockifyer.dev/config-reference): Environment variables and setup options
 - [Configuration (markdown)](https://mockifyer.dev/config-reference.md): Static env var reference
 - [Comparisons](https://mockifyer.dev/comparisons): Compare Mockifyer with MSW, Polly, Nock, and others
-- [Mock Data Generator](https://mockifyer.dev/tools/mock-data-generator): Free browser mock data generator — fake JSON (users, orders, …), Types tab (TypeScript, Zod, JSON Schema, C#, Kotlin, Swift, Python, Go), seeded offline, then record real APIs with Mockifyer
+- [Mock Data Generator](https://mockifyer.dev/tools/mock-data-generator): Free browser mock data generator — fake JSON (users, orders, …), generated types in TypeScript, Zod, JSON Schema, C#, Kotlin, Swift, Python, or Go, seeded offline, then record real APIs with Mockifyer
 - [Guides hub](https://mockifyer.dev/guides): Index of all published guides
 - [Guides](https://mockifyer.dev/guides/mock-at-the-network-edge): Mock at the Network Edge
 - [Guides](https://mockifyer.dev/guides/mock-drift): Prevent Mock Drift

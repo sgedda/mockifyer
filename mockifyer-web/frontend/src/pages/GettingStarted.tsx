@@ -22,17 +22,23 @@ export default function GettingStarted() {
         <p className="text-muted-foreground mt-4 text-lg max-w-3xl">
           Install, configure selective recording, run your app, activate a mock, and see it replay — about five steps to your first mock.
         </p>
-        <div className="mt-6">
+        <div className="mt-6 flex flex-col sm:flex-row flex-wrap gap-3">
           <a href={STACKBLITZ_QUICKSTART_URL} target="_blank" rel="noopener noreferrer">
             <Button variant="outline" className="font-medium">
               <ExternalLink className="mr-2 h-4 w-4" />
               Open in StackBlitz
             </Button>
           </a>
-          <p className="text-xs text-muted-foreground mt-2">
-            Browser Node demo: record one public API call, then replay with the network blocked. Dashboard is not available in StackBlitz.
-          </p>
+          <Link to="/tools/mock-data-generator">
+            <Button variant="outline" className="font-medium">
+              Free mock data generator
+            </Button>
+          </Link>
         </div>
+        <p className="text-xs text-muted-foreground mt-2">
+          No API yet? Generate fake JSON and types in your browser, then come back here to record the real one.
+          StackBlitz demo: record one public API call, then replay with the network blocked (dashboard not available there).
+        </p>
       </header>
 
       {/* Quick Start — selective recording first */}

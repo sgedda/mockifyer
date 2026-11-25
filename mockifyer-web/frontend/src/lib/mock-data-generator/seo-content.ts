@@ -28,22 +28,22 @@ export const GENERATOR_FAQ: readonly GeneratorFaqItem[] = [
   {
     question: 'Can I generate fake user data and other API shapes?',
     answer:
-      'Yes. Choose a type such as Users, Orders, Products, Posts, Payments, or Bookings, set how many objects you want, and Randomize for a new seed. Advanced mode also accepts your own pasted JSON sample.',
+      'Yes. Choose Pick a type (Users, Orders, Products, Posts, Payments, or Bookings), set how many objects you want, and Randomize for a new seed. Or switch to Use my own JSON to paste a sample and generate more records with the same shape.',
   },
   {
     question: 'Can I get TypeScript or other types from the generated JSON?',
     answer:
-      'Yes. Open the Types tab to infer shapes from the current output — nested objects, arrays, and optional fields when values vary. Choose TypeScript (default), Zod, JSON Schema, C#, Kotlin, Swift, Python TypedDict, or Go structs, then copy the shown language.',
+      'Yes. Generated types appear beside the JSON on desktop (and under the Types view on mobile). Nested objects, arrays, and optional fields are inferred. Choose TypeScript (default), Zod, JSON Schema, C#, Kotlin, Swift, Python TypedDict, or Go structs, then copy the shown language.',
   },
   {
     question: 'Can I use the output in Jest or React Native?',
     answer:
-      'Yes. Copy the JSON into fixtures or tests, or download Mockifyer mock scenario files from Advanced. For on-device and CI replay of real HTTP shapes, record once with Mockifyer (axios or fetch) and keep mocks as JSON in your repo.',
+      'Yes. Copy the JSON into fixtures or tests, or download Mockifyer mock scenario files from More. For on-device and CI replay of real HTTP shapes, record once with Mockifyer (axios or fetch) and keep mocks as JSON in your repo.',
   },
   {
     question: 'Does locale or context matter?',
     answer:
-      'Optional context (for example swedish users or prices in SEK) steers names, phones, and currency in Advanced. Simple mode uses each type’s default context so output stays realistic out of the box.',
+      'Yes. The Locale control steers names, phones, and currency. Customize also has Items per list and a lockable Seed so you can keep output stable across regenerations.',
   },
 ] as const
 
@@ -71,7 +71,7 @@ export function buildGeneratorWebApplicationJsonLd(opts: {
       'Fake JSON data generator',
       'Random JSON generator with seed',
       'Mock API response shapes (users, orders, products, and more)',
-      'JSON to TypeScript, Zod, JSON Schema, C#, Kotlin, Swift, Python, or Go',
+      'Generated types in TypeScript, Zod, JSON Schema, C#, Kotlin, Swift, Python, or Go',
       'Runs offline in the browser',
     ],
     isPartOf: {

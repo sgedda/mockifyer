@@ -1,8 +1,8 @@
 /**
- * Shared JSON / types output panel with tabs, language select, and copy.
+ * JSON + types output: side-by-side on desktop (both visible), full-width tabs on mobile.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Check, Copy, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -29,18 +29,54 @@ interface GeneratedOutputPanelProps {
   error?: string | null
   /** Prefix for data-testid attributes (e.g. "start" or "tool"). */
   testIdPrefix: string
-  /** Max height classes for the pre block. */
+  /** Max height classes for each pre block. */
   preClassName?: string
   /** Optional root interface name for type emit. */
   rootTypeName?: string
-  /** Show pending skeleton when output is null and not errored. */
   pendingLabel?: string
-  /** Extra action (e.g. Download) rendered next to Copy. */
-  extraActions?: React.ReactNode
-  /** Controlled types language (share-state). */
+  /** Extra action under the JSON pane header (e.g. Download). */
+  extraActions?: ReactNode
   typesLanguage?: TypesLanguage
   onTypesLanguageChange?: (language: TypesLanguage) => void
   onCopied?: (tab: OutputViewTab, language: TypesLanguage) => void
+}
+
+function CopyButton({
+  testId,
+  label,
+  disabled,
+  copied,
+  onClick,
+}: {
+  testId: string
+  label: string
+  disabled: boolean
+  copied: boolean
+  onClick: () => void
+}) {
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      className="min-h-9"
+      data-testid={testId}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      {copied ? (
+        <>
+          <Check className="h-3.5 w-3.5 mr-1.5" />
+          Copied
+        </>
+      ) : (
+        <>
+          <Copy className="h-3.5 w-3.5 mr-1.5" />
+          {label}
+        </>
+      )}
+    </Button>
+  )
 }
 
 export default function GeneratedOutputPanel({
@@ -56,10 +92,12 @@ export default function GeneratedOutputPanel({
   onTypesLanguageChange,
   onCopied,
 }: GeneratedOutputPanelProps) {
-  const [tab, setTab] = useState<OutputViewTab>('json')
+  const [mobileTab, setMobileTab] = useState<OutputViewTab>('json')
   const [localLanguage, setLocalLanguage] = useState<TypesLanguage>(DEFAULT_TYPES_LANGUAGE)
-  const [copied, setCopied] = useState(false)
-  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [copiedJson, setCopiedJson] = useState(false)
+  const [copiedTypes, setCopiedTypes] = useState(false)
+  const jsonTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const typesTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const language = parseTypesLanguage(controlledLanguage ?? localLanguage)
 
@@ -85,137 +123,137 @@ export default function GeneratedOutputPanel({
     }
   }, [output, rootTypeName, language])
 
-  const shownText = tab === 'json' ? jsonText : typesText
-  const copyLabel = tab === 'json' ? 'Copy JSON' : 'Copy types'
-
   useEffect(() => {
     return () => {
-      if (copiedTimer.current) clearTimeout(copiedTimer.current)
+      if (jsonTimer.current) clearTimeout(jsonTimer.current)
+      if (typesTimer.current) clearTimeout(typesTimer.current)
     }
   }, [])
 
-  const onCopy = async () => {
-    if (!shownText) return
-    await navigator.clipboard.writeText(shownText)
-    setCopied(true)
-    onCopied?.(tab, language)
-    if (copiedTimer.current) clearTimeout(copiedTimer.current)
-    copiedTimer.current = setTimeout(() => setCopied(false), 1500)
+  const copyJson = async () => {
+    if (!jsonText) return
+    await navigator.clipboard.writeText(jsonText)
+    setCopiedJson(true)
+    onCopied?.('json', language)
+    if (jsonTimer.current) clearTimeout(jsonTimer.current)
+    jsonTimer.current = setTimeout(() => setCopiedJson(false), 1500)
   }
 
-  return (
-    <div className="space-y-3" data-testid={`${testIdPrefix}-output-panel`}>
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <div
-            className="inline-flex rounded-lg border border-border p-0.5 bg-muted/40 w-fit"
-            role="tablist"
-            aria-label="Output format"
-            data-testid={`${testIdPrefix}-output-tabs`}
-          >
-            <button
-              type="button"
-              role="tab"
-              aria-selected={tab === 'json'}
-              data-testid={`${testIdPrefix}-tab-json`}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md min-h-9 ${
-                tab === 'json'
-                  ? 'bg-background text-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-              onClick={() => setTab('json')}
-            >
-              JSON
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={tab === 'types'}
-              data-testid={`${testIdPrefix}-tab-types`}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md min-h-9 ${
-                tab === 'types'
-                  ? 'bg-background text-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-              onClick={() => setTab('types')}
-            >
-              Types
-            </button>
-          </div>
+  const copyTypes = async () => {
+    if (!typesText) return
+    await navigator.clipboard.writeText(typesText)
+    setCopiedTypes(true)
+    onCopied?.('types', language)
+    if (typesTimer.current) clearTimeout(typesTimer.current)
+    typesTimer.current = setTimeout(() => setCopiedTypes(false), 1500)
+  }
 
-          {tab === 'types' ? (
-            <div
-              className="flex items-center gap-2"
-              data-testid={`${testIdPrefix}-types-language`}
-            >
-              <Label
-                htmlFor={`${testIdPrefix}-types-language-select`}
-                className="text-xs text-muted-foreground sr-only sm:not-sr-only sm:whitespace-nowrap"
-              >
-                Language
-              </Label>
-              <Select
-                value={language}
-                onValueChange={(value) => setLanguage(parseTypesLanguage(value))}
-              >
-                <SelectTrigger
-                  id={`${testIdPrefix}-types-language-select`}
-                  className="h-9 min-h-9 w-[160px] bg-white"
-                  data-testid={`${testIdPrefix}-types-language-select`}
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {TYPE_LANGUAGES.map((item) => (
-                    <SelectItem
-                      key={item.id}
-                      value={item.id}
-                      data-testid={`${testIdPrefix}-types-lang-${item.id}`}
-                    >
-                      {item.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          ) : null}
+  const jsonTestId =
+    testIdPrefix === 'tool' ? 'generated-output' : `${testIdPrefix}-generated-preview`
+  const typesTestId =
+    testIdPrefix === 'tool' ? 'generated-types' : `${testIdPrefix}-generated-types`
+
+  const pendingOrError = (
+    <>
+      {!output && !error ? (
+        <div
+          className="flex items-center gap-2 p-4 text-sm text-muted-foreground"
+          data-testid={`${testIdPrefix}-generator-skeleton`}
+          aria-busy="true"
+        >
+          <Loader2 className="h-4 w-4 animate-spin" />
+          {pendingLabel}
         </div>
+      ) : null}
+      {error ? (
+        <p className="p-4 text-sm text-destructive" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </>
+  )
 
-        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-          <Button
-            type="button"
-            variant="outline"
-            className="w-full sm:w-auto min-h-10"
-            data-testid={`${testIdPrefix}-copy-output`}
+  const languageSelect = (
+    <div className="flex items-center gap-2" data-testid={`${testIdPrefix}-types-language`}>
+      <Label
+        htmlFor={`${testIdPrefix}-types-language-select`}
+        className="text-xs text-muted-foreground whitespace-nowrap"
+      >
+        Language
+      </Label>
+      <Select value={language} onValueChange={(value) => setLanguage(parseTypesLanguage(value))}>
+        <SelectTrigger
+          id={`${testIdPrefix}-types-language-select`}
+          className="h-9 min-h-9 w-[150px] bg-white"
+          data-testid={`${testIdPrefix}-types-language-select`}
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {TYPE_LANGUAGES.map((item) => (
+            <SelectItem
+              key={item.id}
+              value={item.id}
+              data-testid={`${testIdPrefix}-types-lang-${item.id}`}
+            >
+              {item.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  )
+
+  const jsonPane = (
+    <div className="space-y-2 min-w-0" data-testid={`${testIdPrefix}-json-pane`}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold tracking-tight">JSON</h3>
+        <div className="flex flex-wrap items-center gap-2">
+          <CopyButton
+            testId={`${testIdPrefix}-copy-json`}
+            label="Copy"
             disabled={output == null}
-            onClick={() => void onCopy()}
-          >
-            {copied ? (
-              <>
-                <Check className="h-4 w-4 mr-1.5" />
-                Copied
-              </>
-            ) : (
-              <>
-                <Copy className="h-4 w-4 mr-1.5" />
-                {copyLabel}
-              </>
-            )}
-          </Button>
+            copied={copiedJson}
+            onClick={() => void copyJson()}
+          />
           {extraActions}
         </div>
       </div>
-
       <div
         className="relative rounded-xl border border-border bg-muted/30 overflow-hidden"
         data-testid={`${testIdPrefix}-generated-output`}
       >
+        {pendingOrError}
+        {output != null ? (
+          <pre className={preClassName} data-testid={jsonTestId} data-output-tab="json">
+            {jsonText}
+          </pre>
+        ) : null}
+      </div>
+    </div>
+  )
+
+  const typesPane = (
+    <div className="space-y-2 min-w-0" data-testid={`${testIdPrefix}-types-pane`}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold tracking-tight">Types</h3>
+        <div className="flex flex-wrap items-center gap-2">
+          {languageSelect}
+          <CopyButton
+            testId={`${testIdPrefix}-copy-types`}
+            label="Copy"
+            disabled={output == null}
+            copied={copiedTypes}
+            onClick={() => void copyTypes()}
+          />
+        </div>
+      </div>
+      <div
+        className="relative rounded-xl border border-border bg-muted/30 overflow-hidden"
+        data-testid={`${testIdPrefix}-types-output`}
+      >
         {!output && !error ? (
-          <div
-            className="flex items-center gap-2 p-4 text-sm text-muted-foreground"
-            data-testid={`${testIdPrefix}-generator-skeleton`}
-            aria-busy="true"
-          >
+          <div className="flex items-center gap-2 p-4 text-sm text-muted-foreground" aria-busy="true">
             <Loader2 className="h-4 w-4 animate-spin" />
             {pendingLabel}
           </div>
@@ -228,17 +266,66 @@ export default function GeneratedOutputPanel({
         {output != null ? (
           <pre
             className={preClassName}
-            data-testid={
-              testIdPrefix === 'tool'
-                ? 'generated-output'
-                : `${testIdPrefix}-generated-preview`
-            }
-            data-output-tab={tab}
-            data-types-language={tab === 'types' ? language : undefined}
+            data-testid={typesTestId}
+            data-output-tab="types"
+            data-types-language={language}
           >
-            {shownText}
+            {typesText}
           </pre>
         ) : null}
+      </div>
+    </div>
+  )
+
+  return (
+    <div className="space-y-3" data-testid={`${testIdPrefix}-output-panel`}>
+      {/* Mobile: full-width tabs */}
+      <div className="md:hidden space-y-3">
+        <div
+          className="grid grid-cols-2 rounded-lg border border-border p-0.5 bg-muted/40"
+          role="tablist"
+          aria-label="Output format"
+          data-testid={`${testIdPrefix}-output-tabs`}
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mobileTab === 'json'}
+            data-testid={`${testIdPrefix}-tab-json`}
+            className={`px-3 py-2.5 text-sm font-semibold rounded-md min-h-11 ${
+              mobileTab === 'json'
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground'
+            }`}
+            onClick={() => setMobileTab('json')}
+          >
+            JSON
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mobileTab === 'types'}
+            data-testid={`${testIdPrefix}-tab-types`}
+            className={`px-3 py-2.5 text-sm font-semibold rounded-md min-h-11 ${
+              mobileTab === 'types'
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground'
+            }`}
+            onClick={() => setMobileTab('types')}
+          >
+            Types
+          </button>
+        </div>
+        {mobileTab === 'json' ? jsonPane : typesPane}
+      </div>
+
+      {/* Desktop: side-by-side — both visible without clicks */}
+      <div
+        className="hidden md:grid md:grid-cols-2 gap-4"
+        data-testid={`${testIdPrefix}-output-split`}
+      >
+        {jsonPane}
+        {typesPane}
       </div>
     </div>
   )

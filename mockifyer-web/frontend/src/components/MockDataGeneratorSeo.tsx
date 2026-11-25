@@ -29,20 +29,18 @@ export default function MockDataGeneratorSeo() {
         <p className="text-muted-foreground text-sm sm:text-base leading-relaxed">
           Pick a type (users, orders, products, posts, payments, bookings), choose how many objects,
           and Randomize for fresh values. Use it as a fake user data generator or to generate a mock
-          API response that matches a typical REST payload. Advanced mode accepts your own sample
-          JSON so the structure stays yours while values change.
+          API response that matches a typical REST payload. Prefer your own shape? Switch to Use my
+          own JSON, paste a sample, and generate more records like it.
         </p>
       </div>
 
       <div className="space-y-3 max-w-3xl">
-        <h2 className="text-2xl font-semibold tracking-tight">
-          Generate types from JSON
-        </h2>
+        <h2 className="text-2xl font-semibold tracking-tight">Generate types from JSON</h2>
         <p className="text-muted-foreground text-sm sm:text-base leading-relaxed">
-          Switch to the Types tab to turn the current output into typed definitions — nested objects
-          become their own types, arrays are typed, and fields that vary across records are marked
-          optional. Choose TypeScript by default, or Zod, JSON Schema, C#, Kotlin, Swift, Python, or
-          Go, then copy the language you need for mock JSON for testing.
+          Generated types appear beside the JSON on desktop — nested objects become their own types,
+          arrays are typed, and fields that vary across records are marked optional. Choose
+          TypeScript by default, or Zod, JSON Schema, C#, Kotlin, Swift, Python, or Go, then copy
+          the language you need for mock JSON for testing.
         </p>
       </div>
 

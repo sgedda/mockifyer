@@ -242,19 +242,19 @@ var GENERATOR_FAQ = [
   },
   {
     question: "Can I generate fake user data and other API shapes?",
-    answer: "Yes. Choose a type such as Users, Orders, Products, Posts, Payments, or Bookings, set how many objects you want, and Randomize for a new seed. Advanced mode also accepts your own pasted JSON sample."
+    answer: "Yes. Choose Pick a type (Users, Orders, Products, Posts, Payments, or Bookings), set how many objects you want, and Randomize for a new seed. Or switch to Use my own JSON to paste a sample and generate more records with the same shape."
   },
   {
     question: "Can I get TypeScript or other types from the generated JSON?",
-    answer: "Yes. Open the Types tab to infer shapes from the current output \u2014 nested objects, arrays, and optional fields when values vary. Choose TypeScript (default), Zod, JSON Schema, C#, Kotlin, Swift, Python TypedDict, or Go structs, then copy the shown language."
+    answer: "Yes. Generated types appear beside the JSON on desktop (and under the Types view on mobile). Nested objects, arrays, and optional fields are inferred. Choose TypeScript (default), Zod, JSON Schema, C#, Kotlin, Swift, Python TypedDict, or Go structs, then copy the shown language."
   },
   {
     question: "Can I use the output in Jest or React Native?",
-    answer: "Yes. Copy the JSON into fixtures or tests, or download Mockifyer mock scenario files from Advanced. For on-device and CI replay of real HTTP shapes, record once with Mockifyer (axios or fetch) and keep mocks as JSON in your repo."
+    answer: "Yes. Copy the JSON into fixtures or tests, or download Mockifyer mock scenario files from More. For on-device and CI replay of real HTTP shapes, record once with Mockifyer (axios or fetch) and keep mocks as JSON in your repo."
   },
   {
     question: "Does locale or context matter?",
-    answer: "Optional context (for example swedish users or prices in SEK) steers names, phones, and currency in Advanced. Simple mode uses each type\u2019s default context so output stays realistic out of the box."
+    answer: "Yes. The Locale control steers names, phones, and currency. Customize also has Items per list and a lockable Seed so you can keep output stable across regenerations."
   }
 ];
 function buildGeneratorWebApplicationJsonLd(opts) {
@@ -276,7 +276,7 @@ function buildGeneratorWebApplicationJsonLd(opts) {
       "Fake JSON data generator",
       "Random JSON generator with seed",
       "Mock API response shapes (users, orders, products, and more)",
-      "JSON to TypeScript, Zod, JSON Schema, C#, Kotlin, Swift, Python, or Go",
+      "Generated types in TypeScript, Zod, JSON Schema, C#, Kotlin, Swift, Python, or Go",
       "Runs offline in the browser"
     ],
     isPartOf: {
@@ -521,7 +521,8 @@ function buildGettingStartedBody() {
         heading: "Quick Start",
         paragraphs: [
           "Optional: run npx -p @sgedda/mockifyer-core mockifyer try for a self-contained record/replay in about 10 seconds (one local call, then replay with 0 network calls).",
-          "Install @sgedda/mockifyer-axios or @sgedda/mockifyer-fetch, then call setupMockifyer with selective defaults (recordNewMocksAsPassthrough: true, recordResponses: false). Or run npx -p @sgedda/mockifyer-core mockifyer init. Run your app with recording on. Requests land as request-only stubs in mock-data/_scratch/ and stay on the live API until you activate a mock in the dashboard (untick Always use live API) or via domain-path rules. Capture-all settings are an optional heavy shortcut for tiny demos."
+          "Install @sgedda/mockifyer-axios or @sgedda/mockifyer-fetch, then call setupMockifyer with selective defaults (recordNewMocksAsPassthrough: true, recordResponses: false). Or run npx -p @sgedda/mockifyer-core mockifyer init. Run your app with recording on. Requests land as request-only stubs in mock-data/_scratch/ and stay on the live API until you activate a mock in the dashboard (untick Always use live API) or via domain-path rules. Capture-all settings are an optional heavy shortcut for tiny demos.",
+          "No API yet? Use the free Mock Data Generator to create fake JSON and types in your browser, then return here to record the real API when it exists."
         ]
       },
       {
@@ -533,6 +534,7 @@ function buildGettingStartedBody() {
       }
     ],
     links: [
+      { href: "/tools/mock-data-generator", label: "Free Mock Data Generator" },
       ...NAV_LINKS.filter((link) => link.href !== "/getting-started"),
       { href: "/config-reference", label: "Configuration Reference" },
       ...GUIDE_ITEMS.slice(0, 4).map((guide) => ({ href: guide.href, label: guide.label }))
@@ -597,7 +599,7 @@ function buildE2ETutorialBody() {
 function buildMockDataGeneratorBody() {
   const seo = seoOrThrow("/tools/mock-data-generator");
   return {
-    h1: "Mock Data Generator",
+    h1: "Free Mock Data Generator",
     summary: seo.description,
     sections: [
       {
@@ -609,13 +611,13 @@ function buildMockDataGeneratorBody() {
       {
         heading: "Generate fake JSON for API testing",
         paragraphs: [
-          "Pick a type (users, orders, products, posts, payments, bookings), choose how many objects, and Randomize for fresh values. Advanced mode accepts your own sample JSON so the structure stays yours while values change."
+          "Pick a type (users, orders, products, posts, payments, bookings), choose how many objects, and Randomize for fresh values. Or use your own JSON: paste a sample and generate more records with the same shape."
         ]
       },
       {
         heading: "Generate types from JSON",
         paragraphs: [
-          "Open the Types tab to infer definitions from the current output \u2014 nested objects, arrays, and optional fields. Choose TypeScript by default, or Zod, JSON Schema, C#, Kotlin, Swift, Python, or Go, then copy the shown language."
+          "Generated types appear beside the JSON on desktop \u2014 nested objects, arrays, and optional fields. Choose TypeScript by default, or Zod, JSON Schema, C#, Kotlin, Swift, Python, or Go, then copy the shown language."
         ]
       },
       {
