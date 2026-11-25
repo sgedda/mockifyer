@@ -24,24 +24,36 @@ export default function GettingStarted() {
         <p className="text-muted-foreground mt-4 text-lg max-w-3xl">
           Install, configure selective recording, run your app, activate a mock, and see it replay — about five steps to your first mock.
         </p>
-        <div className="mt-6">
-          <a
-            href={STACKBLITZ_RECORD_GENERATE_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-block"
-          >
-            <img
-              alt="Open in StackBlitz"
-              src="https://developer.stackblitz.com/img/open_in_stackblitz.svg"
-              width={146}
-              height={28}
-              className="h-7 w-auto"
-            />
-          </a>
-          <p className="text-xs text-muted-foreground mt-2">
-            Selective record → replay → generate in the browser (Node WebContainer). Dashboard is not available in StackBlitz.
-          </p>
+        <div className="mt-6 flex flex-col sm:flex-row flex-wrap items-start gap-4">
+          <div>
+            <a
+              href={STACKBLITZ_RECORD_GENERATE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block"
+            >
+              <img
+                alt="Open in StackBlitz"
+                src="https://developer.stackblitz.com/img/open_in_stackblitz.svg"
+                width={146}
+                height={28}
+                className="h-7 w-auto"
+              />
+            </a>
+            <p className="text-xs text-muted-foreground mt-2">
+              Selective record → replay → generate in the browser (Node WebContainer). Dashboard is not available in StackBlitz.
+            </p>
+          </div>
+          <div>
+            <Link to="/tools/mock-data-generator">
+              <Button variant="outline" className="font-medium">
+                Free mock data generator
+              </Button>
+            </Link>
+            <p className="text-xs text-muted-foreground mt-2 max-w-xs">
+              No API yet? Generate fake JSON and types in your browser, then come back here to record the real one.
+            </p>
+          </div>
         </div>
       </header>
 

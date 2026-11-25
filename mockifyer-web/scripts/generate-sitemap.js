@@ -28,7 +28,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-// mockifyer-web/scripts/generate-sitemap.ts
+// scripts/generate-sitemap.ts
 var generate_sitemap_exports = {};
 __export(generate_sitemap_exports, {
   generateSitemap: () => generateSitemap,
@@ -38,7 +38,7 @@ module.exports = __toCommonJS(generate_sitemap_exports);
 var import_fs = __toESM(require("fs"));
 var import_path = __toESM(require("path"));
 
-// mockifyer-web/frontend/src/lib/seo-config.ts
+// frontend/src/lib/seo-config.ts
 var SITE_URL = "https://mockifyer.dev";
 var DEFAULT_TITLE = "Mockifyer \u2014 Record & Replay HTTP API Mocks";
 var DEFAULT_DESCRIPTION = "Open-source API mocking for JavaScript and React Native. Record and replay HTTP, edit mocks in a dashboard, catch API drift in CI. Mocks stay in your repo.";
@@ -148,6 +148,15 @@ var PAGE_SEO = {
     description: "Compare Mockifyer with MSW, Polly.js, and Nock. Learn when record-replay fits better than in-code handlers for API testing.",
     path: "/comparisons"
   },
+  "/tools/mock-data-generator": {
+    title: "Free Mock Data Generator \u2013 Fake JSON & Types | Mockifyer",
+    description: "Free mock data generator: fake JSON (users, orders, more) plus types in TypeScript, Zod, JSON Schema, C#, Kotlin, Swift, Python, or Go. Browser-only.",
+    path: "/tools/mock-data-generator"
+  },
+  /**
+   * Static Atlas HTML (not an SPA route). Prerender skips /atlas/* and Express
+   * serves frontend/public/atlas/wanderweird/index.html. Listed for SEO/sitemap.
+   */
   "/atlas/wanderweird": {
     title: "WanderWeird Atlas \u2014 Live Architecture Map",
     description: "Interactive Mockifyer Atlas generated from real WanderWeird E2E traffic: endpoints, request chains, and mocked vs live flows.",
@@ -155,7 +164,7 @@ var PAGE_SEO = {
   }
 };
 
-// mockifyer-web/scripts/generate-sitemap.ts
+// scripts/generate-sitemap.ts
 var ROUTE_CONFIG = {
   "/": { priority: "1.0", changefreq: "weekly" },
   "/getting-started": { priority: "0.9", changefreq: "monthly" },
@@ -178,7 +187,8 @@ var ROUTE_CONFIG = {
   "/guides/browser-record-replay": { priority: "0.7", changefreq: "monthly" },
   "/guides/streaming": { priority: "0.7", changefreq: "monthly" },
   "/atlas/wanderweird": { priority: "0.7", changefreq: "monthly" },
-  "/contact": { priority: "0.5", changefreq: "yearly" }
+  "/contact": { priority: "0.5", changefreq: "yearly" },
+  "/tools/mock-data-generator": { priority: "0.8", changefreq: "monthly" }
 };
 var STATIC_CONTENT_ROUTES = [
   { loc: "/llms.txt", priority: "0.6", changefreq: "monthly" },

@@ -103,6 +103,7 @@ Fetch can record `response.stream` timelines (`kind`, timed `chunks`, optional `
 - https://mockifyer.dev/getting-started.md
 - https://mockifyer.dev/config-reference.md
 - https://mockifyer.dev/e2e-tutorial
+- https://mockifyer.dev/tools/mock-data-generator — free fake JSON plus generated types in TypeScript, Zod, JSON Schema, C#, Kotlin, Swift, Python, or Go (browser-only)
 - https://mockifyer.dev/guides/atlas-from-playwright
 - https://mockifyer.dev/atlas/wanderweird/
 - https://mockifyer.dev/guides/streaming

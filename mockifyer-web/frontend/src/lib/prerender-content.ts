@@ -6,6 +6,10 @@
 
 import { HOME_FAQ } from './faq'
 import { GUIDE_ITEMS } from './product-docs'
+import {
+  GENERATOR_FAQ,
+  buildGeneratorJsonLdGraph,
+} from './mock-data-generator/seo-content'
 import { PAGE_SEO, SITE_NAME, SITE_URL, type PageSeoConfig } from './seo-config'
 
 export interface PrerenderLink {
@@ -41,6 +45,7 @@ export const CONTENT_ROUTES_WITH_FULL_BODY = new Set([
   '/faq',
   '/getting-started',
   '/e2e-tutorial',
+  '/tools/mock-data-generator',
 ])
 
 const NAV_LINKS: PrerenderLink[] = [
@@ -54,6 +59,7 @@ const NAV_LINKS: PrerenderLink[] = [
   { href: '/dashboard', label: 'Dashboard' },
   { href: '/e2e-tutorial', label: 'E2E Tutorial' },
   { href: '/contact', label: 'Contact' },
+  { href: '/tools/mock-data-generator', label: 'Mock Data Generator' },
 ]
 
 function relatedGuideLinks(currentPath: string): PrerenderLink[] {
@@ -251,6 +257,7 @@ function buildGettingStartedBody(): PrerenderBodyContent {
         paragraphs: [
           'Optional: run npx -p @sgedda/mockifyer-core mockifyer try for a self-contained record/replay in about 10 seconds (one local call, then replay with 0 network calls).',
           'Install @sgedda/mockifyer-axios or @sgedda/mockifyer-fetch, then call setupMockifyer with selective defaults (recordNewMocksAsPassthrough: true, recordResponses: false). Or run npx -p @sgedda/mockifyer-core mockifyer init. Run your app with recording on. Requests land as request-only stubs in mock-data/_scratch/ and stay on the live API until you activate a mock in the dashboard (untick Always use live API) or via domain-path rules. Capture-all settings are an optional heavy shortcut for tiny demos.',
+          'No API yet? Use the free Mock Data Generator to create fake JSON and types in your browser, then return here to record the real API when it exists.',
         ],
       },
       {
@@ -262,6 +269,7 @@ function buildGettingStartedBody(): PrerenderBodyContent {
       },
     ],
     links: [
+      { href: '/tools/mock-data-generator', label: 'Free Mock Data Generator' },
       ...NAV_LINKS.filter((link) => link.href !== '/getting-started'),
       { href: '/config-reference', label: 'Configuration Reference' },
       ...GUIDE_ITEMS.slice(0, 4).map((guide) => ({ href: guide.href, label: guide.label })),
@@ -326,6 +334,59 @@ function buildE2ETutorialBody(): PrerenderBodyContent {
   }
 }
 
+function buildMockDataGeneratorBody(): PrerenderBodyContent {
+  const seo = seoOrThrow('/tools/mock-data-generator')
+  return {
+    h1: 'Free Mock Data Generator',
+    summary: seo.description,
+    sections: [
+      {
+        heading: 'What is a mock data generator?',
+        paragraphs: [
+          'A mock data generator creates realistic fake JSON for development and testing when a live API is missing, slow, or hard to reproduce. This free tool generates seeded records in your browser — a random JSON generator with stable shapes you can copy into fixtures, demos, and tests.',
+        ],
+      },
+      {
+        heading: 'Generate fake JSON for API testing',
+        paragraphs: [
+          'Pick a type (users, orders, products, posts, payments, bookings), choose how many objects, and Randomize for fresh values. Or use your own JSON: paste a sample and generate more records with the same shape.',
+        ],
+      },
+      {
+        heading: 'Generate types from JSON',
+        paragraphs: [
+          'Use the Types tab beside the JSON on desktop (Types view on mobile) — nested objects, arrays, and optional fields. Choose TypeScript by default, or Zod, JSON Schema, C#, Kotlin, Swift, Python, or Go, then copy the shown language.',
+        ],
+      },
+      {
+        heading: 'From generated data to recorded mocks with Mockifyer',
+        paragraphs: [
+          'Generated JSON is a starting point. When a real backend exists, Getting Started shows how to record live HTTP with Mockifyer, store mocks as JSON in your repo, and replay them in CI or on device.',
+        ],
+      },
+      {
+        heading: 'Nothing leaves your browser',
+        paragraphs: [
+          'The playground uses the same @sgedda/mockifyer-generator engine as the local CLI. Generation runs offline after the page loads — no account and no upload of your sample JSON.',
+        ],
+      },
+      {
+        heading: 'Frequently asked questions',
+        paragraphs: GENERATOR_FAQ.map(
+          (item) => `${item.question} ${item.answer}`
+        ),
+      },
+    ],
+    links: [
+      { href: '/getting-started', label: 'Getting Started' },
+      ...NAV_LINKS.filter(
+        (link) =>
+          link.href !== '/tools/mock-data-generator' && link.href !== '/getting-started'
+      ),
+    ],
+  }
+}
+
 /**
  * Return full prerender body content for a route, or null for lighter pages.
  */
@@ -348,6 +409,9 @@ export function getPrerenderBodyContent(routePath: string): PrerenderBodyContent
   }
   if (routePath === '/e2e-tutorial') {
     return buildE2ETutorialBody()
+  }
+  if (routePath === '/tools/mock-data-generator') {
+    return buildMockDataGeneratorBody()
   }
 
   const guide = GUIDE_BODIES[routePath]
@@ -448,6 +512,16 @@ export function buildTechArticleJsonLd(seo: PageSeoConfig): Record<string, unkno
 export function getRouteJsonLd(routePath: string): Record<string, unknown> | null {
   if (routePath === '/faq') {
     return buildFaqPageJsonLd()
+  }
+  if (routePath === '/tools/mock-data-generator') {
+    const seo = PAGE_SEO[routePath]
+    if (!seo) return null
+    return buildGeneratorJsonLdGraph({
+      siteUrl: SITE_URL,
+      title: seo.title,
+      description: seo.description,
+      path: seo.path,
+    })
   }
   if (routePath.startsWith('/guides/') && PAGE_SEO[routePath]) {
     return buildTechArticleJsonLd(PAGE_SEO[routePath])

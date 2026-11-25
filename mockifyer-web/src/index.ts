@@ -468,10 +468,19 @@ app.use((req, res, next) => {
 // Serve static files from public directory (but not for API routes).
 // redirect: false prevents express.static from 301'ing /guides → /guides/
 // when public/guides/ exists for nested guide HTML files.
+// HTML must never be long-cached — hashed JS chunks change every deploy; a
+// stale index.html keeps importing deleted locale/asset hashes (404).
 app.use((req, res, next) => {
   // Only serve static files for GET/HEAD requests that aren't API routes
   if ((req.method === 'GET' || req.method === 'HEAD') && !req.path.startsWith('/api/')) {
-    express.static(path.join(__dirname, '../public'), { redirect: false })(req, res, next);
+    express.static(path.join(__dirname, '../public'), {
+      redirect: false,
+      setHeaders: (staticRes, filepath) => {
+        if (filepath.endsWith('.html')) {
+          staticRes.setHeader('Cache-Control', 'no-cache, must-revalidate');
+        }
+      },
+    })(req, res, next);
   } else {
     next();
   }
@@ -501,6 +510,7 @@ const HTML_ROUTES_FALLBACK = [
   '/guides/react-native-without-msw',
   '/guides/browser-record-replay',
   '/guides/streaming',
+  '/tools/mock-data-generator',
 ];
 
 function getKnownHtmlRoutes(): string[] {

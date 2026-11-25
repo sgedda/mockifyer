@@ -28,7 +28,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-// mockifyer-web/scripts/verify-prerender.ts
+// scripts/verify-prerender.ts
 var verify_prerender_exports = {};
 __export(verify_prerender_exports, {
   verify: () => verify
@@ -37,7 +37,7 @@ module.exports = __toCommonJS(verify_prerender_exports);
 var import_fs = __toESM(require("fs"));
 var import_path = __toESM(require("path"));
 
-// mockifyer-web/frontend/src/lib/seo-config.ts
+// frontend/src/lib/seo-config.ts
 var SITE_URL = "https://mockifyer.dev";
 var SITE_NAME = "Mockifyer";
 var DEFAULT_TITLE = "Mockifyer \u2014 Record & Replay HTTP API Mocks";
@@ -148,6 +148,15 @@ var PAGE_SEO = {
     description: "Compare Mockifyer with MSW, Polly.js, and Nock. Learn when record-replay fits better than in-code handlers for API testing.",
     path: "/comparisons"
   },
+  "/tools/mock-data-generator": {
+    title: "Free Mock Data Generator \u2013 Fake JSON & Types | Mockifyer",
+    description: "Free mock data generator: fake JSON (users, orders, more) plus types in TypeScript, Zod, JSON Schema, C#, Kotlin, Swift, Python, or Go. Browser-only.",
+    path: "/tools/mock-data-generator"
+  },
+  /**
+   * Static Atlas HTML (not an SPA route). Prerender skips /atlas/* and Express
+   * serves frontend/public/atlas/wanderweird/index.html. Listed for SEO/sitemap.
+   */
   "/atlas/wanderweird": {
     title: "WanderWeird Atlas \u2014 Live Architecture Map",
     description: "Interactive Mockifyer Atlas generated from real WanderWeird E2E traffic: endpoints, request chains, and mocked vs live flows.",
@@ -164,7 +173,7 @@ function formatPageTitle(title) {
   return `${title} | ${SITE_NAME}`;
 }
 
-// mockifyer-web/frontend/src/lib/prerender-content.ts
+// frontend/src/lib/prerender-content.ts
 var CONTENT_ROUTES_WITH_FULL_BODY = /* @__PURE__ */ new Set([
   "/guides",
   "/guides/mock-at-the-network-edge",
@@ -179,10 +188,11 @@ var CONTENT_ROUTES_WITH_FULL_BODY = /* @__PURE__ */ new Set([
   "/comparisons",
   "/faq",
   "/getting-started",
-  "/e2e-tutorial"
+  "/e2e-tutorial",
+  "/tools/mock-data-generator"
 ]);
 
-// mockifyer-web/scripts/verify-prerender.ts
+// scripts/verify-prerender.ts
 var HOMEPAGE_CANONICAL = `${SITE_URL}/`;
 var MAX_TITLE_LENGTH = 60;
 var MAX_DESCRIPTION_LENGTH = 155;

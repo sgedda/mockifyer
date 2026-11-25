@@ -57,6 +57,17 @@ describe('generator engine — field-kind inference', () => {
     expect(inferFieldKind('email_verified', [true]).kind).toBe(FieldKind.Boolean);
   });
 
+  it('does not treat ZIP+4 or decimal coordinates as phones', () => {
+    expect(inferFieldKind('zipcode', ['92998-3874']).kind).toBe(FieldKind.Zip);
+    expect(inferFieldKind('lat', ['-37.3159'], '$.address.geo.lat').kind).toBe(
+      FieldKind.Latitude
+    );
+    expect(inferFieldKind('lng', ['81.1496'], '$.address.geo.lng').kind).toBe(
+      FieldKind.Longitude
+    );
+    expect(inferFieldKind('phone', ['1-770-736-8031 x56442']).kind).toBe(FieldKind.Phone);
+  });
+
   it('returns path descriptors with confidence for a nested sample', () => {
     const sample = {
       user: {
@@ -193,10 +204,28 @@ describe('generator engine — shape preservation', () => {
         ids: number[];
       }>;
       lengths.add(record.ids.length);
-      expect(record.ids.length).toBeGreaterThanOrEqual(0);
+      expect(record.ids.length).toBeGreaterThanOrEqual(1);
       expect(record.ids.length).toBeLessThanOrEqual(6);
     }
     expect(lengths.size).toBeGreaterThan(1);
+  });
+
+  it('never emits empty nested arrays in normal generate (emptyLists is variants-only)', () => {
+    const sample = {
+      users: [
+        {
+          id: '7c9e6679-7425-40de-944b-e07fc1f90ae7',
+          email: 'ada@example.com',
+          country: 'SE',
+        },
+      ],
+    };
+    for (let seed = 0; seed < 80; seed++) {
+      const [record] = generate(sample, { count: 1, seed }) as Array<{
+        users: unknown[];
+      }>;
+      expect(record.users.length).toBeGreaterThanOrEqual(1);
+    }
   });
 });
 
