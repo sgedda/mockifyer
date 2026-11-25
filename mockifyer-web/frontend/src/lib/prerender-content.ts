@@ -29,6 +29,7 @@ export interface PrerenderBodyContent {
 export const CONTENT_ROUTES_WITH_FULL_BODY = new Set([
   '/guides',
   '/guides/mock-at-the-network-edge',
+  '/guides/how-to-mock-api-calls-in-react-native',
   '/guides/reproduce-tester-bugs',
   '/guides/stable-react-native-e2e',
   '/guides/mock-drift',
@@ -134,6 +135,20 @@ const GUIDE_BODIES: Record<string, Omit<PrerenderBodyContent, 'links'>> = {
       },
     ],
   },
+  '/guides/how-to-mock-api-calls-in-react-native': {
+    h1: 'How to mock API calls in React Native',
+    summary:
+      'How to mock API calls in React Native and Expo: compare stubs, MSW (msw/native), local mock servers, and Mockifyer record-replay for fetch and axios.',
+    sections: [
+      {
+        heading: 'Choose an Approach',
+        paragraphs: [
+          'Hand-written Jest stubs fit unit tests. MSW shines for a single API with typed handlers. A local mock server works when the device can reach your laptop. Record-and-replay fits larger apps that call many backend systems across teams.',
+          'With Mockifyer, install @sgedda/mockifyer-fetch, configure Metro sync, call setupMockifyerForReactNative, record selectively into _scratch, activate mocks from the dashboard (use 10.0.2.2 on Android emulator or a LAN IP on device), freeze dates with getCurrentDate, and lock E2E scenarios via launch arguments.',
+        ],
+      },
+    ],
+  },
   '/guides/react-native-without-msw': {
     h1: 'MSW vs Recording in React Native',
     summary:
@@ -215,7 +230,7 @@ function buildGuidesHub(): PrerenderBodyContent {
       {
         heading: 'Published Guides',
         paragraphs: [
-          'Practical guides for record-replay API mocking: network-edge testing, React Native E2E stability, mock drift detection, SSE/streaming, Atlas architecture maps, and browser record-replay.',
+          'Practical guides for record-replay API mocking: network-edge testing, how to mock API calls in React Native, E2E stability, mock drift detection, SSE/streaming, Atlas architecture maps, and browser record-replay.',
           'Each guide links to install steps, configuration tips, and related docs so you can go from concept to a working setup quickly.',
         ],
       },

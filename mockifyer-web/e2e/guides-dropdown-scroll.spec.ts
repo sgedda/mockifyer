@@ -30,6 +30,7 @@ test.describe('Guides Dropdown After Scroll', () => {
     
     // Dropdown should be open with all guide items visible
     await expect(page.getByRole('menuitem', { name: 'Mock at the Network Edge' })).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: 'How to Mock API Calls in React Native' })).toBeVisible();
     await expect(page.getByRole('menuitem', { name: 'Stop Mock Drift' })).toBeVisible();
     await expect(page.getByRole('menuitem', { name: 'Reproduce Tester Bugs' })).toBeVisible();
     await expect(page.getByRole('menuitem', { name: 'Stable React Native E2E' })).toBeVisible();
@@ -70,6 +71,7 @@ test.describe('Guides Dropdown After Scroll', () => {
     // All guide items should be visible in the mobile menu
     const mobileNav = page.locator('nav.lg\\:hidden');
     await expect(mobileNav.getByRole('link', { name: 'Mock at the Network Edge' })).toBeVisible();
+    await expect(mobileNav.getByRole('link', { name: 'How to Mock API Calls in React Native' })).toBeVisible();
     await expect(mobileNav.getByRole('link', { name: 'Stop Mock Drift' })).toBeVisible();
   });
 });

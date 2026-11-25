@@ -12,6 +12,11 @@ const ROUTES = [
   { path: '/guides', title: 'Mockifyer Guides', h1: /Guides/i },
   { path: '/guides/react-native-without-msw', title: 'MSW vs Recording in React Native | Mockifyer', h1: /MSW/i },
   {
+    path: '/guides/how-to-mock-api-calls-in-react-native',
+    title: 'How to Mock API Calls in React Native | Mockifyer',
+    h1: /How to mock API calls in React Native/i,
+  },
+  {
     path: '/guides/streaming',
     title: 'Mocking SSE and Streaming APIs with Mockifyer',
     h1: /Mocking SSE and Streaming APIs/i,

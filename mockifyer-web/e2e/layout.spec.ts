@@ -17,6 +17,7 @@ test.describe('Page Layout', () => {
     '/guides/stable-react-native-e2e',
     '/guides/mock-drift',
     '/guides/react-native-without-msw',
+    '/guides/how-to-mock-api-calls-in-react-native',
     '/guides/streaming',
   ];
 

@@ -88,8 +88,13 @@ var PAGE_SEO = {
   },
   "/guides": {
     title: "Mockifyer Guides",
-    description: "Practical guides for record-replay API mocking: network-edge testing, React Native E2E, mock drift, SSE/streaming, Atlas maps, and browser record-replay.",
+    description: "Practical guides for record-replay API mocking: React Native, E2E, mock drift, SSE/streaming, Atlas maps, and browser record-replay.",
     path: "/guides"
+  },
+  "/guides/how-to-mock-api-calls-in-react-native": {
+    title: "How to Mock API Calls in React Native",
+    description: "How to mock API calls in React Native and Expo: MSW vs stubs vs record-replay. Mock fetch/axios, selective recording, dashboard, E2E.",
+    path: "/guides/how-to-mock-api-calls-in-react-native"
   },
   "/guides/mock-at-the-network-edge": {
     title: "Mock at the Network Edge - Testing Guide",
@@ -156,6 +161,10 @@ var PAGE_SEO = {
     description: "Compare Mockifyer with MSW, Polly.js, and Nock. Learn when record-replay fits better than in-code handlers for API testing.",
     path: "/comparisons"
   },
+  /**
+   * Static Atlas HTML (not an SPA route). Prerender skips /atlas/* and Express
+   * serves frontend/public/atlas/wanderweird/index.html. Listed for SEO/sitemap.
+   */
   "/atlas/wanderweird": {
     title: "WanderWeird Atlas \u2014 Live Architecture Map",
     description: "Interactive Mockifyer Atlas generated from real WanderWeird E2E traffic: endpoints, request chains, and mocked vs live flows.",
@@ -211,6 +220,7 @@ var HOME_FAQ = [
 // mockifyer-web/frontend/src/lib/product-docs.ts
 var GUIDE_ITEMS = [
   { href: "/guides/mock-at-the-network-edge", label: "Mock at the Network Edge" },
+  { href: "/guides/how-to-mock-api-calls-in-react-native", label: "How to Mock API Calls in React Native" },
   { href: "/guides/reproduce-tester-bugs", label: "Reproduce Tester Bugs" },
   { href: "/guides/stable-react-native-e2e", label: "Stable React Native E2E" },
   { href: "/guides/mock-drift", label: "Stop Mock Drift" },
@@ -225,6 +235,7 @@ var GUIDE_ITEMS = [
 var CONTENT_ROUTES_WITH_FULL_BODY = /* @__PURE__ */ new Set([
   "/guides",
   "/guides/mock-at-the-network-edge",
+  "/guides/how-to-mock-api-calls-in-react-native",
   "/guides/reproduce-tester-bugs",
   "/guides/stable-react-native-e2e",
   "/guides/mock-drift",
@@ -322,6 +333,19 @@ var GUIDE_BODIES = {
       }
     ]
   },
+  "/guides/how-to-mock-api-calls-in-react-native": {
+    h1: "How to mock API calls in React Native",
+    summary: "How to mock API calls in React Native and Expo: compare stubs, MSW (msw/native), local mock servers, and Mockifyer record-replay for fetch and axios.",
+    sections: [
+      {
+        heading: "Choose an Approach",
+        paragraphs: [
+          "Hand-written Jest stubs fit unit tests. MSW shines for a single API with typed handlers. A local mock server works when the device can reach your laptop. Record-and-replay fits larger apps that call many backend systems across teams.",
+          "With Mockifyer, install @sgedda/mockifyer-fetch, configure Metro sync, call setupMockifyerForReactNative, record selectively into _scratch, activate mocks from the dashboard (use 10.0.2.2 on Android emulator or a LAN IP on device), freeze dates with getCurrentDate, and lock E2E scenarios via launch arguments."
+        ]
+      }
+    ]
+  },
   "/guides/react-native-without-msw": {
     h1: "MSW vs Recording in React Native",
     summary: "Compare MSW and Mockifyer for React Native. Recording works on device with no service worker and supports Expo and bare React Native.",
@@ -397,7 +421,7 @@ function buildGuidesHub() {
       {
         heading: "Published Guides",
         paragraphs: [
-          "Practical guides for record-replay API mocking: network-edge testing, React Native E2E stability, mock drift detection, SSE/streaming, Atlas architecture maps, and browser record-replay.",
+          "Practical guides for record-replay API mocking: network-edge testing, how to mock API calls in React Native, E2E stability, mock drift detection, SSE/streaming, Atlas architecture maps, and browser record-replay.",
           "Each guide links to install steps, configuration tips, and related docs so you can go from concept to a working setup quickly."
         ]
       }

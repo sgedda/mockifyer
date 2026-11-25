@@ -80,8 +80,13 @@ var PAGE_SEO = {
   },
   "/guides": {
     title: "Mockifyer Guides",
-    description: "Practical guides for record-replay API mocking: network-edge testing, React Native E2E, mock drift, SSE/streaming, Atlas maps, and browser record-replay.",
+    description: "Practical guides for record-replay API mocking: React Native, E2E, mock drift, SSE/streaming, Atlas maps, and browser record-replay.",
     path: "/guides"
+  },
+  "/guides/how-to-mock-api-calls-in-react-native": {
+    title: "How to Mock API Calls in React Native",
+    description: "How to mock API calls in React Native and Expo: MSW vs stubs vs record-replay. Mock fetch/axios, selective recording, dashboard, E2E.",
+    path: "/guides/how-to-mock-api-calls-in-react-native"
   },
   "/guides/mock-at-the-network-edge": {
     title: "Mock at the Network Edge - Testing Guide",
@@ -148,6 +153,10 @@ var PAGE_SEO = {
     description: "Compare Mockifyer with MSW, Polly.js, and Nock. Learn when record-replay fits better than in-code handlers for API testing.",
     path: "/comparisons"
   },
+  /**
+   * Static Atlas HTML (not an SPA route). Prerender skips /atlas/* and Express
+   * serves frontend/public/atlas/wanderweird/index.html. Listed for SEO/sitemap.
+   */
   "/atlas/wanderweird": {
     title: "WanderWeird Atlas \u2014 Live Architecture Map",
     description: "Interactive Mockifyer Atlas generated from real WanderWeird E2E traffic: endpoints, request chains, and mocked vs live flows.",
@@ -172,6 +181,7 @@ var ROUTE_CONFIG = {
   "/guides/mock-drift": { priority: "0.7", changefreq: "monthly" },
   "/guides/mockifyer-atlas": { priority: "0.7", changefreq: "monthly" },
   "/guides/atlas-from-playwright": { priority: "0.7", changefreq: "monthly" },
+  "/guides/how-to-mock-api-calls-in-react-native": { priority: "0.7", changefreq: "monthly" },
   "/guides/react-native-without-msw": { priority: "0.7", changefreq: "monthly" },
   "/guides/reproduce-tester-bugs": { priority: "0.7", changefreq: "monthly" },
   "/guides/stable-react-native-e2e": { priority: "0.7", changefreq: "monthly" },

@@ -34,6 +34,14 @@ test.describe('Guide Pages', () => {
     await expect(page.getByText(/MSW uses in-code handlers/i)).toBeVisible();
   });
 
+  test('should load How to mock API calls in React Native guide', async ({ page }) => {
+    await page.goto('/guides/how-to-mock-api-calls-in-react-native');
+    await expect(
+      page.getByRole('heading', { name: /How to mock API calls in React Native/i })
+    ).toBeVisible();
+    await expect(page.getByText(/msw\/native/i).first()).toBeVisible();
+  });
+
   test('should load Atlas from Playwright guide', async ({ page }) => {
     await page.goto('/guides/atlas-from-playwright');
     await expect(page.getByRole('heading', { name: /Generate Atlas from Playwright E2E/i })).toBeVisible();
@@ -55,6 +63,7 @@ test.describe('Guide Pages', () => {
       '/guides/stable-react-native-e2e',
       '/guides/mock-drift',
       '/guides/react-native-without-msw',
+      '/guides/how-to-mock-api-calls-in-react-native',
       '/guides/atlas-from-playwright',
       '/guides/streaming',
     ];
