@@ -65,7 +65,7 @@ import {
   downloadJsonText,
   downloadVariantMocksZip,
 } from '@/lib/mock-data-generator/download'
-import { loadGeneratorEngine } from '@/lib/mock-data-generator/engine'
+import { generateAsyncSafe, loadGeneratorEngine } from '@/lib/mock-data-generator/engine'
 import {
   DEFAULT_PLAYGROUND_LOCALE,
   PLAYGROUND_LOCALES,
@@ -175,24 +175,19 @@ export default function MockDataGenerator() {
     [mode, typeId]
   )
 
-  /** Prefer how-many / entity count over root wrapper length (`{ users: […] }` → 1). */
-  const visibleEntityCount = useCallback(
-    (recordCount: number) => {
-      if (mode === 'pick') return objectCount
-      return recordCount
-    },
-    [mode, objectCount]
-  )
-
-  /** Feedback on the output pane after generate / sample load. */
+  /**
+   * Feedback on the output pane after generate / sample load.
+   * `entityCount` must be the count the user selected (not a stale React state value).
+   */
   const announceOutput = useCallback(
     (opts: {
-      recordCount: number
+      entityCount: number
       seedValue: number | string
       fromSample?: boolean
       scroll?: boolean
+      localeNote?: string
     }) => {
-      const count = visibleEntityCount(opts.recordCount)
+      const count = opts.entityCount
       const noun = outputNoun(count)
       const time = new Date().toLocaleTimeString([], {
         hour: '2-digit',
@@ -202,7 +197,8 @@ export default function MockDataGenerator() {
       const lead = opts.fromSample
         ? `Generated ${count} ${noun} from your sample`
         : `Updated · ${count} ${noun}`
-      setOutputStatus(`${lead} · seed ${opts.seedValue} · ${time}`)
+      const localeSuffix = opts.localeNote ? ` · ${opts.localeNote}` : ''
+      setOutputStatus(`${lead} · seed ${opts.seedValue} · ${time}${localeSuffix}`)
       setFocusPulse(true)
       setOutputFlash(true)
       if (focusPulseTimer.current) clearTimeout(focusPulseTimer.current)
@@ -216,14 +212,14 @@ export default function MockDataGenerator() {
         })
       }
     },
-    [outputNoun, visibleEntityCount]
+    [outputNoun]
   )
 
   const revealToolAfterSample = useCallback(
-    (recordCount: number, seedValue: number | string) => {
+    (entityCount: number, seedValue: number | string) => {
       setMoreOpen(false)
       announceOutput({
-        recordCount,
+        entityCount,
         seedValue,
         fromSample: true,
         scroll: true,
@@ -314,13 +310,14 @@ export default function MockDataGenerator() {
       itemCount?: number
       seedValue: number | string
       silent?: boolean
-    }): Promise<number | null> => {
+      /** Count shown in the status line (How many), not wrapper length. */
+      entityCount?: number
+    }): Promise<{ recordCount: number; entityCount: number; localeNote?: string } | null> => {
       setError(null)
       setBusy(true)
       try {
-        const engine = await loadGeneratorEngine()
         setEngineReady(true)
-        const generated = await engine.generateAsync(opts.sample, {
+        const { records: generated, locale } = await generateAsyncSafe(opts.sample, {
           seed: opts.seedValue,
           count: opts.count,
           itemCount: opts.itemCount,
@@ -328,25 +325,50 @@ export default function MockDataGenerator() {
           locale: opts.localeCode,
           overrides: opts.kindOverrides,
         })
+        if (locale.fellBackToEn) {
+          setLocale(parsePlaygroundLocale('en'))
+          setError(locale.message ?? null)
+          toast({
+            title: 'Language pack unavailable',
+            description: locale.message,
+            variant: 'destructive',
+          })
+        }
         setDisplayOutput(formatSimpleOutput(generated))
         setGenerationKey((key) => key + 1)
 
+        const engine = await loadGeneratorEngine()
         const variants = engine.variants(opts.sample, {
           seed: opts.seedValue,
           chaosLevel: level,
         })
         setNamedVariants(variants)
 
+        const entityCount =
+          opts.entityCount ??
+          (typeof opts.itemCount === 'number' ? opts.itemCount : opts.count)
+
         if (!opts.silent) {
           toast({
             title: 'Generated',
-            description: `${generated.length} record(s)`,
+            description: `${entityCount} record(s)`,
           })
         }
-        return generated.length
+        return {
+          recordCount: generated.length,
+          entityCount,
+          localeNote: locale.fellBackToEn ? 'English fallback' : undefined,
+        }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
-        setError(message)
+        // Reload path throws while navigating away — keep UI quiet.
+        if (/Failed to fetch dynamically imported module/i.test(message)) {
+          setError(
+            'A language file failed to load (often after a deploy). Reloading… If this persists, English will be used.'
+          )
+        } else {
+          setError(message)
+        }
         return null
       } finally {
         setBusy(false)
@@ -363,7 +385,7 @@ export default function MockDataGenerator() {
       localeCode: PlaygroundLocaleId
       itemCountValue?: number
       silent?: boolean
-    }): Promise<number | null> => {
+    }) => {
       const preset = simplePreset(opts.typeId)
       const size = resolveSimpleGenerateOptions(preset.sample, opts.objectCount)
       const nextItemCount = opts.itemCountValue ?? size.itemCount
@@ -385,6 +407,7 @@ export default function MockDataGenerator() {
         itemCount: nextItemCount ?? size.itemCount,
         seedValue: opts.seedValue,
         silent: opts.silent,
+        entityCount: opts.objectCount,
       })
     },
     [runGenerate]
@@ -394,21 +417,25 @@ export default function MockDataGenerator() {
     async (opts?: {
       silent?: boolean
       seedValue?: number | string
-    }): Promise<number | null> => {
+      entityCount?: number
+    }) => {
       const parsed = parseSampleJson(inputText)
       if (!parsed.ok) {
         setError(`Invalid JSON: ${parsed.error}`)
         return null
       }
+      const seedValue = opts?.seedValue ?? seed
+      const entityCount = opts?.entityCount ?? objectCount
       return runGenerate({
         sample: parsed.value,
         contextText: context,
         localeCode: locale,
         kindOverrides: overrides,
-        count: objectCount,
+        count: entityCount,
         itemCount,
-        seedValue: opts?.seedValue ?? seed,
+        seedValue,
         silent: opts?.silent,
+        entityCount,
       })
     },
     [inputText, context, locale, overrides, objectCount, itemCount, seed, runGenerate]
@@ -432,6 +459,20 @@ export default function MockDataGenerator() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot after hydrate
   }, [bootstrapped])
 
+  const finishAnnounce = (
+    result: { entityCount: number; localeNote?: string } | null,
+    seedValue: number | string,
+    scroll = false
+  ) => {
+    if (result == null) return
+    announceOutput({
+      entityCount: result.entityCount,
+      seedValue,
+      scroll,
+      localeNote: result.localeNote,
+    })
+  }
+
   const onSimpleType = (nextId: PlaygroundPresetId) => {
     setTypeId(nextId)
     void generateFromSimple({
@@ -441,9 +482,7 @@ export default function MockDataGenerator() {
       localeCode: locale,
       itemCountValue: itemCount,
       silent: true,
-    }).then((count) => {
-      if (count != null) announceOutput({ recordCount: count, seedValue: seed, scroll: false })
-    })
+    }).then((result) => finishAnnounce(result, seed, false))
   }
 
   const onSimpleCount = (next: SimpleObjectCount) => {
@@ -457,9 +496,7 @@ export default function MockDataGenerator() {
         localeCode: locale,
         itemCountValue: itemCount,
         silent: true,
-      }).then((count) => {
-        if (count != null) announceOutput({ recordCount: count, seedValue: seed, scroll: false })
-      })
+      }).then((result) => finishAnnounce(result, seed, false))
       return
     }
     const parsed = parseSampleJson(inputText)
@@ -476,9 +513,8 @@ export default function MockDataGenerator() {
       itemCount,
       seedValue: seed,
       silent: true,
-    }).then((count) => {
-      if (count != null) announceOutput({ recordCount: count, seedValue: seed, scroll: false })
-    })
+      entityCount: next,
+    }).then((result) => finishAnnounce(result, seed, false))
   }
 
   const onLocaleChange = (next: PlaygroundLocaleId) => {
@@ -490,7 +526,8 @@ export default function MockDataGenerator() {
         seedValue: seed,
         localeCode: next,
         itemCountValue: itemCount,
-      })
+        silent: true,
+      }).then((result) => finishAnnounce(result, seed, false))
       return
     }
     const parsed = parseSampleJson(inputText)
@@ -506,7 +543,9 @@ export default function MockDataGenerator() {
       count: objectCount,
       itemCount,
       seedValue: seed,
-    })
+      silent: true,
+      entityCount: objectCount,
+    }).then((result) => finishAnnounce(result, seed, false))
   }
 
   const onItemCountChange = (next: number) => {
@@ -519,7 +558,8 @@ export default function MockDataGenerator() {
         seedValue: seed,
         localeCode: locale,
         itemCountValue: clamped,
-      })
+        silent: true,
+      }).then((result) => finishAnnounce(result, seed, false))
       return
     }
     const parsed = parseSampleJson(inputText)
@@ -535,17 +575,15 @@ export default function MockDataGenerator() {
       count: objectCount,
       itemCount: clamped,
       seedValue: seed,
-    })
+      silent: true,
+      entityCount: objectCount,
+    }).then((result) => finishAnnounce(result, seed, false))
   }
 
-  /** Single primary action: new seed (unless locked) → regenerate → flash output. */
-  const onGenerate = () => {
-    const nextSeed = seedLocked ? seed : newRandomSeed()
-    if (!seedLocked) setSeed(nextSeed)
-    const finish = (recordCount: number | null | undefined) => {
-      if (recordCount == null) return
-      announceOutput({ recordCount, seedValue: nextSeed, scroll: true })
-    }
+  /** Apply typed seed and regenerate so status/output match the field. */
+  const onSeedCommit = (raw: string) => {
+    const nextSeed = /^-?\d+$/.test(raw) ? Number(raw) : raw
+    setSeed(nextSeed)
     if (mode === 'pick') {
       void generateFromSimple({
         typeId,
@@ -554,10 +592,30 @@ export default function MockDataGenerator() {
         localeCode: locale,
         itemCountValue: itemCount,
         silent: true,
-      }).then((count) => finish(count ?? null))
+      }).then((result) => finishAnnounce(result, nextSeed, false))
+      return
+    }
+    void generateFromCustom({ seedValue: nextSeed, silent: true, entityCount: objectCount }).then(
+      (result) => finishAnnounce(result, nextSeed, false)
+    )
+  }
+
+  /** Single primary action: new seed (unless locked) → regenerate → flash output. */
+  const onGenerate = () => {
+    const nextSeed = seedLocked ? seed : newRandomSeed()
+    if (!seedLocked) setSeed(nextSeed)
+    if (mode === 'pick') {
+      void generateFromSimple({
+        typeId,
+        objectCount,
+        seedValue: nextSeed,
+        localeCode: locale,
+        itemCountValue: itemCount,
+        silent: true,
+      }).then((result) => finishAnnounce(result, nextSeed, true))
     } else {
-      void generateFromCustom({ seedValue: nextSeed, silent: true }).then((count) =>
-        finish(count ?? null)
+      void generateFromCustom({ seedValue: nextSeed, silent: true, entityCount: objectCount }).then(
+        (result) => finishAnnounce(result, nextSeed, true)
       )
     }
   }
@@ -576,7 +634,7 @@ export default function MockDataGenerator() {
     const size = resolveSimpleGenerateOptions(preset.sample, objectCount)
     setCount(size.count)
     if (typeof size.itemCount === 'number') setItemCount(size.itemCount)
-    const recordCount = await runGenerate({
+    const result = await runGenerate({
       sample: preset.sample,
       contextText: preset.context,
       localeCode: localeFromContext(preset.context),
@@ -585,11 +643,12 @@ export default function MockDataGenerator() {
       itemCount: size.itemCount,
       seedValue: seed,
       silent: opts?.reveal,
+      entityCount: objectCount,
     })
-    if (opts?.reveal && recordCount != null) {
-      revealToolAfterSample(recordCount, seed)
+    if (opts?.reveal && result != null) {
+      revealToolAfterSample(result.entityCount, seed)
     }
-    return recordCount
+    return result?.entityCount ?? null
   }
 
   const handleUseRealApiSample = async (example: RealApiExample) => {
@@ -606,7 +665,7 @@ export default function MockDataGenerator() {
     const size = resolveSimpleGenerateOptions(example.recorded, objectCount)
     setCount(size.count)
     if (typeof size.itemCount === 'number') setItemCount(size.itemCount)
-    const recordCount = await runGenerate({
+    const result = await runGenerate({
       sample: example.recorded,
       contextText: example.context,
       localeCode: localeFromContext(example.context),
@@ -615,9 +674,10 @@ export default function MockDataGenerator() {
       itemCount: size.itemCount ?? itemCount,
       seedValue: seed,
       silent: true,
+      entityCount: objectCount,
     })
-    if (recordCount != null) {
-      revealToolAfterSample(recordCount, seed)
+    if (result != null) {
+      revealToolAfterSample(result.entityCount, seed)
     }
   }
 
@@ -634,7 +694,7 @@ export default function MockDataGenerator() {
       const size = resolveSimpleGenerateOptions(parsed.value, objectCount)
       setCount(size.count)
       if (typeof size.itemCount === 'number') setItemCount(size.itemCount)
-      const recordCount = await runGenerate({
+      const result = await runGenerate({
         sample: parsed.value,
         contextText: context,
         localeCode: locale,
@@ -643,9 +703,10 @@ export default function MockDataGenerator() {
         itemCount: size.itemCount ?? itemCount,
         seedValue: seed,
         silent: true,
+        entityCount: objectCount,
       })
-      if (recordCount != null) {
-        revealToolAfterSample(recordCount, seed)
+      if (result != null) {
+        revealToolAfterSample(result.entityCount, seed)
       }
       toast({ title: 'Sample loaded', description: file.name })
     } catch (err) {
@@ -1007,6 +1068,12 @@ export default function MockDataGenerator() {
                       onChange={(e) => {
                         const raw = e.target.value
                         setSeed(/^-?\d+$/.test(raw) ? Number(raw) : raw)
+                      }}
+                      onBlur={(e) => onSeedCommit(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.currentTarget.blur()
+                        }
                       }}
                     />
                     <Button

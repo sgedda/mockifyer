@@ -166,7 +166,11 @@ export default function GeneratedOutputPanel({
         </div>
       ) : null}
       {error ? (
-        <p className="p-4 text-sm text-destructive" role="alert">
+        <p
+          className="p-4 text-sm text-destructive"
+          role="alert"
+          data-testid={`${testIdPrefix}-error-banner`}
+        >
           {error}
         </p>
       ) : null}
@@ -259,7 +263,11 @@ export default function GeneratedOutputPanel({
           </div>
         ) : null}
         {error ? (
-          <p className="p-4 text-sm text-destructive" role="alert">
+          <p
+            className="p-4 text-sm text-destructive"
+            role="alert"
+            data-testid={`${testIdPrefix}-error-banner`}
+          >
             {error}
           </p>
         ) : null}

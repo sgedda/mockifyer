@@ -64,6 +64,53 @@ test.describe('Mock Data Generator playground', () => {
     await expect(page.getByTestId('output-status')).toContainText(/Updated/i);
   });
 
+  test('status and JSON reflect count 10, custom seed, and Spanish locale', async ({ page }) => {
+    await expect(page.getByTestId('generated-output')).toBeVisible({ timeout: 30_000 });
+
+    await page.getByTestId('simple-count-10').click();
+    await expect(page.getByTestId('output-status')).toContainText(/Updated · 10 users/i, {
+      timeout: 30_000,
+    });
+
+    await page.getByTestId('seed-input').fill('428429138');
+    await page.getByTestId('seed-input').blur();
+    await expect(page.getByTestId('output-status')).toContainText(/seed 428429138/i, {
+      timeout: 30_000,
+    });
+    await expect(page.getByTestId('output-status')).toContainText(/10 users/i);
+
+    const beforeLocale = await page.getByTestId('generated-output').innerText();
+    await page.getByTestId('locale-select').click();
+    await page.getByTestId('locale-es').click();
+    await expect(page.getByTestId('tool-error-banner')).toHaveCount(0);
+    await expect
+      .poll(async () => page.getByTestId('generated-output').innerText(), { timeout: 30_000 })
+      .not.toBe(beforeLocale);
+    await expect(page.getByTestId('output-status')).toContainText(/Updated · 10 users/i, {
+      timeout: 30_000,
+    });
+    await expect(page.getByTestId('output-status')).toContainText(/seed 428429138/i);
+
+    const text = await page.getByTestId('generated-output').innerText();
+    const userIds = text.match(/"id"\s*:/g) ?? [];
+    expect(userIds.length).toBeGreaterThanOrEqual(10);
+  });
+
+  test('every playground locale loads without pane errors', async ({ page }) => {
+    await expect(page.getByTestId('generated-output')).toBeVisible({ timeout: 30_000 });
+    const locales = ['en', 'sv', 'de', 'fr', 'es'] as const;
+    for (const id of locales) {
+      await page.getByTestId('locale-select').click();
+      await page.getByTestId(`locale-${id}`).click();
+      await expect(page.getByTestId('generated-output')).toContainText('"email"', {
+        timeout: 30_000,
+      });
+      await expect(page.getByTestId('tool-error-banner')).toHaveCount(0);
+      await expect(page.getByRole('alert')).toHaveCount(0);
+      await expect(page.locator('text=Failed to fetch dynamically imported module')).toHaveCount(0);
+    }
+  });
+
   test('Cards view shows themed cards and updates on Generate', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await expect(page.getByTestId('generated-output')).toBeVisible({ timeout: 30_000 });
