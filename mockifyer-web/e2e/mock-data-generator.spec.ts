@@ -19,7 +19,8 @@ test.describe('Mock Data Generator playground', () => {
     await expect(page.getByTestId('simple-controls')).toBeVisible();
     await expect(page.getByTestId('simple-type-select')).toBeVisible();
     await expect(page.getByTestId('simple-object-count')).toBeVisible();
-    await expect(page.getByTestId('randomize-button')).toBeVisible();
+    await expect(page.getByTestId('generate-button')).toBeVisible();
+    await expect(page.getByTestId('tool-card')).toBeVisible();
     await expect(page.getByTestId('customize-row')).toBeVisible();
     await expect(page.getByTestId('locale-select')).toBeVisible();
     await expect(page.getByTestId('item-count-input')).toBeVisible();
@@ -53,13 +54,14 @@ test.describe('Mock Data Generator playground', () => {
     expect(userIds.length).toBeGreaterThanOrEqual(10);
   });
 
-  test('Randomize changes the generated values', async ({ page }) => {
+  test('Generate refreshes values and shows output status', async ({ page }) => {
     await expect(page.getByTestId('generated-output')).toBeVisible({ timeout: 30_000 });
     const before = await page.getByTestId('generated-output').innerText();
-    await page.getByTestId('randomize-button').click();
+    await page.getByTestId('generate-button').click();
     await expect
       .poll(async () => page.getByTestId('generated-output').innerText(), { timeout: 30_000 })
       .not.toBe(before);
+    await expect(page.getByTestId('output-status')).toContainText(/Updated/i);
   });
 
   test('simple type switch loads a different shape', async ({ page }) => {
@@ -71,12 +73,33 @@ test.describe('Mock Data Generator playground', () => {
     });
   });
 
-  test('Use my own JSON mode shows paste and generate', async ({ page }) => {
+  test('Use my own JSON mode shows sample beside output', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
     await page.getByTestId('mode-custom').click();
+    await expect(page.getByTestId('custom-workspace')).toBeVisible();
     await expect(page.getByTestId('sample-json')).toBeVisible();
     await expect(page.getByTestId('upload-json-button')).toBeVisible();
     await expect(page.getByTestId('generate-button')).toBeVisible();
+    await expect(page.getByTestId('custom-output-pane')).toBeVisible();
     await expect(page.getByTestId('fetch-url-input')).toHaveCount(0);
+    const inputBox = await page.getByTestId('custom-json-section').boundingBox();
+    const outputBox = await page.getByTestId('custom-output-pane').boundingBox();
+    expect(inputBox).toBeTruthy();
+    expect(outputBox).toBeTruthy();
+    expect(Math.abs(inputBox!.y - outputBox!.y)).toBeLessThan(80);
+  });
+
+  test('Generate more like this scrolls to custom workspace with status', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.getByTestId('more-section').locator('summary').click();
+    await expect(page.getByTestId('real-api-section')).toBeVisible();
+    await page.getByTestId('real-api-use-sample').click();
+    await expect(page.getByTestId('mode-custom')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByTestId('custom-workspace')).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId('output-status')).toContainText(/from your sample/i, {
+      timeout: 30_000,
+    });
+    await expect(page.getByTestId('generated-output')).toBeVisible();
   });
 
   test('More section reveals share, ZIP, real API, and record CTA', async ({ page }) => {
@@ -197,7 +220,7 @@ test.describe('Mock Data Generator mobile', () => {
       await page.goto('/tools/mock-data-generator');
       await expect(page.getByTestId('mock-data-generator-page')).toBeVisible();
       await expect(page.getByTestId('simple-controls')).toBeVisible();
-      await expect(page.getByTestId('randomize-button')).toBeVisible();
+      await expect(page.getByTestId('generate-button')).toBeVisible();
       await expect(page.getByTestId('tool-output-tabs')).toBeVisible();
       await expect(page.getByTestId('generated-output')).toBeVisible({ timeout: 30_000 });
 
@@ -218,7 +241,7 @@ test.describe('Mock Data Generator mobile', () => {
 });
 
 test.describe('Start page mock-data teaser', () => {
-  test('simple teaser after Atlas: type, count, Randomize, JSON/Types', async ({
+  test('simple teaser after Atlas: type, count, Generate, JSON/Types', async ({
     page,
     context,
   }) => {
@@ -236,7 +259,8 @@ test.describe('Start page mock-data teaser', () => {
 
     await expect(page.getByTestId('start-type-select')).toBeVisible();
     await expect(page.getByTestId('start-object-count')).toBeVisible();
-    await expect(page.getByTestId('start-randomize')).toBeVisible();
+    await expect(page.getByTestId('start-generate')).toBeVisible();
+    await expect(page.getByTestId('start-tool-card')).toBeVisible();
     await expect(page.getByTestId('start-copy-json')).toBeVisible();
     await expect(page.getByTestId('start-output-split')).toBeVisible();
     await expect(page.getByTestId('start-context')).toHaveCount(0);
@@ -248,12 +272,13 @@ test.describe('Start page mock-data teaser', () => {
     await expect(page.getByTestId('start-generated-types')).toContainText(/export interface|interface /i);
 
     const before = await page.getByTestId('start-generated-preview').innerText();
-    await page.getByTestId('start-randomize').click();
+    await page.getByTestId('start-generate').click();
     await expect
       .poll(async () => page.getByTestId('start-generated-preview').innerText(), {
         timeout: 30_000,
       })
       .not.toBe(before);
+    await expect(page.getByTestId('start-output-status')).toContainText(/Updated/i);
 
     await page.getByTestId('start-count-10').click();
     await expect
@@ -270,7 +295,7 @@ test.describe('Start page mock-data teaser', () => {
 
     await page.getByTestId('start-type-select').click();
     await page.getByTestId('start-type-orders').click();
-    await expect(page.getByTestId('start-generated-output')).toContainText('"total"', {
+    await expect(page.getByTestId('start-generated-preview')).toContainText('"total"', {
       timeout: 30_000,
     });
 

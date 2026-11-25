@@ -1,11 +1,11 @@
 /**
  * Minimal mock-data teaser for the start page (after Atlas).
- * Type + object count + Randomize + live JSON/types — lazy-loads the generator engine.
+ * One tool card: type + count → Generate (dice) → live JSON/types.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowRight, Loader2, Shuffle } from 'lucide-react'
+import { ArrowRight, Dices, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import {
@@ -31,6 +31,7 @@ import {
   type SimpleObjectCount,
 } from '@/lib/mock-data-generator/simple'
 import type { PlaygroundPresetId } from '@/lib/mock-data-generator/defaults'
+import { cn } from '@/lib/utils'
 
 function scheduleIdle(callback: () => void): () => void {
   const w = window as Window & {
@@ -47,19 +48,56 @@ function scheduleIdle(callback: () => void): () => void {
 
 export default function StartPageMockGenerator() {
   const rootRef = useRef<HTMLElement | null>(null)
+  const resultsRef = useRef<HTMLDivElement | null>(null)
+  const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [typeId, setTypeId] = useState<PlaygroundPresetId>(DEFAULT_SIMPLE_TYPE_ID)
   const [objectCount, setObjectCount] = useState<SimpleObjectCount>(DEFAULT_SIMPLE_COUNT)
   const [seed, setSeed] = useState<number>(DEFAULT_SEED)
   const [output, setOutput] = useState<unknown | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [outputStatus, setOutputStatus] = useState<string | null>(null)
+  const [outputFlash, setOutputFlash] = useState(false)
   const engineStarted = useRef(false)
   const generateSeq = useRef(0)
 
   const preset = simplePreset(typeId)
 
+  const announce = useCallback(
+    (recordCount: number, nextSeed: number, scroll: boolean) => {
+      const label = SIMPLE_TYPES.find((item) => item.id === typeId)?.label ?? 'records'
+      const noun =
+        recordCount === 1
+          ? label.endsWith('s')
+            ? label.slice(0, -1).toLowerCase()
+            : label.toLowerCase()
+          : label.toLowerCase()
+      const time = new Date().toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      })
+      setOutputStatus(`Updated · ${recordCount} ${noun} · seed ${nextSeed} · ${time}`)
+      setOutputFlash(true)
+      if (flashTimer.current) clearTimeout(flashTimer.current)
+      flashTimer.current = setTimeout(() => setOutputFlash(false), 700)
+      if (scroll) {
+        requestAnimationFrame(() => {
+          resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+        })
+      }
+    },
+    [typeId]
+  )
+
   const runGenerate = useCallback(
-    async (opts: { typeId: PlaygroundPresetId; objectCount: number; seed: number }) => {
+    async (opts: {
+      typeId: PlaygroundPresetId
+      objectCount: number
+      seed: number
+      announce?: boolean
+      scroll?: boolean
+    }) => {
       const seq = ++generateSeq.current
       setBusy(true)
       setError(null)
@@ -75,6 +113,9 @@ export default function StartPageMockGenerator() {
         })
         if (seq !== generateSeq.current) return
         setOutput(formatSimpleOutput(generated))
+        if (opts.announce) {
+          announce(generated.length, opts.seed, opts.scroll ?? false)
+        }
       } catch (err) {
         if (seq !== generateSeq.current) return
         setError(err instanceof Error ? err.message : String(err))
@@ -84,7 +125,7 @@ export default function StartPageMockGenerator() {
         }
       }
     },
-    []
+    [announce]
   )
 
   useEffect(() => {
@@ -120,23 +161,30 @@ export default function StartPageMockGenerator() {
       cancelled = true
       observer?.disconnect()
       cancelIdle?.()
+      if (flashTimer.current) clearTimeout(flashTimer.current)
     }
   }, [runGenerate])
 
   const onTypeChange = (nextId: PlaygroundPresetId) => {
     setTypeId(nextId)
-    void runGenerate({ typeId: nextId, objectCount, seed })
+    void runGenerate({ typeId: nextId, objectCount, seed, announce: true })
   }
 
   const onCountChange = (next: SimpleObjectCount) => {
     setObjectCount(next)
-    void runGenerate({ typeId, objectCount: next, seed })
+    void runGenerate({ typeId, objectCount: next, seed, announce: true })
   }
 
-  const onRandomize = () => {
+  const onGenerate = () => {
     const nextSeed = newRandomSeed()
     setSeed(nextSeed)
-    void runGenerate({ typeId, objectCount, seed: nextSeed })
+    void runGenerate({
+      typeId,
+      objectCount,
+      seed: nextSeed,
+      announce: true,
+      scroll: true,
+    })
   }
 
   const fullHref = buildSimpleToolHref({ preset, objectCount, seed })
@@ -158,86 +206,115 @@ export default function StartPageMockGenerator() {
             Mock data generator
           </h2>
           <p className="text-muted-foreground">
-            Pick a type, set how many objects, and randomize — runs in your browser.
+            Pick a type, set how many objects, and Generate — runs in your browser.
           </p>
         </div>
 
-        <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end">
-          <div className="space-y-2 min-w-0 flex-1 sm:flex-none sm:min-w-[200px]" data-testid="start-type">
-            <Label htmlFor="start-type-select" className="text-sm font-medium">
-              Type
-            </Label>
-            <Select
-              value={typeId}
-              onValueChange={(value) => onTypeChange(value as PlaygroundPresetId)}
-              disabled={busy && !output}
-            >
-              <SelectTrigger
-                id="start-type-select"
-                className="min-h-11 w-full sm:w-[200px]"
-                data-testid="start-type-select"
+        <div
+          className="rounded-xl border border-border overflow-hidden bg-zinc-50/60"
+          data-testid="start-tool-card"
+        >
+          <div className="p-4 border-b border-border flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end">
+            <div className="space-y-2 min-w-0 flex-1 sm:flex-none sm:min-w-[200px]" data-testid="start-type">
+              <Label htmlFor="start-type-select" className="text-sm font-medium">
+                Type
+              </Label>
+              <Select
+                value={typeId}
+                onValueChange={(value) => onTypeChange(value as PlaygroundPresetId)}
+                disabled={busy && !output}
               >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {SIMPLE_TYPES.map((item) => (
-                  <SelectItem
-                    key={item.id}
-                    value={item.id}
-                    data-testid={`start-type-${item.id}`}
-                  >
-                    {item.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+                <SelectTrigger
+                  id="start-type-select"
+                  className="min-h-11 w-full sm:w-[200px] bg-white"
+                  data-testid="start-type-select"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SIMPLE_TYPES.map((item) => (
+                    <SelectItem
+                      key={item.id}
+                      value={item.id}
+                      data-testid={`start-type-${item.id}`}
+                    >
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div
+              className="flex flex-wrap gap-1.5"
+              role="group"
+              aria-label="Number of objects"
+              data-testid="start-object-count"
+            >
+              {SIMPLE_OBJECT_COUNTS.map((n) => (
+                <Button
+                  key={n}
+                  type="button"
+                  size="sm"
+                  variant={n === objectCount ? 'default' : 'outline'}
+                  className="min-h-11 min-w-11"
+                  data-testid={`start-count-${n}`}
+                  disabled={busy && !output}
+                  onClick={() => onCountChange(n)}
+                >
+                  {n}
+                </Button>
+              ))}
+            </div>
           </div>
 
           <div
-            className="flex flex-wrap gap-1.5"
-            role="group"
-            aria-label="Number of objects"
-            data-testid="start-object-count"
+            ref={resultsRef}
+            className={cn('p-4 space-y-3 bg-white scroll-mt-4', outputFlash && 'mdg-output-flash')}
+            data-testid="start-results"
           >
-            {SIMPLE_OBJECT_COUNTS.map((n) => (
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold">Generated output</p>
+                {outputStatus ? (
+                  <p
+                    className="text-xs text-muted-foreground truncate"
+                    data-testid="start-output-status"
+                    aria-live="polite"
+                  >
+                    {outputStatus}
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Press Generate to refresh values with a new seed.
+                  </p>
+                )}
+              </div>
               <Button
-                key={n}
                 type="button"
-                size="sm"
-                variant={n === objectCount ? 'default' : 'outline'}
-                className="min-h-11 min-w-11"
-                data-testid={`start-count-${n}`}
+                className="min-h-11 w-full sm:w-auto shrink-0"
+                data-testid="start-generate"
                 disabled={busy && !output}
-                onClick={() => onCountChange(n)}
+                onClick={onGenerate}
               >
-                {n}
+                {busy && output ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Dices className="h-4 w-4 mr-2" />
+                )}
+                Generate
               </Button>
-            ))}
+            </div>
+
+            <GeneratedOutputPanel
+              output={output}
+              busy={busy}
+              error={error}
+              testIdPrefix="start"
+              rootTypeName="Root"
+            />
           </div>
-
-          <Button
-            type="button"
-            className="min-h-11 w-full sm:w-auto"
-            data-testid="start-randomize"
-            disabled={busy && !output}
-            onClick={onRandomize}
-          >
-            {busy && output ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Shuffle className="h-4 w-4 mr-2" />
-            )}
-            Randomize
-          </Button>
         </div>
-
-        <GeneratedOutputPanel
-          output={output}
-          busy={busy}
-          error={error}
-          testIdPrefix="start"
-          rootTypeName="Root"
-        />
 
         <Link
           to={fullHref}

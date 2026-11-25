@@ -164,7 +164,7 @@ export default function RealApiDemo({ onUseAsSample }: RealApiDemoProps) {
             data-testid="real-api-use-sample"
             onClick={() => onUseAsSample(example)}
           >
-            Use as sample
+            Generate more like this
           </Button>
         ) : null}
         <Link

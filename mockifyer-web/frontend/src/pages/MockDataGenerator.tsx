@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import {
   ArrowRight,
   ChevronDown,
+  Dices,
   Download,
   FileJson,
   Link2,
@@ -13,8 +14,6 @@ import {
   Plus,
   Radio,
   Shield,
-  Shuffle,
-  Sparkles,
   Upload,
   Wand2,
 } from 'lucide-react'
@@ -38,6 +37,7 @@ import {
 } from '@/components/ui/select'
 import { useToast } from '@/components/ui/use-toast'
 import { useTheme } from '@/lib/use-theme'
+import { cn } from '@/lib/utils'
 import {
   DEFAULT_ITEM_COUNT,
   DEFAULT_SEED,
@@ -134,10 +134,88 @@ export default function MockDataGenerator() {
   const [bootstrapped, setBootstrapped] = useState(false)
   const [typesLanguage, setTypesLanguage] = useState<TypesLanguage>(DEFAULT_TYPES_LANGUAGE)
   const [moreOpen, setMoreOpen] = useState(false)
+  const [outputStatus, setOutputStatus] = useState<string | null>(null)
+  const [focusPulse, setFocusPulse] = useState(false)
+  const [outputFlash, setOutputFlash] = useState(false)
+  const toolWorkspaceRef = useRef<HTMLDivElement>(null)
+  const resultsRef = useRef<HTMLDivElement>(null)
+  const focusPulseTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const outputFlashTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     setTheme('light')
   }, [setTheme])
+
+  useEffect(() => {
+    return () => {
+      if (focusPulseTimer.current) clearTimeout(focusPulseTimer.current)
+      if (outputFlashTimer.current) clearTimeout(outputFlashTimer.current)
+    }
+  }, [])
+
+  const outputNoun = useCallback(
+    (recordCount: number) => {
+      if (mode === 'pick') {
+        const label = SIMPLE_TYPES.find((item) => item.id === typeId)?.label ?? 'records'
+        if (recordCount === 1) {
+          return label.endsWith('s') ? label.slice(0, -1).toLowerCase() : label.toLowerCase()
+        }
+        return label.toLowerCase()
+      }
+      return recordCount === 1 ? 'record' : 'records'
+    },
+    [mode, typeId]
+  )
+
+  /** Feedback on the output pane after generate / sample load. */
+  const announceOutput = useCallback(
+    (opts: {
+      recordCount: number
+      seedValue: number | string
+      fromSample?: boolean
+      scroll?: boolean
+    }) => {
+      const noun = outputNoun(opts.recordCount)
+      const time = new Date().toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      })
+      const lead = opts.fromSample
+        ? `Generated ${opts.recordCount} ${noun} from your sample`
+        : `Updated · ${opts.recordCount} ${noun}`
+      setOutputStatus(`${lead} · seed ${opts.seedValue} · ${time}`)
+      setFocusPulse(true)
+      setOutputFlash(true)
+      if (focusPulseTimer.current) clearTimeout(focusPulseTimer.current)
+      if (outputFlashTimer.current) clearTimeout(outputFlashTimer.current)
+      focusPulseTimer.current = setTimeout(() => setFocusPulse(false), 2000)
+      outputFlashTimer.current = setTimeout(() => setOutputFlash(false), 700)
+      if (opts.scroll !== false) {
+        requestAnimationFrame(() => {
+          const target = resultsRef.current ?? toolWorkspaceRef.current
+          target?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+        })
+      }
+    },
+    [outputNoun]
+  )
+
+  const revealToolAfterSample = useCallback(
+    (recordCount: number, seedValue: number | string) => {
+      setMoreOpen(false)
+      announceOutput({
+        recordCount,
+        seedValue,
+        fromSample: true,
+        scroll: true,
+      })
+      requestAnimationFrame(() => {
+        toolWorkspaceRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      })
+    },
+    [announceOutput]
+  )
 
   useEffect(() => {
     if (shareHydrated.current) return
@@ -203,7 +281,7 @@ export default function MockDataGenerator() {
       itemCount?: number
       seedValue: number | string
       silent?: boolean
-    }) => {
+    }): Promise<number | null> => {
       setError(null)
       setBusy(true)
       try {
@@ -231,9 +309,11 @@ export default function MockDataGenerator() {
             description: `${generated.length} record(s)`,
           })
         }
+        return generated.length
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
         setError(message)
+        return null
       } finally {
         setBusy(false)
       }
@@ -249,7 +329,7 @@ export default function MockDataGenerator() {
       localeCode: PlaygroundLocaleId
       itemCountValue?: number
       silent?: boolean
-    }) => {
+    }): Promise<number | null> => {
       const preset = simplePreset(opts.typeId)
       const size = resolveSimpleGenerateOptions(preset.sample, opts.objectCount)
       const nextItemCount = opts.itemCountValue ?? size.itemCount
@@ -262,7 +342,7 @@ export default function MockDataGenerator() {
         setItemCount(size.itemCount)
       }
       setOverrides({})
-      await runGenerate({
+      return runGenerate({
         sample: preset.sample,
         contextText: preset.context,
         localeCode: opts.localeCode,
@@ -277,13 +357,16 @@ export default function MockDataGenerator() {
   )
 
   const generateFromCustom = useCallback(
-    async (opts?: { silent?: boolean; seedValue?: number | string }) => {
+    async (opts?: {
+      silent?: boolean
+      seedValue?: number | string
+    }): Promise<number | null> => {
       const parsed = parseSampleJson(inputText)
       if (!parsed.ok) {
         setError(`Invalid JSON: ${parsed.error}`)
-        return
+        return null
       }
-      await runGenerate({
+      return runGenerate({
         sample: parsed.value,
         contextText: context,
         localeCode: locale,
@@ -323,6 +406,9 @@ export default function MockDataGenerator() {
       seedValue: seed,
       localeCode: locale,
       itemCountValue: itemCount,
+      silent: true,
+    }).then((count) => {
+      if (count != null) announceOutput({ recordCount: count, seedValue: seed, scroll: false })
     })
   }
 
@@ -336,6 +422,9 @@ export default function MockDataGenerator() {
         seedValue: seed,
         localeCode: locale,
         itemCountValue: itemCount,
+        silent: true,
+      }).then((count) => {
+        if (count != null) announceOutput({ recordCount: count, seedValue: seed, scroll: false })
       })
       return
     }
@@ -352,6 +441,9 @@ export default function MockDataGenerator() {
       count: next,
       itemCount,
       seedValue: seed,
+      silent: true,
+    }).then((count) => {
+      if (count != null) announceOutput({ recordCount: count, seedValue: seed, scroll: false })
     })
   }
 
@@ -412,9 +504,14 @@ export default function MockDataGenerator() {
     })
   }
 
-  const onRandomize = () => {
+  /** Single primary action: new seed (unless locked) → regenerate → flash output. */
+  const onGenerate = () => {
     const nextSeed = seedLocked ? seed : newRandomSeed()
     if (!seedLocked) setSeed(nextSeed)
+    const finish = (recordCount: number | null | undefined) => {
+      if (recordCount == null) return
+      announceOutput({ recordCount, seedValue: nextSeed, scroll: true })
+    }
     if (mode === 'pick') {
       void generateFromSimple({
         typeId,
@@ -422,13 +519,19 @@ export default function MockDataGenerator() {
         seedValue: nextSeed,
         localeCode: locale,
         itemCountValue: itemCount,
-      })
+        silent: true,
+      }).then((count) => finish(count ?? null))
     } else {
-      void generateFromCustom({ seedValue: nextSeed })
+      void generateFromCustom({ seedValue: nextSeed, silent: true }).then((count) =>
+        finish(count ?? null)
+      )
     }
   }
 
-  const handlePreset = async (preset: PlaygroundPreset) => {
+  const handlePreset = async (
+    preset: PlaygroundPreset,
+    opts?: { reveal?: boolean }
+  ): Promise<number | null> => {
     if (SIMPLE_TYPES.some((t) => t.id === preset.id)) {
       setTypeId(preset.id)
     }
@@ -439,7 +542,7 @@ export default function MockDataGenerator() {
     const size = resolveSimpleGenerateOptions(preset.sample, objectCount)
     setCount(size.count)
     if (typeof size.itemCount === 'number') setItemCount(size.itemCount)
-    await runGenerate({
+    const recordCount = await runGenerate({
       sample: preset.sample,
       contextText: preset.context,
       localeCode: localeFromContext(preset.context),
@@ -447,39 +550,69 @@ export default function MockDataGenerator() {
       count: size.count,
       itemCount: size.itemCount,
       seedValue: seed,
+      silent: opts?.reveal,
     })
+    if (opts?.reveal && recordCount != null) {
+      revealToolAfterSample(recordCount, seed)
+    }
+    return recordCount
   }
 
   const handleUseRealApiSample = async (example: RealApiExample) => {
+    setMode('custom')
     const preset = example.preset
     if (preset) {
-      setMode('custom')
-      await handlePreset(preset)
+      await handlePreset(preset, { reveal: true })
       return
     }
-    setMode('custom')
     setInputText(`${JSON.stringify(example.recorded, null, 2)}\n`)
     setContext(example.context)
     setLocale(localeFromContext(example.context))
     setOverrides({})
-    await runGenerate({
+    const size = resolveSimpleGenerateOptions(example.recorded, objectCount)
+    setCount(size.count)
+    if (typeof size.itemCount === 'number') setItemCount(size.itemCount)
+    const recordCount = await runGenerate({
       sample: example.recorded,
       contextText: example.context,
       localeCode: localeFromContext(example.context),
       kindOverrides: {},
-      count: objectCount,
-      itemCount,
+      count: size.count,
+      itemCount: size.itemCount ?? itemCount,
       seedValue: seed,
+      silent: true,
     })
+    if (recordCount != null) {
+      revealToolAfterSample(recordCount, seed)
+    }
   }
 
   const handleUpload = async (file: File | null) => {
     if (!file) return
     try {
       const text = await file.text()
-      parseSampleJson(text)
+      const parsed = parseSampleJson(text)
+      if (!parsed.ok) {
+        throw new Error(parsed.error)
+      }
       setMode('custom')
       setInputText(text.endsWith('\n') ? text : `${text}\n`)
+      const size = resolveSimpleGenerateOptions(parsed.value, objectCount)
+      setCount(size.count)
+      if (typeof size.itemCount === 'number') setItemCount(size.itemCount)
+      const recordCount = await runGenerate({
+        sample: parsed.value,
+        contextText: context,
+        localeCode: locale,
+        kindOverrides: overrides,
+        count: size.count,
+        itemCount: size.itemCount ?? itemCount,
+        seedValue: seed,
+        silent: true,
+      })
+      if (recordCount != null) {
+        revealToolAfterSample(recordCount, seed)
+      }
       toast({ title: 'Sample loaded', description: file.name })
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -545,331 +678,427 @@ export default function MockDataGenerator() {
           </div>
         </header>
 
-        {/* Mode switch */}
         <div
-          className="inline-flex rounded-lg border border-border p-0.5 bg-muted/40 w-full sm:w-fit"
-          role="tablist"
-          aria-label="How to start"
-          data-testid="input-mode-switch"
+          ref={toolWorkspaceRef}
+          id="tool-workspace"
+          data-testid="tool-workspace"
+          className="scroll-mt-4 space-y-4"
         >
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mode === 'pick'}
-            data-testid="mode-pick"
-            className={`flex-1 sm:flex-none px-4 py-2.5 text-sm font-semibold rounded-md min-h-11 ${
-              mode === 'pick'
-                ? 'bg-background text-foreground shadow-sm'
-                : 'text-muted-foreground'
-            }`}
-            onClick={() => setMode('pick')}
+          {/* Mode switch */}
+          <div
+            className="inline-flex rounded-lg border border-border p-0.5 bg-muted/40 w-full sm:w-fit"
+            role="tablist"
+            aria-label="How to start"
+            data-testid="input-mode-switch"
           >
-            Pick a type
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mode === 'custom'}
-            data-testid="mode-custom"
-            className={`flex-1 sm:flex-none px-4 py-2.5 text-sm font-semibold rounded-md min-h-11 ${
-              mode === 'custom'
-                ? 'bg-background text-foreground shadow-sm'
-                : 'text-muted-foreground'
-            }`}
-            onClick={() => setMode('custom')}
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === 'pick'}
+              data-testid="mode-pick"
+              className={`flex-1 sm:flex-none px-4 py-2.5 text-sm font-semibold rounded-md min-h-11 ${
+                mode === 'pick'
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground'
+              }`}
+              onClick={() => setMode('pick')}
+            >
+              Pick a type
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === 'custom'}
+              data-testid="mode-custom"
+              className={`flex-1 sm:flex-none px-4 py-2.5 text-sm font-semibold rounded-md min-h-11 ${
+                mode === 'custom'
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground'
+              }`}
+              onClick={() => setMode('custom')}
+            >
+              Use my own JSON
+            </button>
+          </div>
+
+          {/* One tool card: controls → Generate → result */}
+          <section
+            className={cn(
+              'rounded-xl border border-border bg-zinc-50/60 overflow-hidden',
+              focusPulse && 'mdg-focus-pulse'
+            )}
+            data-testid="tool-card"
           >
-            Use my own JSON
-          </button>
-        </div>
-
-        {/* Main controls */}
-        <section
-          className="rounded-xl border border-border bg-zinc-50/80 p-3 sm:p-4 space-y-4"
-          data-testid="simple-controls"
-        >
-          {mode === 'pick' ? (
-            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
-              <div className="space-y-1.5 min-w-0 flex-1 sm:flex-none sm:min-w-[180px]">
-                <Label htmlFor="simple-type" className="text-sm font-semibold">
-                  Type
-                </Label>
-                <p className="text-xs text-muted-foreground">What kind of fake data?</p>
-                <Select
-                  value={typeId}
-                  onValueChange={(value) => onSimpleType(value as PlaygroundPresetId)}
-                  disabled={busy && !displayOutput}
-                >
-                  <SelectTrigger
-                    id="simple-type"
-                    className="min-h-11 w-full sm:w-[200px] bg-white"
-                    data-testid="simple-type-select"
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SIMPLE_TYPES.map((item) => (
-                      <SelectItem
-                        key={item.id}
-                        value={item.id}
-                        data-testid={`simple-type-${item.id}`}
-                      >
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-1.5" data-testid="simple-object-count">
-                <Label className="text-sm font-semibold">How many</Label>
-                <p className="text-xs text-muted-foreground">Number of objects</p>
-                <div className="flex flex-wrap gap-1.5" role="group" aria-label="Number of objects">
-                  {SIMPLE_OBJECT_COUNTS.map((n) => (
-                    <Button
-                      key={n}
-                      type="button"
-                      size="sm"
-                      variant={n === objectCount ? 'default' : 'outline'}
-                      className="min-h-11 min-w-11"
-                      data-testid={`simple-count-${n}`}
+            {mode === 'pick' ? (
+              <div
+                className="p-3 sm:p-4 border-b border-border space-y-4"
+                data-testid="simple-controls"
+              >
+                <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+                  <div className="space-y-1.5 min-w-0 flex-1 sm:flex-none sm:min-w-[180px]">
+                    <Label htmlFor="simple-type" className="text-sm font-semibold">
+                      Type
+                    </Label>
+                    <p className="text-xs text-muted-foreground">What kind of fake data?</p>
+                    <Select
+                      value={typeId}
+                      onValueChange={(value) => onSimpleType(value as PlaygroundPresetId)}
                       disabled={busy && !displayOutput}
-                      onClick={() => onSimpleCount(n)}
                     >
-                      {n}
-                    </Button>
-                  ))}
+                      <SelectTrigger
+                        id="simple-type"
+                        className="min-h-11 w-full sm:w-[200px] bg-white"
+                        data-testid="simple-type-select"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {SIMPLE_TYPES.map((item) => (
+                          <SelectItem
+                            key={item.id}
+                            value={item.id}
+                            data-testid={`simple-type-${item.id}`}
+                          >
+                            {item.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1.5" data-testid="simple-object-count">
+                    <Label className="text-sm font-semibold">How many</Label>
+                    <p className="text-xs text-muted-foreground">Number of objects</p>
+                    <div
+                      className="flex flex-wrap gap-1.5"
+                      role="group"
+                      aria-label="Number of objects"
+                    >
+                      {SIMPLE_OBJECT_COUNTS.map((n) => (
+                        <Button
+                          key={n}
+                          type="button"
+                          size="sm"
+                          variant={n === objectCount ? 'default' : 'outline'}
+                          className="min-h-11 min-w-11"
+                          data-testid={`simple-count-${n}`}
+                          disabled={busy && !displayOutput}
+                          onClick={() => onSimpleCount(n)}
+                        >
+                          {n}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
+            ) : null}
 
-              <Button
-                type="button"
-                className="min-h-11 w-full sm:w-auto"
-                data-testid="randomize-button"
-                disabled={busy && !displayOutput}
-                onClick={onRandomize}
-              >
-                {busy && displayOutput ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <Shuffle className="h-4 w-4 mr-2" />
-                )}
-                {seedLocked ? 'Regenerate' : 'Randomize'}
-              </Button>
-            </div>
-          ) : (
-            <div className="space-y-3" data-testid="custom-json-section">
-              <div className="space-y-1.5">
-                <Label htmlFor="sample-json" className="text-sm font-semibold">
-                  Your sample JSON
-                </Label>
-                <p className="text-xs text-muted-foreground">
-                  Paste a response — we generate more records with the same shape.
-                </p>
-                <Textarea
-                  id="sample-json"
-                  data-testid="sample-json"
-                  className="min-h-[140px] max-h-[240px] font-mono text-xs sm:text-sm bg-white"
-                  value={inputText}
-                  onChange={(e) => setInputText(e.target.value)}
-                  spellCheck={false}
-                />
-              </div>
-              <div className="flex flex-col sm:flex-row flex-wrap gap-2">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="application/json,.json"
-                  className="hidden"
-                  onChange={(e) => void handleUpload(e.target.files?.[0] ?? null)}
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="min-h-11"
-                  data-testid="upload-json-button"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <Upload className="h-4 w-4 mr-2" />
-                  Upload JSON
-                </Button>
-                <Button
-                  type="button"
-                  className="min-h-11"
-                  data-testid="generate-button"
-                  disabled={busy}
-                  onClick={() => void generateFromCustom()}
-                >
-                  {busy ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <Sparkles className="h-4 w-4 mr-2" />
-                  )}
-                  Generate
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="min-h-11"
-                  data-testid="randomize-button"
-                  disabled={busy && !displayOutput}
-                  onClick={onRandomize}
-                >
-                  <Shuffle className="h-4 w-4 mr-2" />
-                  {seedLocked ? 'Regenerate' : 'Randomize'}
-                </Button>
-              </div>
-            </div>
-          )}
-        </section>
-
-        {/* Customize row — always visible, plainly labelled */}
-        <section
-          className="rounded-xl border border-border p-3 sm:p-4"
-          data-testid="customize-row"
-        >
-          <p className="text-sm font-semibold mb-3">Customize</p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="space-y-1.5" data-testid="locale-control">
-              <Label htmlFor="locale-select" className="text-sm font-medium">
-                Locale
-              </Label>
-              <p className="text-xs text-muted-foreground">Names, phones, currency style</p>
-              <Select
-                value={locale}
-                onValueChange={(value) => onLocaleChange(parsePlaygroundLocale(value))}
-              >
-                <SelectTrigger
-                  id="locale-select"
-                  className="min-h-11 bg-white"
-                  data-testid="locale-select"
-                >
-                  <SelectValue>
-                    {PLAYGROUND_LOCALES.find((item) => item.id === locale)?.flag} {localeLabel}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {PLAYGROUND_LOCALES.map((item) => (
-                    <SelectItem
-                      key={item.id}
-                      value={item.id}
-                      data-testid={`locale-${item.id}`}
+            <div
+              className="p-3 sm:p-4 border-b border-border"
+              data-testid="customize-row"
+            >
+              <p className="text-sm font-semibold mb-3">Customize</p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="space-y-1.5" data-testid="locale-control">
+                  <Label htmlFor="locale-select" className="text-sm font-medium">
+                    Locale
+                  </Label>
+                  <p className="text-xs text-muted-foreground">Names, phones, currency style</p>
+                  <Select
+                    value={locale}
+                    onValueChange={(value) => onLocaleChange(parsePlaygroundLocale(value))}
+                  >
+                    <SelectTrigger
+                      id="locale-select"
+                      className="min-h-11 bg-white"
+                      data-testid="locale-select"
                     >
-                      {item.flag} {item.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+                      <SelectValue>
+                        {PLAYGROUND_LOCALES.find((item) => item.id === locale)?.flag}{' '}
+                        {localeLabel}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PLAYGROUND_LOCALES.map((item) => (
+                        <SelectItem
+                          key={item.id}
+                          value={item.id}
+                          data-testid={`locale-${item.id}`}
+                        >
+                          {item.flag} {item.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-            <div className="space-y-1.5" data-testid="items-per-list-control">
-              <Label htmlFor="item-count" className="text-sm font-medium">
-                Items per list
-              </Label>
-              <p className="text-xs text-muted-foreground">Length of nested arrays</p>
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  className="min-h-11 min-w-11 shrink-0"
-                  aria-label="Fewer items per list"
-                  data-testid="item-count-decrement"
-                  disabled={busy || itemCount <= MIN_ITEMS_PER_LIST}
-                  onClick={() => onItemCountChange(itemCount - 1)}
-                >
-                  <Minus className="h-4 w-4" />
-                </Button>
-                <Input
-                  id="item-count"
-                  data-testid="item-count-input"
-                  type="number"
-                  min={MIN_ITEMS_PER_LIST}
-                  max={MAX_ITEMS_PER_LIST}
-                  className="min-h-11 text-center text-base font-semibold bg-white"
-                  value={itemCount}
-                  onChange={(e) => onItemCountChange(Number(e.target.value))}
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  className="min-h-11 min-w-11 shrink-0"
-                  aria-label="More items per list"
-                  data-testid="item-count-increment"
-                  disabled={busy || itemCount >= MAX_ITEMS_PER_LIST}
-                  onClick={() => onItemCountChange(itemCount + 1)}
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
+                <div className="space-y-1.5" data-testid="items-per-list-control">
+                  <Label htmlFor="item-count" className="text-sm font-medium">
+                    Items per list
+                  </Label>
+                  <p className="text-xs text-muted-foreground">Length of nested arrays</p>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="min-h-11 min-w-11 shrink-0"
+                      aria-label="Fewer items per list"
+                      data-testid="item-count-decrement"
+                      disabled={busy || itemCount <= MIN_ITEMS_PER_LIST}
+                      onClick={() => onItemCountChange(itemCount - 1)}
+                    >
+                      <Minus className="h-4 w-4" />
+                    </Button>
+                    <Input
+                      id="item-count"
+                      data-testid="item-count-input"
+                      type="number"
+                      min={MIN_ITEMS_PER_LIST}
+                      max={MAX_ITEMS_PER_LIST}
+                      className="min-h-11 text-center text-base font-semibold bg-white"
+                      value={itemCount}
+                      onChange={(e) => onItemCountChange(Number(e.target.value))}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="min-h-11 min-w-11 shrink-0"
+                      aria-label="More items per list"
+                      data-testid="item-count-increment"
+                      disabled={busy || itemCount >= MAX_ITEMS_PER_LIST}
+                      onClick={() => onItemCountChange(itemCount + 1)}
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5" data-testid="seed-control">
+                  <Label htmlFor="seed-input" className="text-sm font-medium">
+                    Seed
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Same seed → same data. Lock to keep it.
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="seed-input"
+                      data-testid="seed-input"
+                      className="min-h-11 bg-white"
+                      value={String(seed)}
+                      disabled={seedLocked}
+                      onChange={(e) => {
+                        const raw = e.target.value
+                        setSeed(/^-?\d+$/.test(raw) ? Number(raw) : raw)
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant={seedLocked ? 'default' : 'outline'}
+                      size="icon"
+                      className="min-h-11 min-w-11 shrink-0"
+                      aria-label={seedLocked ? 'Unlock seed' : 'Lock seed'}
+                      data-testid="seed-lock-toggle"
+                      onClick={() => setSeedLocked((prev) => !prev)}
+                    >
+                      {seedLocked ? <Lock className="h-4 w-4" /> : <Unlock className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                </div>
               </div>
             </div>
 
-            <div className="space-y-1.5" data-testid="seed-control">
-              <Label htmlFor="seed-input" className="text-sm font-medium">
-                Seed
-              </Label>
-              <p className="text-xs text-muted-foreground">
-                Same seed → same data. Lock to keep it.
-              </p>
-              <div className="flex items-center gap-2">
-                <Input
-                  id="seed-input"
-                  data-testid="seed-input"
-                  className="min-h-11 bg-white"
-                  value={String(seed)}
-                  disabled={seedLocked}
-                  onChange={(e) => {
-                    const raw = e.target.value
-                    setSeed(/^-?\d+$/.test(raw) ? Number(raw) : raw)
-                  }}
-                />
-                <Button
-                  type="button"
-                  variant={seedLocked ? 'default' : 'outline'}
-                  size="icon"
-                  className="min-h-11 min-w-11 shrink-0"
-                  aria-label={seedLocked ? 'Unlock seed' : 'Lock seed'}
-                  data-testid="seed-lock-toggle"
-                  onClick={() => setSeedLocked((prev) => !prev)}
+            <div
+              ref={resultsRef}
+              className={cn(
+                'p-3 sm:p-4 space-y-3 bg-white scroll-mt-4',
+                outputFlash && 'mdg-output-flash'
+              )}
+              data-testid="results-section"
+            >
+              {mode === 'custom' ? (
+                <div
+                  className="grid grid-cols-1 lg:grid-cols-2 gap-4"
+                  data-testid="custom-workspace"
                 >
-                  {seedLocked ? <Lock className="h-4 w-4" /> : <Unlock className="h-4 w-4" />}
-                </Button>
-              </div>
-            </div>
-          </div>
-        </section>
+                  <div
+                    className={cn(
+                      'space-y-3 rounded-lg border border-border p-3',
+                      focusPulse && 'mdg-pane-pulse'
+                    )}
+                    data-testid="custom-json-section"
+                  >
+                    <div className="space-y-1.5">
+                      <Label htmlFor="sample-json" className="text-sm font-semibold">
+                        Your sample JSON
+                      </Label>
+                      <p className="text-xs text-muted-foreground">
+                        Paste a response — Generate creates more records with the same shape.
+                      </p>
+                      <Textarea
+                        id="sample-json"
+                        data-testid="sample-json"
+                        className="min-h-[180px] max-h-[360px] font-mono text-xs sm:text-sm bg-zinc-50"
+                        value={inputText}
+                        onChange={(e) => setInputText(e.target.value)}
+                        spellCheck={false}
+                      />
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="application/json,.json"
+                        className="hidden"
+                        onChange={(e) => void handleUpload(e.target.files?.[0] ?? null)}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="min-h-11"
+                        data-testid="upload-json-button"
+                        onClick={() => fileInputRef.current?.click()}
+                      >
+                        <Upload className="h-4 w-4 mr-2" />
+                        Upload JSON
+                      </Button>
+                    </div>
+                  </div>
 
-        {/* Output — JSON | Types side-by-side on desktop */}
-        <section data-testid="results-section" className="space-y-3">
-          <h2 className="text-lg font-semibold tracking-tight">Generated output</h2>
-          <GeneratedOutputPanel
-            output={displayOutput}
-            busy={busy}
-            error={error}
-            testIdPrefix="tool"
-            rootTypeName="Root"
-            typesLanguage={typesLanguage}
-            onTypesLanguageChange={setTypesLanguage}
-            preClassName="max-h-[min(420px,50vh)] overflow-auto p-3 sm:p-4 text-xs font-mono whitespace-pre-wrap break-all leading-relaxed"
-            onCopied={(tab) => {
-              toast({ title: tab === 'json' ? 'JSON copied' : 'Types copied' })
-            }}
-            extraActions={
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="min-h-9"
-                data-testid="download-json"
-                disabled={displayOutput == null}
-                onClick={handleDownloadRecords}
-              >
-                <Download className="h-3.5 w-3.5 mr-1.5" />
-                Download
-              </Button>
-            }
-          />
-        </section>
+                  <div
+                    className={cn('space-y-3 min-w-0', focusPulse && 'mdg-pane-pulse')}
+                    data-testid="custom-output-pane"
+                  >
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <h2 className="text-base font-semibold tracking-tight">Generated output</h2>
+                        {outputStatus ? (
+                          <p
+                            className="text-xs text-muted-foreground truncate"
+                            data-testid="output-status"
+                            aria-live="polite"
+                          >
+                            {outputStatus}
+                          </p>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">
+                            Results appear here next to your sample.
+                          </p>
+                        )}
+                      </div>
+                      <Button
+                        type="button"
+                        className="min-h-11 w-full sm:w-auto shrink-0"
+                        data-testid="generate-button"
+                        disabled={busy}
+                        onClick={onGenerate}
+                      >
+                        {busy ? (
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : (
+                          <Dices className="h-4 w-4 mr-2" />
+                        )}
+                        Generate
+                      </Button>
+                    </div>
+                    <GeneratedOutputPanel
+                      output={displayOutput}
+                      busy={busy}
+                      error={error}
+                      testIdPrefix="tool"
+                      rootTypeName="Root"
+                      typesLanguage={typesLanguage}
+                      onTypesLanguageChange={setTypesLanguage}
+                      preClassName="max-h-[min(360px,45vh)] overflow-auto p-3 sm:p-4 text-xs font-mono whitespace-pre-wrap break-all leading-relaxed"
+                      onCopied={(tab) => {
+                        toast({ title: tab === 'json' ? 'JSON copied' : 'Types copied' })
+                      }}
+                      extraActions={
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="min-h-9"
+                          data-testid="download-json"
+                          disabled={displayOutput == null}
+                          onClick={handleDownloadRecords}
+                        >
+                          <Download className="h-3.5 w-3.5 mr-1.5" />
+                          Download
+                        </Button>
+                      }
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <h2 className="text-base font-semibold tracking-tight">Generated output</h2>
+                      {outputStatus ? (
+                        <p
+                          className="text-xs text-muted-foreground truncate"
+                          data-testid="output-status"
+                          aria-live="polite"
+                        >
+                          {outputStatus}
+                        </p>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">
+                          Press Generate to refresh values (new seed unless locked).
+                        </p>
+                      )}
+                    </div>
+                    <Button
+                      type="button"
+                      className="min-h-11 w-full sm:w-auto shrink-0"
+                      data-testid="generate-button"
+                      disabled={busy && !displayOutput}
+                      onClick={onGenerate}
+                    >
+                      {busy && displayOutput ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Dices className="h-4 w-4 mr-2" />
+                      )}
+                      Generate
+                    </Button>
+                  </div>
+                  <GeneratedOutputPanel
+                    output={displayOutput}
+                    busy={busy}
+                    error={error}
+                    testIdPrefix="tool"
+                    rootTypeName="Root"
+                    typesLanguage={typesLanguage}
+                    onTypesLanguageChange={setTypesLanguage}
+                    preClassName="max-h-[min(420px,50vh)] overflow-auto p-3 sm:p-4 text-xs font-mono whitespace-pre-wrap break-all leading-relaxed"
+                    onCopied={(tab) => {
+                      toast({ title: tab === 'json' ? 'JSON copied' : 'Types copied' })
+                    }}
+                    extraActions={
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="min-h-9"
+                        data-testid="download-json"
+                        disabled={displayOutput == null}
+                        onClick={handleDownloadRecords}
+                      >
+                        <Download className="h-3.5 w-3.5 mr-1.5" />
+                        Download
+                      </Button>
+                    }
+                  />
+                </div>
+              )}
+            </div>
+          </section>
+        </div>
 
         {/* More — share, ZIP, real API, record */}
         <details
