@@ -319,4 +319,73 @@ describe('SSE stream record/replay E2E (direct mode)', () => {
   },
     15_000
   );
+
+  it(
+    'refresh-from-live keeps the SSE body and does not overwrite the mock with {}',
+    async () => {
+      const url = `http://127.0.0.1:${serverPort}/sse/finite`;
+      const mockFile = path.join(testMockDataPath, 'default', 'sse-refresh.json');
+      fs.mkdirSync(path.dirname(mockFile), { recursive: true });
+      const seeded: MockData = {
+        request: {
+          method: 'GET',
+          url,
+          headers: {},
+        },
+        response: {
+          status: 200,
+          data: 'OLD-BODY-SHOULD-BE-REPLACED',
+          headers: { 'content-type': 'text/event-stream' },
+          stream: {
+            kind: 'sse',
+            chunks: [{ offsetMs: 0, data: 'OLD-BODY-SHOULD-BE-REPLACED' }],
+          },
+        },
+        timestamp: '2026-11-23T00:00:00.000Z',
+        refreshOnNextRequest: true,
+        // Date overrides used to deep-clone the live ReadableStream into {}.
+        responseDateOverrides: [{ path: 'createdAt', base: 'now' }],
+      };
+      fs.writeFileSync(mockFile, JSON.stringify(seeded, null, 2));
+
+      setupMockifyer({
+        mockDataPath: testMockDataPath,
+        recordMode: false,
+        recordResponses: true,
+        useGlobalFetch: true,
+        defaultScenario: 'default',
+        streamReplay: 'immediate',
+        streamRecordMaxDurationMs: 5_000,
+      });
+
+      const live = await fetch(url);
+      expect(live.headers.get('x-mockifyer')).toBeNull();
+      const liveText = await readResponseText(live);
+      expect(liveText).toBe(`${CHUNK_A}${CHUNK_B}`);
+      expect(liveText).not.toContain('createdAt');
+
+      const started = Date.now();
+      let updated: MockData | undefined;
+      while (Date.now() - started < 5_000) {
+        const raw = fs.readFileSync(mockFile, 'utf8');
+        const parsed = JSON.parse(raw) as MockData;
+        if (parsed.response?.data === `${CHUNK_A}${CHUNK_B}`) {
+          updated = parsed;
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 40));
+      }
+
+      expect(updated).toBeDefined();
+      expect(updated!.response.data).toBe(`${CHUNK_A}${CHUNK_B}`);
+      expect(updated!.response.data).not.toEqual({});
+      expect(updated!.response.stream?.kind).toBe('sse');
+      expect(updated!.response.stream?.chunks.map((c) => c.data).join('')).toBe(
+        `${CHUNK_A}${CHUNK_B}`
+      );
+      expect(updated!.refreshOnNextRequest).toBeUndefined();
+      expect(updated!.responseDateOverrides).toEqual(seeded.responseDateOverrides);
+    },
+    15_000
+  );
 });
