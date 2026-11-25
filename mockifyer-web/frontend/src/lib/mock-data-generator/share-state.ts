@@ -33,7 +33,7 @@ export interface PlaygroundShareState {
   checked: string[]
   /** Optional field-kind overrides: path → kind. */
   overrides?: Record<string, string>
-  /** Types-tab language (TypeScript, Zod, Go, …). */
+  /** Types panel language (TypeScript, Zod, Go, …). */
   typesLanguage?: TypesLanguage
 }
 
