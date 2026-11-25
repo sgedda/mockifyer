@@ -64,6 +64,22 @@ test.describe('Mock Data Generator playground', () => {
     await expect(page.getByTestId('output-status')).toContainText(/Updated/i);
   });
 
+  test('Cards view shows themed cards and updates on Generate', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await expect(page.getByTestId('generated-output')).toBeVisible({ timeout: 30_000 });
+    await page.getByTestId('tool-surface-cards').click();
+    await expect(page.getByTestId('tool-cards-grid')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('tool-copy-cards-html')).toBeVisible();
+    await expect(page.getByTestId('tool-copy-cards-react')).toBeVisible();
+    await expect(page.getByTestId('tool-download-cards-png')).toBeVisible();
+    const before = await page.getByTestId('tool-cards-grid').innerText();
+    await page.getByTestId('generate-button').click();
+    await expect(page.getByTestId('output-status')).toContainText(/Updated/i, { timeout: 30_000 });
+    await expect
+      .poll(async () => page.getByTestId('tool-cards-grid').innerText(), { timeout: 30_000 })
+      .not.toBe(before);
+  });
+
   test('simple type switch loads a different shape', async ({ page }) => {
     await expect(page.getByTestId('generated-output')).toBeVisible({ timeout: 30_000 });
     await page.getByTestId('simple-type-select').click();

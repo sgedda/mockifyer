@@ -15,6 +15,13 @@ import {
   isTypesLanguage,
   type TypesLanguage,
 } from './emit-types'
+import {
+  DEFAULT_CARD_THEME,
+  isCardTheme,
+  isOutputSurface,
+  type CardTheme,
+  type OutputSurface,
+} from './cards/types'
 
 export const SHARE_HASH_PREFIX = 'mdg1.'
 
@@ -35,6 +42,10 @@ export interface PlaygroundShareState {
   overrides?: Record<string, string>
   /** Types panel language (TypeScript, Zod, Go, …). */
   typesLanguage?: TypesLanguage
+  /** Output surface: code (JSON|Types) or cards. */
+  view?: OutputSurface
+  /** Cards theme when view is cards. */
+  cardTheme?: CardTheme
 }
 
 export type EncodeShareResult =
@@ -58,6 +69,12 @@ function compactPayload(state: PlaygroundShareState): Record<string, unknown> {
   }
   if (state.typesLanguage && state.typesLanguage !== DEFAULT_TYPES_LANGUAGE) {
     payload.tl = state.typesLanguage
+  }
+  if (state.view && state.view !== 'code') {
+    payload.v = state.view
+  }
+  if (state.cardTheme && state.cardTheme !== DEFAULT_CARD_THEME) {
+    payload.th = state.cardTheme
   }
   return payload
 }
@@ -91,6 +108,8 @@ function expandPayload(raw: Record<string, unknown>): PlaygroundShareState | nul
     checked,
     overrides,
     typesLanguage: isTypesLanguage(raw.tl) ? raw.tl : undefined,
+    view: isOutputSurface(raw.v) ? raw.v : undefined,
+    cardTheme: isCardTheme(raw.th) ? raw.th : undefined,
   }
 }
 

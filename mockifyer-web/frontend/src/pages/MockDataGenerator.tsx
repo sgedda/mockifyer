@@ -3,11 +3,9 @@ import { Link } from 'react-router-dom'
 import {
   ArrowRight,
   ChevronDown,
-  Dices,
   Download,
   FileJson,
   Link2,
-  Loader2,
   Lock,
   Unlock,
   Minus,
@@ -17,9 +15,16 @@ import {
   Upload,
   Wand2,
 } from 'lucide-react'
-import GeneratedOutputPanel from '@/components/GeneratedOutputPanel'
+import GeneratorOutputBlock from '@/components/GeneratorOutputBlock'
 import MockDataGeneratorSeo from '@/components/MockDataGeneratorSeo'
 import RealApiDemo from '@/components/RealApiDemo'
+import {
+  DEFAULT_CARD_THEME,
+  parseCardTheme,
+  parseOutputSurface,
+  type CardTheme,
+  type OutputSurface,
+} from '@/lib/mock-data-generator/cards'
 import {
   DEFAULT_TYPES_LANGUAGE,
   type TypesLanguage,
@@ -133,6 +138,9 @@ export default function MockDataGenerator() {
   const [engineReady, setEngineReady] = useState(false)
   const [bootstrapped, setBootstrapped] = useState(false)
   const [typesLanguage, setTypesLanguage] = useState<TypesLanguage>(DEFAULT_TYPES_LANGUAGE)
+  const [outputSurface, setOutputSurface] = useState<OutputSurface>('code')
+  const [cardTheme, setCardTheme] = useState<CardTheme>(DEFAULT_CARD_THEME)
+  const [generationKey, setGenerationKey] = useState(0)
   const [moreOpen, setMoreOpen] = useState(false)
   const [outputStatus, setOutputStatus] = useState<string | null>(null)
   const [focusPulse, setFocusPulse] = useState(false)
@@ -245,6 +253,8 @@ export default function MockDataGenerator() {
       setSeed(state.seed)
       if (state.overrides) setOverrides(state.overrides)
       if (state.typesLanguage) setTypesLanguage(state.typesLanguage)
+      if (state.view) setOutputSurface(parseOutputSurface(state.view))
+      if (state.cardTheme) setCardTheme(parseCardTheme(state.cardTheme))
       const matched = PLAYGROUND_PRESETS.find(
         (preset) => presetSampleJson(preset).trim() === state.input.trim()
       )
@@ -270,6 +280,8 @@ export default function MockDataGenerator() {
       checked: [],
       overrides,
       typesLanguage,
+      view: outputSurface,
+      cardTheme,
     })
     if (!result.ok) {
       setShareTooLarge(true)
@@ -279,7 +291,18 @@ export default function MockDataGenerator() {
     if (window.location.hash !== result.hash) {
       window.history.replaceState(null, '', `${window.location.pathname}${result.hash}`)
     }
-  }, [inputText, context, seed, count, itemCount, level, overrides, typesLanguage])
+  }, [
+    inputText,
+    context,
+    seed,
+    count,
+    itemCount,
+    level,
+    overrides,
+    typesLanguage,
+    outputSurface,
+    cardTheme,
+  ])
 
   const runGenerate = useCallback(
     async (opts: {
@@ -306,6 +329,7 @@ export default function MockDataGenerator() {
           overrides: opts.kindOverrides,
         })
         setDisplayOutput(formatSimpleOutput(generated))
+        setGenerationKey((key) => key + 1)
 
         const variants = engine.variants(opts.sample, {
           seed: opts.seedValue,
@@ -662,6 +686,86 @@ export default function MockDataGenerator() {
     [locale]
   )
 
+  const shareUrl = useMemo(() => {
+    const encoded = encodeShareHash({
+      input: inputText,
+      context,
+      seed,
+      count,
+      itemCount,
+      level,
+      checked: [],
+      overrides,
+      typesLanguage,
+      view: outputSurface,
+      cardTheme,
+    })
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://mockifyer.dev'
+    const path =
+      typeof window !== 'undefined' ? window.location.pathname : '/tools/mock-data-generator'
+    if (!encoded.ok) return `${origin}${path}`
+    return `${origin}${path}${encoded.hash}`
+  }, [
+    inputText,
+    context,
+    seed,
+    count,
+    itemCount,
+    level,
+    overrides,
+    typesLanguage,
+    outputSurface,
+    cardTheme,
+  ])
+
+  const downloadJsonAction = (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      className="min-h-9"
+      data-testid="download-json"
+      disabled={displayOutput == null}
+      onClick={handleDownloadRecords}
+    >
+      <Download className="h-3.5 w-3.5 mr-1.5" />
+      Download
+    </Button>
+  )
+
+  const outputBlockProps = {
+    output: displayOutput,
+    busy,
+    error,
+    outputStatus,
+    outputFlash,
+    surface: outputSurface,
+    onSurfaceChange: setOutputSurface,
+    cardTheme,
+    onCardThemeChange: setCardTheme,
+    generationKey,
+    shareUrl,
+    typesLanguage,
+    onTypesLanguageChange: setTypesLanguage,
+    onGenerate,
+    extraActions: downloadJsonAction,
+    onCopiedCode: (tab: 'json' | 'types') => {
+      toast({ title: tab === 'json' ? 'JSON copied' : 'Types copied' })
+    },
+    onCopiedCards: (kind: 'html' | 'react' | 'embed' | 'link') => {
+      const titles = {
+        html: 'HTML copied',
+        react: 'React component copied',
+        embed: 'Embed snippet copied',
+        link: 'Share link copied',
+      }
+      toast({ title: titles[kind] })
+    },
+    onToast: (title: string, description?: string) => {
+      toast({ title, description })
+    },
+  }
+
   return (
     <div
       className="bg-white text-zinc-950 overflow-x-hidden"
@@ -979,132 +1083,19 @@ export default function MockDataGenerator() {
                   </div>
 
                   <div
-                    className={cn('space-y-3 min-w-0', focusPulse && 'mdg-pane-pulse')}
+                    className={cn('min-w-0', focusPulse && 'mdg-pane-pulse')}
                     data-testid="custom-output-pane"
                   >
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="min-w-0">
-                        <h2 className="text-base font-semibold tracking-tight">Generated output</h2>
-                        {outputStatus ? (
-                          <p
-                            className="text-xs text-muted-foreground truncate"
-                            data-testid="output-status"
-                            aria-live="polite"
-                          >
-                            {outputStatus}
-                          </p>
-                        ) : (
-                          <p className="text-xs text-muted-foreground">
-                            Results appear here next to your sample.
-                          </p>
-                        )}
-                      </div>
-                      <Button
-                        type="button"
-                        className="min-h-11 w-full sm:w-auto shrink-0"
-                        data-testid="generate-button"
-                        disabled={busy}
-                        onClick={onGenerate}
-                      >
-                        {busy ? (
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        ) : (
-                          <Dices className="h-4 w-4 mr-2" />
-                        )}
-                        Generate
-                      </Button>
-                    </div>
-                    <GeneratedOutputPanel
-                      output={displayOutput}
-                      busy={busy}
-                      error={error}
-                      testIdPrefix="tool"
-                      rootTypeName="Root"
-                      typesLanguage={typesLanguage}
-                      onTypesLanguageChange={setTypesLanguage}
+                    <GeneratorOutputBlock
+                      {...outputBlockProps}
+                      generateDisabled={busy}
+                      statusHint="Results appear here next to your sample."
                       preClassName="max-h-[min(360px,45vh)] overflow-auto p-3 sm:p-4 text-xs font-mono whitespace-pre-wrap break-all leading-relaxed"
-                      onCopied={(tab) => {
-                        toast({ title: tab === 'json' ? 'JSON copied' : 'Types copied' })
-                      }}
-                      extraActions={
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="min-h-9"
-                          data-testid="download-json"
-                          disabled={displayOutput == null}
-                          onClick={handleDownloadRecords}
-                        >
-                          <Download className="h-3.5 w-3.5 mr-1.5" />
-                          Download
-                        </Button>
-                      }
                     />
                   </div>
                 </div>
               ) : (
-                <div className="space-y-3">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="min-w-0">
-                      <h2 className="text-base font-semibold tracking-tight">Generated output</h2>
-                      {outputStatus ? (
-                        <p
-                          className="text-xs text-muted-foreground truncate"
-                          data-testid="output-status"
-                          aria-live="polite"
-                        >
-                          {outputStatus}
-                        </p>
-                      ) : (
-                        <p className="text-xs text-muted-foreground">
-                          Press Generate to refresh values (new seed unless locked).
-                        </p>
-                      )}
-                    </div>
-                    <Button
-                      type="button"
-                      className="min-h-11 w-full sm:w-auto shrink-0"
-                      data-testid="generate-button"
-                      disabled={busy && !displayOutput}
-                      onClick={onGenerate}
-                    >
-                      {busy && displayOutput ? (
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      ) : (
-                        <Dices className="h-4 w-4 mr-2" />
-                      )}
-                      Generate
-                    </Button>
-                  </div>
-                  <GeneratedOutputPanel
-                    output={displayOutput}
-                    busy={busy}
-                    error={error}
-                    testIdPrefix="tool"
-                    rootTypeName="Root"
-                    typesLanguage={typesLanguage}
-                    onTypesLanguageChange={setTypesLanguage}
-                    preClassName="max-h-[min(420px,50vh)] overflow-auto p-3 sm:p-4 text-xs font-mono whitespace-pre-wrap break-all leading-relaxed"
-                    onCopied={(tab) => {
-                      toast({ title: tab === 'json' ? 'JSON copied' : 'Types copied' })
-                    }}
-                    extraActions={
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="min-h-9"
-                        data-testid="download-json"
-                        disabled={displayOutput == null}
-                        onClick={handleDownloadRecords}
-                      >
-                        <Download className="h-3.5 w-3.5 mr-1.5" />
-                        Download
-                      </Button>
-                    }
-                  />
-                </div>
+                <GeneratorOutputBlock {...outputBlockProps} />
               )}
             </div>
           </section>
