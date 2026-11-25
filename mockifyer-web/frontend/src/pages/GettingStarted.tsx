@@ -633,7 +633,11 @@ npm start`} language="bash" />
             <TabsContent value="react-native" className="space-y-4 mt-4">
               <p className="text-sm text-muted-foreground">
                 Mockifyer works seamlessly with React Native and Expo applications. It supports both development 
-                (with recording) and production (with bundled mocks) modes.
+                (with recording) and production (with bundled mocks) modes. Full how-to:{' '}
+                <Link to="/guides/how-to-mock-api-calls-in-react-native" className="text-primary hover:underline">
+                  How to mock API calls in React Native
+                </Link>
+                .
               </p>
 
               <div className="space-y-4">

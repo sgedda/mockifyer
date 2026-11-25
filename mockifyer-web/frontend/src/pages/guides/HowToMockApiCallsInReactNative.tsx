@@ -1,9 +1,28 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, AlertCircle, CheckCircle2, Smartphone } from 'lucide-react'
+import { ArrowLeft, AlertCircle, CheckCircle2, Smartphone, Database } from 'lucide-react'
 import CodeBlock from '@/components/CodeBlock'
 import QuickStartBox from '@/components/QuickStartBox'
+import { RN_GUIDE_FAQ } from '@/lib/rn-guide-faq'
+
+export { RN_GUIDE_FAQ }
+
+const TOC = [
+  { href: '#why-mock', label: 'Why mock APIs (offline development)' },
+  { href: '#options', label: 'Options: stubs, MSW, mock server, record-replay' },
+  { href: '#mock-fetch-react-native', label: 'Mock fetch in React Native / Expo' },
+  { href: '#mock-axios-react-native', label: 'Mock axios in React Native' },
+  { href: '#record', label: 'Selective recording' },
+  { href: '#replay-mix', label: 'Replay and mix mocked vs live' },
+  { href: '#global-storage', label: 'Global storage / shared mocks' },
+  { href: '#freeze-date', label: 'Freeze the date' },
+  { href: '#dashboard', label: 'Dashboard reachability' },
+  { href: '#drift-atlas', label: 'Drift detection and Atlas' },
+  { href: '#e2e', label: 'E2E tests' },
+  { href: '#faq', label: 'FAQ' },
+  { href: '#next-steps', label: 'Next steps' },
+] as const
 
 export default function HowToMockApiCallsInReactNative() {
   return (
@@ -22,16 +41,32 @@ export default function HowToMockApiCallsInReactNative() {
           How to mock API calls in React Native
         </h1>
         <p className="text-muted-foreground mt-4 text-lg">
-          Practical ways to mock fetch and axios in React Native and Expo — handwritten stubs, MSW
-          (<code className="bg-muted px-1 rounded text-sm">msw/native</code>), a local mock server, or
-          record-and-replay — and when each fits.
+          Practical Expo API mocking for fetch and axios — handwritten stubs, MSW (
+          <code className="bg-muted px-1 rounded text-sm">msw/native</code>), a React Native mock
+          server, or record-and-replay — including shared global storage when devices cannot reach
+          your laptop.
         </p>
       </header>
+
+      <nav aria-label="On this page" className="rounded-md border border-border bg-muted/30 p-4">
+        <p className="text-sm font-semibold mb-2">On this page</p>
+        <ul className="text-sm text-muted-foreground space-y-1 columns-1 sm:columns-2 gap-6">
+          {TOC.map((item) => (
+            <li key={item.href} className="break-inside-avoid">
+              <a href={item.href} className="text-primary hover:underline">
+                {item.label}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </nav>
 
       <QuickStartBox variant="react-native-fetch" />
 
       <section id="why-mock">
-        <h2 className="text-3xl font-semibold tracking-tight mb-4">Why mock APIs in React Native?</h2>
+        <h2 className="text-3xl font-semibold tracking-tight mb-4">
+          Why mock APIs for offline development?
+        </h2>
         <p className="text-muted-foreground mb-4">
           Mobile apps talk to backends that are often unfinished, rate-limited, or flaky. Mocking HTTP
           lets you:
@@ -45,13 +80,13 @@ export default function HowToMockApiCallsInReactNative() {
         <p className="text-muted-foreground">
           The hard part on React Native is that browser Service Workers do not exist. Whatever you
           choose has to intercept at the HTTP client layer (fetch / axios) or sit on the network as a
-          local server.
+          React Native mock server.
         </p>
       </section>
 
       <section id="options">
         <h2 className="text-3xl font-semibold tracking-tight mb-4">
-          Options to mock API React Native traffic
+          Options: stubs, MSW, React Native mock server, or record-replay
         </h2>
         <p className="text-muted-foreground mb-6">
           These approaches can coexist. Many teams use MSW for a single API with hand-written
@@ -97,12 +132,13 @@ export default function HowToMockApiCallsInReactNative() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Local mock server</CardTitle>
+              <CardTitle className="text-lg">Local React Native mock server</CardTitle>
             </CardHeader>
             <CardContent className="text-sm text-muted-foreground space-y-2">
               <p>
-                <strong>Best for:</strong> pointing the app at <code className="bg-muted px-1 rounded text-xs">http://10.0.2.2:…</code>{' '}
-                (Android emulator) or a LAN IP and serving canned JSON.
+                <strong>Best for:</strong> pointing the app at{' '}
+                <code className="bg-muted px-1 rounded text-xs">http://10.0.2.2:…</code> (Android
+                emulator) or a LAN IP and serving canned JSON.
               </p>
               <p>
                 <strong>Trade-off:</strong> you still hand-author payloads, and physical devices need
@@ -118,8 +154,13 @@ export default function HowToMockApiCallsInReactNative() {
             <CardContent className="text-sm text-muted-foreground space-y-2">
               <p>
                 <strong>Best for:</strong> larger apps that call many underlying systems across teams —
-                record real traffic once, store JSON under <code className="bg-muted px-1 rounded text-xs">mock-data/</code>,
-                replay offline, switch scenarios, freeze dates.
+                record real traffic once, store JSON under{' '}
+                <code className="bg-muted px-1 rounded text-xs">mock-data/</code>, replay offline,
+                switch scenarios, freeze dates, optionally share via{' '}
+                <a href="#global-storage" className="text-primary hover:underline">
+                  global storage
+                </a>
+                .
               </p>
               <p>
                 <strong>Trade-off:</strong> you need a short recording pass and Metro (or dashboard
@@ -131,9 +172,9 @@ export default function HowToMockApiCallsInReactNative() {
         </div>
       </section>
 
-      <section id="setup-mockifyer">
+      <section id="mock-fetch-react-native">
         <h2 className="text-3xl font-semibold tracking-tight mb-4">
-          Step-by-step: mock fetch/axios in React Native / Expo with Mockifyer
+          How to mock fetch in React Native / Expo
         </h2>
 
         <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-md mb-6">
@@ -145,16 +186,21 @@ export default function HowToMockApiCallsInReactNative() {
             <a href="#record" className="text-primary hover:underline">
               Selective recording
             </a>{' '}
-            if setup and Metro are already in place.
+            if setup and Metro are already in place. Full install path:{' '}
+            <Link to="/getting-started" className="text-primary hover:underline">
+              Getting Started
+            </Link>
+            .
           </p>
         </div>
 
         <div className="space-y-8">
           <div>
-            <h3 className="text-xl font-semibold mb-3">1. Install</h3>
+            <h3 className="text-xl font-semibold mb-3">1. Install for Expo API mocking</h3>
             <p className="text-muted-foreground mb-3">
-              React Native / Expo apps use <code className="bg-muted px-1 rounded text-xs">@sgedda/mockifyer-fetch</code>,
-              which patches <code className="bg-muted px-1 rounded text-xs">global.fetch</code>. Hybrid
+              React Native / Expo apps use{' '}
+              <code className="bg-muted px-1 rounded text-xs">@sgedda/mockifyer-fetch</code>, which
+              patches <code className="bg-muted px-1 rounded text-xs">global.fetch</code>. Hybrid
               storage also needs Expo FileSystem:
             </p>
             <CodeBlock
@@ -163,7 +209,10 @@ export default function HowToMockApiCallsInReactNative() {
 npx expo install expo-file-system`}
             />
             <p className="text-sm text-muted-foreground mt-3">
-              Optional: <code className="bg-muted px-1 rounded text-xs">npx -p @sgedda/mockifyer-core mockifyer init</code>{' '}
+              Optional:{' '}
+              <code className="bg-muted px-1 rounded text-xs">
+                npx -p @sgedda/mockifyer-core mockifyer init
+              </code>{' '}
               writes a selective-recording config and prints RN setup when it detects{' '}
               <code className="bg-muted px-1 rounded text-xs">react-native</code> in your dependencies.
             </p>
@@ -223,22 +272,31 @@ export async function initializeMockifyer() {
               Import and <code className="bg-muted px-1 rounded text-xs">await initializeMockifyer()</code>{' '}
               early in your root layout so the first network call is intercepted. Default{' '}
               <code className="bg-muted px-1 rounded text-xs">MOCKIFYER_MODE</code> when unset is{' '}
-              <code className="bg-muted px-1 rounded text-xs">on</code>.
+              <code className="bg-muted px-1 rounded text-xs">on</code>. See the{' '}
+              <Link to="/config-reference" className="text-primary hover:underline">
+                configuration reference
+              </Link>
+              .
             </p>
           </div>
+        </div>
+      </section>
 
-          <div>
-            <h3 className="text-xl font-semibold mb-3">4. Intercept axios (optional)</h3>
-            <p className="text-muted-foreground mb-3">
-              If your app uses axios, set up <code className="bg-muted px-1 rounded text-xs">@sgedda/mockifyer-axios</code>{' '}
-              with <code className="bg-muted px-1 rounded text-xs">useGlobalAxios: true</code> (call before
-              importing axios). Axios uses a filesystem or dashboard-proxy path — not the Expo Hybrid
-              provider that <code className="bg-muted px-1 rounded text-xs">setupMockifyerForReactNative</code>{' '}
-              configures for fetch:
-            </p>
-            <CodeBlock
-              language="typescript"
-              code={`import { setupMockifyer } from '@sgedda/mockifyer-axios';
+      <section id="mock-axios-react-native">
+        <h2 className="text-3xl font-semibold tracking-tight mb-4">
+          How to mock axios in React Native
+        </h2>
+        <p className="text-muted-foreground mb-3">
+          If your app uses axios, set up{' '}
+          <code className="bg-muted px-1 rounded text-xs">@sgedda/mockifyer-axios</code> with{' '}
+          <code className="bg-muted px-1 rounded text-xs">useGlobalAxios: true</code> (call before
+          importing axios). Axios uses a filesystem or dashboard-proxy path — not the Expo Hybrid
+          provider that <code className="bg-muted px-1 rounded text-xs">setupMockifyerForReactNative</code>{' '}
+          configures for fetch:
+        </p>
+        <CodeBlock
+          language="typescript"
+          code={`import { setupMockifyer } from '@sgedda/mockifyer-axios';
 
 setupMockifyer({
   mockDataPath: './mock-data',
@@ -248,9 +306,7 @@ setupMockifyer({
 });
 
 import axios from 'axios';`}
-            />
-          </div>
-        </div>
+        />
       </section>
 
       <section id="record">
@@ -311,6 +367,161 @@ import axios from 'axios';`}
         <CodeBlock language="bash" code="npx expo start" />
       </section>
 
+      <section id="global-storage">
+        <h2 className="text-3xl font-semibold tracking-tight mb-4">
+          Global storage / shared mocks (Redis or SQLite)
+        </h2>
+        <p className="text-muted-foreground mb-4">
+          Hybrid + Metro keeps mocks on <em>your</em> machine. When a teammate&apos;s device, CI job,
+          demo build, or phone cannot reach your local <code className="bg-muted px-1 rounded text-xs">mock-data/</code>{' '}
+          folder or filesystem dashboard, run the dashboard against a{' '}
+          <strong>shared store</strong> and proxy app traffic through it. Everyone then loads the same
+          recordings and scenarios.
+        </p>
+        <p className="text-sm text-muted-foreground mb-6">
+          Dashboard docs:{' '}
+          <Link to="/dashboard" className="text-primary hover:underline">
+            Dashboard and MCP
+          </Link>
+          {' · '}
+          <a
+            href="https://github.com/sgedda/mockifyer/blob/main/packages/mockifyer-dashboard/README.md"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary hover:underline"
+          >
+            @sgedda/mockifyer-dashboard README
+          </a>
+          {' · '}
+          <a
+            href="https://github.com/sgedda/mockifyer/blob/main/MULTI_CLIENT_ISOLATION.md"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary hover:underline"
+          >
+            Client lanes design note
+          </a>
+          .
+        </p>
+
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Database className="h-5 w-5" />
+              Enable the shared store
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4 text-sm text-muted-foreground">
+            <p>
+              The HTTP proxy at <code className="bg-muted px-1 rounded text-xs">/api/proxy</code> requires{' '}
+              <code className="bg-muted px-1 rounded text-xs">redis</code> or{' '}
+              <code className="bg-muted px-1 rounded text-xs">sqlite</code> — not the default filesystem
+              provider. Redis is the usual choice for multi-device lanes.
+            </p>
+            <CodeBlock
+              language="bash"
+              code={`# Redis as source of truth for mocks + scenarios (default key prefix mockifyer:v1)
+npx @sgedda/mockifyer-dashboard --provider redis \\
+  --redis-url redis://127.0.0.1:6379 \\
+  --path ./mock-data \\
+  --host 0.0.0.0
+
+# Optional: also write recorded mocks to disk for git
+#   --redis-mirror-disk   (env: MOCKIFYER_REDIS_MIRROR_DISK=true)
+# Optional: if Redis misses, try JSON under mock-data/<scenario>/ before upstream
+#   --redis-disk-fallback (env: MOCKIFYER_REDIS_DISK_READ_FALLBACK=true)
+# Shorthand for both: --redis-disk-dual`}
+            />
+            <ul className="list-disc list-inside space-y-2">
+              <li>
+                <code className="bg-muted px-1 rounded text-xs">MOCKIFYER_REDIS_URL</code> /{' '}
+                <code className="bg-muted px-1 rounded text-xs">--redis-url</code> — connection string
+              </li>
+              <li>
+                <code className="bg-muted px-1 rounded text-xs">MOCKIFYER_REDIS_KEY_PREFIX</code> /{' '}
+                <code className="bg-muted px-1 rounded text-xs">--key-prefix</code> — default{' '}
+                <code className="bg-muted px-1 rounded text-xs">mockifyer:v1</code> (multi-tenant lever)
+              </li>
+              <li>
+                <code className="bg-muted px-1 rounded text-xs">MOCKIFYER_DB_PROVIDER</code> —{' '}
+                <code className="bg-muted px-1 rounded text-xs">redis</code> |{' '}
+                <code className="bg-muted px-1 rounded text-xs">sqlite</code> |{' '}
+                <code className="bg-muted px-1 rounded text-xs">filesystem</code>
+              </li>
+              <li>
+                Bind with <code className="bg-muted px-1 rounded text-xs">--host 0.0.0.0</code> so other
+                machines on the LAN can reach the dashboard
+              </li>
+            </ul>
+          </CardContent>
+        </Card>
+
+        <div className="space-y-4 mb-6">
+          <h3 className="text-xl font-semibold">Point the React Native app at it</h3>
+          <p className="text-muted-foreground text-sm">
+            Use the RN dashboard preset. URL resolution order:{' '}
+            <code className="bg-muted px-1 rounded text-xs">proxyBaseUrl</code> →{' '}
+            <code className="bg-muted px-1 rounded text-xs">dashboardBaseUrl</code> →{' '}
+            <code className="bg-muted px-1 rounded text-xs">MOCKIFYER_PROXY_URL</code> (Expo often uses{' '}
+            <code className="bg-muted px-1 rounded text-xs">EXPO_PUBLIC_MOCKIFYER_PROXY_URL</code>).
+          </p>
+          <CodeBlock
+            language="typescript"
+            code={`import { initMockifyerForReactNativeDashboard } from '@sgedda/mockifyer-fetch';
+import { Platform } from 'react-native';
+
+const dashboardBaseUrl =
+  Platform.OS === 'android'
+    ? 'http://10.0.2.2:3002' // emulator → host
+    : 'http://192.168.1.20:3002'; // physical device / teammate: host LAN IP
+
+await initMockifyerForReactNativeDashboard({
+  isDev: __DEV__,
+  mockDataPath: 'mock-data',
+  bundledDataPath: './assets/mock-data',
+  dashboardBaseUrl,
+  recordMode: __DEV__ && process.env.EXPO_PUBLIC_MOCKIFYER_RECORD === 'true',
+  // Optional: clientId / MOCKIFYER_CLIENT_ID for a client lane
+});`}
+          />
+          <p className="text-sm text-muted-foreground">
+            Traffic goes through dashboard <code className="bg-muted px-1 rounded text-xs">POST /api/proxy</code>.
+            Scenarios resolve from proxy body override → client lane (
+            <code className="bg-muted px-1 rounded text-xs">client_scenario:{'{'}clientId{'}'}</code>) →
+            global active scenario. Set a lane with{' '}
+            <code className="bg-muted px-1 rounded text-xs">MOCKIFYER_CLIENT_ID</code> or launch arg{' '}
+            <code className="bg-muted px-1 rounded text-xs">mockifyerClientId</code> so one device can run{' '}
+            <code className="bg-muted px-1 rounded text-xs">trips-empty</code> while another runs{' '}
+            <code className="bg-muted px-1 rounded text-xs">trips-many</code>.
+          </p>
+        </div>
+
+        <Card className="border-amber-500/40 bg-amber-500/5">
+          <CardHeader>
+            <CardTitle className="text-lg">Limits and honesty notes</CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground space-y-2">
+            <ul className="list-disc list-inside space-y-2">
+              <li>
+                Redis write caps: default max{' '}
+                <strong>200</strong> distinct mocks per METHOD+host+path (
+                <code className="bg-muted px-1 rounded text-xs">MOCKIFYER_MAX_MOCKS_PER_PATH</code>; set{' '}
+                <code className="bg-muted px-1 rounded text-xs">0</code> to disable). Optional scenario cap:{' '}
+                <code className="bg-muted px-1 rounded text-xs">MOCKIFYER_MAX_REQUESTS_PER_SCENARIO</code>.
+              </li>
+              <li>
+                Filesystem Hybrid remains best for solo laptop + simulator work; switch to Redis/SQLite
+                proxy when you need a shared source of truth.
+              </li>
+              <li>
+                Hosted multi-tenant “cloud Mockifyer” as a SaaS product is not what this section
+                describes — this is <em>your</em> Redis/SQLite + dashboard process that devices can reach.
+              </li>
+            </ul>
+          </CardContent>
+        </Card>
+      </section>
+
       <section id="freeze-date">
         <h2 className="text-3xl font-semibold tracking-tight mb-4">Freeze the date</h2>
         <p className="text-muted-foreground mb-4">
@@ -329,7 +540,11 @@ import axios from 'axios';`}
 const today = getCurrentDate(); // respects MOCKIFYER_DATE / scenario Date Config`}
         />
         <p className="text-sm text-muted-foreground mt-3">
-          More detail: <Link to="/date-config" className="text-primary hover:underline">Date Configuration</Link>.
+          More detail:{' '}
+          <Link to="/date-config" className="text-primary hover:underline">
+            Date Configuration
+          </Link>
+          .
         </p>
       </section>
 
@@ -338,7 +553,8 @@ const today = getCurrentDate(); // respects MOCKIFYER_DATE / scenario Date Confi
           Switch scenarios from the dashboard
         </h2>
         <p className="text-muted-foreground mb-4">
-          The dashboard usually runs on your laptop, not on the phone. Start it on the host:
+          The dashboard usually runs on your laptop, not on the phone. Filesystem mode for local
+          editing:
         </p>
         <CodeBlock
           language="bash"
@@ -366,37 +582,19 @@ npx mockifyer-dashboard --path ./mock-data
                 alias to the host loopback)
               </li>
               <li>
-                <strong>Physical device:</strong> your machine&apos;s LAN IP, e.g.{' '}
+                <strong>Physical device / teammate:</strong> your machine&apos;s LAN IP, e.g.{' '}
                 <code className="bg-muted px-1 rounded text-xs">http://192.168.1.20:3002</code>
               </li>
             </ul>
             <p>
-              For Redis-backed proxy mode (shared lanes, physical devices), use{' '}
-              <code className="bg-muted px-1 rounded text-xs">initMockifyerForReactNativeDashboard</code>{' '}
-              with <code className="bg-muted px-1 rounded text-xs">dashboardBaseUrl</code> /{' '}
-              <code className="bg-muted px-1 rounded text-xs">proxyBaseUrl</code> (or{' '}
-              <code className="bg-muted px-1 rounded text-xs">MOCKIFYER_PROXY_URL</code> /{' '}
-              <code className="bg-muted px-1 rounded text-xs">EXPO_PUBLIC_MOCKIFYER_PROXY_URL</code>) and
-              run the dashboard with <code className="bg-muted px-1 rounded text-xs">--provider redis</code>.
+              For shared Redis/SQLite proxy mode, prefer{' '}
+              <a href="#global-storage" className="text-primary hover:underline">
+                global storage
+              </a>{' '}
+              above. The dashboard rewrites emulator loopback hosts (
+              <code className="bg-muted px-1 rounded text-xs">10.0.2.2</code>) to{' '}
+              <code className="bg-muted px-1 rounded text-xs">127.0.0.1</code> before upstream calls.
             </p>
-            <CodeBlock
-              language="typescript"
-              code={`import { initMockifyerForReactNativeDashboard } from '@sgedda/mockifyer-fetch';
-import { Platform } from 'react-native';
-
-const dashboardBaseUrl =
-  Platform.OS === 'android'
-    ? 'http://10.0.2.2:3002'
-    : 'http://localhost:3002';
-
-await initMockifyerForReactNativeDashboard({
-  isDev: __DEV__,
-  mockDataPath: 'mock-data',
-  bundledDataPath: './assets/mock-data',
-  dashboardBaseUrl,
-  recordMode: __DEV__ && process.env.EXPO_PUBLIC_MOCKIFYER_RECORD === 'true',
-});`}
-            />
           </CardContent>
         </Card>
       </section>
@@ -404,7 +602,7 @@ await initMockifyerForReactNativeDashboard({
       <section id="drift-atlas">
         <h2 className="text-3xl font-semibold tracking-tight mb-4">Drift detection and Atlas</h2>
         <p className="text-muted-foreground mb-4">
-          Once mocks live in git, two extras help larger teams:
+          Once mocks live in git (or Redis + disk mirror), two extras help larger teams:
         </p>
         <ul className="space-y-3 text-muted-foreground list-disc list-inside">
           <li>
@@ -461,56 +659,30 @@ appId: com.example.app
       <section id="faq">
         <h2 className="text-3xl font-semibold tracking-tight mb-4">FAQ</h2>
         <div className="space-y-6">
-          <div>
-            <h3 className="text-lg font-semibold mb-2">Does it support Expo?</h3>
-            <p className="text-muted-foreground text-sm">
-              Yes. <code className="bg-muted px-1 rounded text-xs">setupMockifyerForReactNative</code>{' '}
-              targets Expo and React Native. Dev uses the Hybrid provider (device + Metro project
-              folder). Expo web resolves the browser entry of{' '}
-              <code className="bg-muted px-1 rounded text-xs">@sgedda/mockifyer-fetch</code>.
-            </p>
-          </div>
-          <div>
-            <h3 className="text-lg font-semibold mb-2">
-              How do I make sure mocks are off in release / store builds?
-            </h3>
-            <p className="text-muted-foreground text-sm">
-              Set <code className="bg-muted px-1 rounded text-xs">MOCKIFYER_MODE=off</code> (aliases:{' '}
-              <code className="bg-muted px-1 rounded text-xs">disabled</code>). Launch args are ignored
-              in that mode — use it for store builds that must not run mocks. Gate{' '}
-              <code className="bg-muted px-1 rounded text-xs">recordMode</code> on{' '}
-              <code className="bg-muted px-1 rounded text-xs">__DEV__</code>. For E2E-only activation use{' '}
-              <code className="bg-muted px-1 rounded text-xs">launch_client</code>. Note:{' '}
-              <code className="bg-muted px-1 rounded text-xs">isDev: false</code> alone still loads the
-              Memory provider with bundled mocks when mode is on —{' '}
-              <code className="bg-muted px-1 rounded text-xs">off</code> is the hard disable.
-            </p>
-          </div>
-          <div>
-            <h3 className="text-lg font-semibold mb-2">Does it work with axios and fetch?</h3>
-            <p className="text-muted-foreground text-sm">
-              Fetch: yes — primary RN path via{' '}
-              <code className="bg-muted px-1 rounded text-xs">@sgedda/mockifyer-fetch</code>. Axios: yes
-              via <code className="bg-muted px-1 rounded text-xs">@sgedda/mockifyer-axios</code> and{' '}
-              <code className="bg-muted px-1 rounded text-xs">useGlobalAxios: true</code>. Patching fetch
-              does not automatically intercept axios (axios typically uses its own adapter / XHR on
-              RN).
-            </p>
-          </div>
-          <div>
-            <h3 className="text-lg font-semibold mb-2">Can MSW and Mockifyer coexist?</h3>
-            <p className="text-muted-foreground text-sm">
-              Yes in practice: MSW for a few hand-authored endpoints, Mockifyer for recorded traffic
-              across many systems. Prefer one interceptor per client instance so they do not fight
-              over the same request.
-            </p>
-          </div>
+          {RN_GUIDE_FAQ.map((item) => (
+            <div key={item.question}>
+              <h3 className="text-lg font-semibold mb-2">{item.question}</h3>
+              <p className="text-muted-foreground text-sm">{item.answer}</p>
+            </div>
+          ))}
         </div>
       </section>
 
       <section id="next-steps">
         <h2 className="text-3xl font-semibold tracking-tight mb-4">Next steps</h2>
         <div className="grid md:grid-cols-2 gap-4">
+          <Link to="/">
+            <Card className="h-full hover:border-primary/50 transition-colors cursor-pointer">
+              <CardHeader>
+                <CardTitle className="text-lg">Home</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">
+                  Product overview and feature highlights
+                </p>
+              </CardContent>
+            </Card>
+          </Link>
           <Link to="/getting-started">
             <Card className="h-full hover:border-primary/50 transition-colors cursor-pointer">
               <CardHeader>
@@ -531,6 +703,18 @@ appId: com.example.app
               <CardContent>
                 <p className="text-sm text-muted-foreground">
                   Detox / Maestro launch args, scenarios, frozen dates
+                </p>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link to="/e2e-tutorial">
+            <Card className="h-full hover:border-primary/50 transition-colors cursor-pointer">
+              <CardHeader>
+                <CardTitle className="text-lg">E2E Tutorial</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">
+                  WanderWeird multi-service walkthrough with Playwright
                 </p>
               </CardContent>
             </Card>
@@ -570,6 +754,18 @@ appId: com.example.app
               <CardContent>
                 <p className="text-sm text-muted-foreground">
                   Visualize multi-service request chains from recorded hops
+                </p>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link to="/dashboard">
+            <Card className="h-full hover:border-primary/50 transition-colors cursor-pointer">
+              <CardHeader>
+                <CardTitle className="text-lg">Dashboard</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">
+                  Scenarios, client lanes, Redis &amp; disk mirror
                 </p>
               </CardContent>
             </Card>

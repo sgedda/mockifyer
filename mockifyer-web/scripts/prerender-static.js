@@ -93,7 +93,7 @@ var PAGE_SEO = {
   },
   "/guides/how-to-mock-api-calls-in-react-native": {
     title: "How to Mock API Calls in React Native",
-    description: "How to mock API calls in React Native and Expo: MSW vs stubs vs record-replay. Mock fetch/axios, selective recording, dashboard, E2E.",
+    description: "How to mock API calls in React Native and Expo: MSW, stubs, or record-replay. Mock fetch/axios; share Redis scenarios across devices.",
     path: "/guides/how-to-mock-api-calls-in-react-native"
   },
   "/guides/mock-at-the-network-edge": {
@@ -231,6 +231,30 @@ var GUIDE_ITEMS = [
   { href: "/guides/streaming", label: "Mocking SSE and Streaming APIs" }
 ];
 
+// mockifyer-web/frontend/src/lib/rn-guide-faq.ts
+var RN_GUIDE_FAQ = [
+  {
+    question: "Does Mockifyer support Expo API mocking?",
+    answer: "Yes. setupMockifyerForReactNative targets Expo and React Native. In development it uses the Hybrid provider (device FileSystem plus Metro project sync). Expo web resolves the browser entry of @sgedda/mockifyer-fetch."
+  },
+  {
+    question: "How do I make sure mocks are off in release / store builds?",
+    answer: "Set MOCKIFYER_MODE=off (alias: disabled). Launch arguments are ignored in that mode. Gate recordMode on __DEV__. For E2E-only activation use launch_client. Note: isDev: false alone still loads the Memory provider with bundled mocks when mode is on \u2014 off is the hard disable."
+  },
+  {
+    question: "Can I mock fetch and axios in React Native?",
+    answer: "Fetch: yes via @sgedda/mockifyer-fetch and setupMockifyerForReactNative. Axios: yes via @sgedda/mockifyer-axios with useGlobalAxios: true. Patching fetch does not automatically intercept axios on React Native."
+  },
+  {
+    question: "Can MSW and Mockifyer coexist?",
+    answer: "Yes in practice: MSW for a few hand-authored endpoints, Mockifyer for recorded traffic across many systems. Prefer one interceptor per client instance so they do not fight over the same request."
+  },
+  {
+    question: "What is Mockifyer global storage / shared mocks?",
+    answer: "Run the dashboard with --provider redis (or sqlite) so mocks and scenarios live in a shared store. Point the app at the dashboard with initMockifyerForReactNativeDashboard or proxyBaseUrl. Teammates, CI, and demo devices then load the same recordings without local mock-data files."
+  }
+];
+
 // mockifyer-web/frontend/src/lib/prerender-content.ts
 var CONTENT_ROUTES_WITH_FULL_BODY = /* @__PURE__ */ new Set([
   "/guides",
@@ -335,13 +359,24 @@ var GUIDE_BODIES = {
   },
   "/guides/how-to-mock-api-calls-in-react-native": {
     h1: "How to mock API calls in React Native",
-    summary: "How to mock API calls in React Native and Expo: compare stubs, MSW (msw/native), local mock servers, and Mockifyer record-replay for fetch and axios.",
+    summary: "How to mock API calls in React Native and Expo: compare stubs, MSW (msw/native), a React Native mock server, and Mockifyer record-replay for fetch and axios, including Redis/SQLite global storage for shared scenarios.",
     sections: [
       {
-        heading: "Choose an Approach",
+        heading: "Why mock for offline development",
         paragraphs: [
-          "Hand-written Jest stubs fit unit tests. MSW shines for a single API with typed handlers. A local mock server works when the device can reach your laptop. Record-and-replay fits larger apps that call many backend systems across teams.",
-          "With Mockifyer, install @sgedda/mockifyer-fetch, configure Metro sync, call setupMockifyerForReactNative, record selectively into _scratch, activate mocks from the dashboard (use 10.0.2.2 on Android emulator or a LAN IP on device), freeze dates with getCurrentDate, and lock E2E scenarios via launch arguments."
+          "Mock HTTP so you can develop offline, demo stable states, keep Detox/Maestro deterministic, and build UI before backends ship."
+        ]
+      },
+      {
+        heading: "Mock fetch and axios in React Native",
+        paragraphs: [
+          "Install @sgedda/mockifyer-fetch, configure Metro with configureMetroForMockifyer, and call setupMockifyerForReactNative. For axios use @sgedda/mockifyer-axios with useGlobalAxios: true. Record selectively into _scratch until you activate mocks."
+        ]
+      },
+      {
+        heading: "Global storage / shared mocks",
+        paragraphs: [
+          "Run the dashboard with --provider redis (or sqlite) so mocks and scenarios live in a shared store. Point the app with initMockifyerForReactNativeDashboard or proxyBaseUrl so teammates, CI, and demo devices load the same recordings without local mock-data files."
         ]
       }
     ]
@@ -494,6 +529,7 @@ function buildComparisonsBody() {
     ],
     links: [
       ...NAV_LINKS.filter((link) => link.href !== "/comparisons"),
+      { href: "/guides/how-to-mock-api-calls-in-react-native", label: "How to Mock API Calls in React Native" },
       { href: "/guides/react-native-without-msw", label: "MSW vs Recording in React Native" },
       { href: "/guides/mock-drift", label: "Stop Mock Drift" }
     ]
@@ -617,9 +653,33 @@ function buildTechArticleJsonLd(seo) {
     mainEntityOfPage: `${SITE_URL}${seo.path}`
   };
 }
+function buildGuideFaqPageJsonLd(items) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: items.map((item) => ({
+      "@type": "Question",
+      name: item.question,
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: item.answer
+      }
+    }))
+  };
+}
 function getRouteJsonLd(routePath) {
   if (routePath === "/faq") {
     return buildFaqPageJsonLd();
+  }
+  if (routePath === "/guides/how-to-mock-api-calls-in-react-native" && PAGE_SEO[routePath]) {
+    const article = buildTechArticleJsonLd(PAGE_SEO[routePath]);
+    const faq = buildGuideFaqPageJsonLd(RN_GUIDE_FAQ);
+    const { "@context": _a, ...articleNode } = article;
+    const { "@context": _f, ...faqNode } = faq;
+    return {
+      "@context": "https://schema.org",
+      "@graph": [articleNode, faqNode]
+    };
   }
   if (routePath.startsWith("/guides/") && PAGE_SEO[routePath]) {
     return buildTechArticleJsonLd(PAGE_SEO[routePath]);

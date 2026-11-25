@@ -99,7 +99,7 @@ Fetch can record `response.stream` timelines (`kind`, timed `chunks`, optional `
 
 ## How to mock API calls in React Native
 
-Guide: https://mockifyer.dev/guides/how-to-mock-api-calls-in-react-native — compare stubs, MSW (`msw/native`), local mock servers, and Mockifyer record-replay. Primary path: `@sgedda/mockifyer-fetch` + `setupMockifyerForReactNative` (Hybrid + Metro). Selective recording into `_scratch`; activate via dashboard or domain-path rules. Android emulator dashboard URL: `http://10.0.2.2:3002`. Store builds: `MOCKIFYER_MODE=off`.
+Guide: https://mockifyer.dev/guides/how-to-mock-api-calls-in-react-native — compare stubs, MSW (`msw/native`), a React Native mock server, and Mockifyer record-replay for Expo fetch/axios. Primary path: `@sgedda/mockifyer-fetch` + `setupMockifyerForReactNative` (Hybrid + Metro). Selective recording into `_scratch`; activate via dashboard or domain-path rules. Shared/global storage: dashboard `--provider redis` (or sqlite) plus `initMockifyerForReactNativeDashboard` / `proxyBaseUrl` so devices share scenarios without local `mock-data/` files. Android emulator dashboard URL: `http://10.0.2.2:3002`. Store builds: `MOCKIFYER_MODE=off`.
 
 ## Links
 

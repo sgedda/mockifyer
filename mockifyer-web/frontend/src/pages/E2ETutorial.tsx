@@ -1,5 +1,6 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { AlertCircle, Play, Terminal, CheckCircle } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import CodeBlock from '@/components/CodeBlock'
 
 export default function E2ETutorial() {
@@ -928,6 +929,26 @@ npm run report        # Playwright HTML report`} language="bash" />
           </div>
         </CardContent>
       </Card>
+
+      <section className="space-y-3">
+        <h2 className="text-2xl font-semibold tracking-tight">Related guides</h2>
+        <ul className="text-muted-foreground space-y-2 list-disc pl-5">
+          <li>
+            <Link to="/guides/how-to-mock-api-calls-in-react-native" className="text-primary hover:underline">
+              How to mock API calls in React Native
+            </Link>
+            {' — '}
+            Expo fetch/axios setup, shared Redis storage, offline demos
+          </li>
+          <li>
+            <Link to="/guides/stable-react-native-e2e" className="text-primary hover:underline">
+              Stable React Native E2E
+            </Link>
+            {' — '}
+            Detox / Maestro launch args and frozen dates
+          </li>
+        </ul>
+      </section>
     </div>
   )
 }

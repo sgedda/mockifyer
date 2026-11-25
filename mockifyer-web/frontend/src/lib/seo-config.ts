@@ -74,7 +74,7 @@ export const PAGE_SEO: Record<string, PageSeoConfig> = {
   '/guides/how-to-mock-api-calls-in-react-native': {
     title: 'How to Mock API Calls in React Native',
     description:
-      'How to mock API calls in React Native and Expo: MSW vs stubs vs record-replay. Mock fetch/axios, selective recording, dashboard, E2E.',
+      'How to mock API calls in React Native and Expo: MSW, stubs, or record-replay. Mock fetch/axios; share Redis scenarios across devices.',
     path: '/guides/how-to-mock-api-calls-in-react-native',
   },
   '/guides/mock-at-the-network-edge': {

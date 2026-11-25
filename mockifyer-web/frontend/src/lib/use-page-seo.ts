@@ -1,5 +1,7 @@
 import { useEffect } from 'react'
 import { HOME_FAQ } from './faq'
+import { buildGuideFaqPageJsonLd } from './prerender-content'
+import { RN_GUIDE_FAQ } from './rn-guide-faq'
 import {
   DEFAULT_DESCRIPTION,
   DEFAULT_KEYWORDS,
@@ -110,9 +112,17 @@ export function usePageSeo(config: PageSeoConfig | undefined): void {
 
     const isHome = config.path === '/'
     const isFaq = config.path === '/faq'
+    const isRnMockGuide = config.path === '/guides/how-to-mock-api-calls-in-react-native'
     const isGuideArticle = Boolean(config.path?.startsWith('/guides/'))
     upsertJsonLd(JSON_LD_ID, isHome ? buildSoftwareApplicationJsonLd() : null)
-    upsertJsonLd(FAQ_JSON_LD_ID, isFaq ? buildFaqPageJsonLd(HOME_FAQ) : null)
+    upsertJsonLd(
+      FAQ_JSON_LD_ID,
+      isFaq
+        ? buildFaqPageJsonLd(HOME_FAQ)
+        : isRnMockGuide
+          ? buildGuideFaqPageJsonLd(RN_GUIDE_FAQ)
+          : null,
+    )
     upsertJsonLd(ARTICLE_JSON_LD_ID, isGuideArticle ? buildTechArticleJsonLd(config) : null)
 
     return () => {

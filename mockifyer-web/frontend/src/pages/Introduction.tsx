@@ -183,6 +183,17 @@ export default function Introduction() {
                     </span>
                   </div>
                 </Link>
+
+                <Link to="/guides/how-to-mock-api-calls-in-react-native" className="group">
+                  <div className="h-full p-4 rounded-lg border border-border bg-card hover:border-primary/50 transition-colors">
+                    <CheckCircle2 className="h-5 w-5 text-primary mb-2" />
+                    <h3 className="font-semibold text-sm mb-1">Mock APIs in React Native</h3>
+                    <p className="text-xs text-muted-foreground mb-2">How to mock fetch/axios in Expo: MSW vs record-replay, shared Redis storage, and offline demos.</p>
+                    <span className="text-xs text-primary group-hover:underline inline-flex items-center gap-1">
+                      Learn more <ArrowRight className="h-3 w-3" />
+                    </span>
+                  </div>
+                </Link>
               </div>
             </div>
 
