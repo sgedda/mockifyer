@@ -7,6 +7,10 @@
 API mocking and recording for **axios** and **fetch**, with date manipulation for tests. Mock data lives in your repo as JSON (per request/response), with optional **scenarios** and React Native / Expo support.
 Monorepo for **Mockifyer**: libraries for mocking and recording API calls, with special support for date manipulation in tests.
 
+[![Open in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz.svg)](https://stackblitz.com/github/sgedda/mockifyer/tree/cursor/stackblitz-record-generate-1232/examples/stackblitz-record-generate)
+
+Try selective **record → replay → generate** in the browser (Node WebContainer demo).
+
 Published packages (install these, not the repo root):
 
 - `@sgedda/mockifyer-core` — types, providers, `getCurrentDate`, etc.
