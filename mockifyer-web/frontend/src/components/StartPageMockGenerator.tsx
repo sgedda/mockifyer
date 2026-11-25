@@ -1,77 +1,35 @@
 /**
- * Compact light-mode mock-data teaser for the start page (below Atlas).
- * Lazy-loads the generator engine after idle / visibility — keeps the main bundle lean.
- * No context input or Shuffle — those live on the full tool page.
+ * Minimal mock-data teaser for the start page (after Atlas).
+ * Type + object count + Randomize + live JSON — lazy-loads the generator engine.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowRight, Loader2, Wand2 } from 'lucide-react'
+import { ArrowRight, Check, Copy, Loader2, Shuffle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
 import {
-  DEFAULT_COUNT,
-  DEFAULT_SEED,
-  TEASER_PRESETS,
-  findPreset,
-  presetSampleJson,
-  type PlaygroundPreset,
-} from '@/lib/mock-data-generator/defaults'
-import { encodeShareHash } from '@/lib/mock-data-generator/share-state'
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { DEFAULT_SEED } from '@/lib/mock-data-generator/defaults'
 import { loadGeneratorEngine } from '@/lib/mock-data-generator/engine'
-
-/** Keep the start-page chip row to 2–3 presets. */
-const COMPACT_PRESETS = TEASER_PRESETS.slice(0, 3)
-const START_PRESET = findPreset('users') ?? COMPACT_PRESETS[0]!
-const PREVIEW_MAX_LINES = 7
-
-function buildFullGeneratorHref(preset: PlaygroundPreset): string {
-  const encoded = encodeShareHash({
-    input: presetSampleJson(preset),
-    context: preset.context,
-    seed: DEFAULT_SEED,
-    count: DEFAULT_COUNT,
-    level: 'wild',
-    checked: [],
-    overrides: {},
-  })
-  if (!encoded.ok) {
-    return '/tools/mock-data-generator'
-  }
-  return `/tools/mock-data-generator${encoded.hash}`
-}
-
-/**
- * Readable teaser preview: prefer the first nested entity list (e.g. `users`)
- * sliced to a few items, instead of dumping the wrapper `[{ users: [...] }, …]`.
- */
-function previewGeneratedRecords(records: unknown[]): unknown {
-  if (records.length === 0) {
-    return records
-  }
-  const first = records[0]
-  if (first !== null && typeof first === 'object' && !Array.isArray(first)) {
-    const entries = Object.entries(first as Record<string, unknown>)
-    const listEntry = entries.find(
-      ([, value]) => Array.isArray(value) && (value as unknown[]).length > 0
-    )
-    if (listEntry) {
-      const [key, value] = listEntry
-      return { [key]: (value as unknown[]).slice(0, 1) }
-    }
-    return first
-  }
-  return records.slice(0, 1)
-}
-
-/** Pretty-print to a fixed line budget — no scroll box on the start page. */
-function compactPreviewText(value: unknown, maxLines: number): string {
-  const full = JSON.stringify(value, null, 2)
-  const lines = full.split('\n')
-  if (lines.length <= maxLines) {
-    return full
-  }
-  return `${lines.slice(0, maxLines - 1).join('\n')}\n  …`
-}
+import {
+  DEFAULT_SIMPLE_COUNT,
+  DEFAULT_SIMPLE_TYPE_ID,
+  SIMPLE_OBJECT_COUNTS,
+  SIMPLE_TYPES,
+  buildSimpleToolHref,
+  formatSimpleOutput,
+  newRandomSeed,
+  resolveSimpleGenerateOptions,
+  simplePreset,
+  type SimpleObjectCount,
+} from '@/lib/mock-data-generator/simple'
+import type { PlaygroundPresetId } from '@/lib/mock-data-generator/defaults'
 
 function scheduleIdle(callback: () => void): () => void {
   const w = window as Window & {
@@ -88,39 +46,48 @@ function scheduleIdle(callback: () => void): () => void {
 
 export default function StartPageMockGenerator() {
   const rootRef = useRef<HTMLElement | null>(null)
-  const [presetId, setPresetId] = useState<PlaygroundPreset['id']>(START_PRESET.id)
-  const [records, setRecords] = useState<unknown[] | null>(null)
+  const [typeId, setTypeId] = useState<PlaygroundPresetId>(DEFAULT_SIMPLE_TYPE_ID)
+  const [objectCount, setObjectCount] = useState<SimpleObjectCount>(DEFAULT_SIMPLE_COUNT)
+  const [seed, setSeed] = useState<number>(DEFAULT_SEED)
+  const [output, setOutput] = useState<unknown | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
   const engineStarted = useRef(false)
   const generateSeq = useRef(0)
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const preset = findPreset(presetId) ?? START_PRESET
+  const preset = simplePreset(typeId)
 
-  const runGenerate = useCallback(async (next: PlaygroundPreset) => {
-    const seq = ++generateSeq.current
-    setBusy(true)
-    setError(null)
-    try {
-      const engine = await loadGeneratorEngine()
-      const generated = await engine.generateAsync(next.sample, {
-        seed: DEFAULT_SEED,
-        count: 1,
-        context: next.context.trim() || undefined,
-      })
-      if (seq !== generateSeq.current) return
-      setRecords(generated)
-    } catch (err) {
-      if (seq !== generateSeq.current) return
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      if (seq === generateSeq.current) {
-        setBusy(false)
+  const runGenerate = useCallback(
+    async (opts: { typeId: PlaygroundPresetId; objectCount: number; seed: number }) => {
+      const seq = ++generateSeq.current
+      setBusy(true)
+      setError(null)
+      try {
+        const next = simplePreset(opts.typeId)
+        const size = resolveSimpleGenerateOptions(next.sample, opts.objectCount)
+        const engine = await loadGeneratorEngine()
+        const generated = await engine.generateAsync(next.sample, {
+          seed: opts.seed,
+          count: size.count,
+          itemCount: size.itemCount,
+          context: next.context.trim() || undefined,
+        })
+        if (seq !== generateSeq.current) return
+        setOutput(formatSimpleOutput(generated))
+      } catch (err) {
+        if (seq !== generateSeq.current) return
+        setError(err instanceof Error ? err.message : String(err))
+      } finally {
+        if (seq === generateSeq.current) {
+          setBusy(false)
+        }
       }
-    }
-  }, [])
+    },
+    []
+  )
 
-  // Load engine once the section is near the viewport (or after idle).
   useEffect(() => {
     let cancelled = false
     let cancelIdle: (() => void) | undefined
@@ -130,7 +97,11 @@ export default function StartPageMockGenerator() {
       if (cancelled || engineStarted.current) return
       engineStarted.current = true
       observer?.disconnect()
-      void runGenerate(START_PRESET)
+      void runGenerate({
+        typeId: DEFAULT_SIMPLE_TYPE_ID,
+        objectCount: DEFAULT_SIMPLE_COUNT,
+        seed: DEFAULT_SEED,
+      })
     }
 
     const node = rootRef.current
@@ -153,106 +124,187 @@ export default function StartPageMockGenerator() {
     }
   }, [runGenerate])
 
-  const onPreset = (nextId: PlaygroundPreset['id']) => {
-    const next = findPreset(nextId) ?? START_PRESET
-    setPresetId(next.id)
-    void runGenerate(next)
+  const onTypeChange = (nextId: PlaygroundPresetId) => {
+    setTypeId(nextId)
+    void runGenerate({ typeId: nextId, objectCount, seed })
   }
 
-  const fullHref = buildFullGeneratorHref(preset)
-  const previewText =
-    records != null ? compactPreviewText(previewGeneratedRecords(records), PREVIEW_MAX_LINES) : null
+  const onCountChange = (next: SimpleObjectCount) => {
+    setObjectCount(next)
+    void runGenerate({ typeId, objectCount: next, seed })
+  }
+
+  const onRandomize = () => {
+    const nextSeed = newRandomSeed()
+    setSeed(nextSeed)
+    void runGenerate({ typeId, objectCount, seed: nextSeed })
+  }
+
+  const onCopyJson = async () => {
+    if (output == null) return
+    await navigator.clipboard.writeText(`${JSON.stringify(output, null, 2)}\n`)
+    setCopied(true)
+    if (copiedTimer.current) clearTimeout(copiedTimer.current)
+    copiedTimer.current = setTimeout(() => setCopied(false), 1500)
+  }
+
+  useEffect(() => {
+    return () => {
+      if (copiedTimer.current) clearTimeout(copiedTimer.current)
+    }
+  }, [])
+
+  const fullHref = buildSimpleToolHref({ preset, objectCount, seed })
 
   return (
     <section
       ref={rootRef}
-      className="bg-white text-zinc-950 border-b border-zinc-200"
+      id="mock-data-generator"
+      className="mx-auto max-w-[1200px] px-5 py-16 border-b border-border"
       data-testid="start-page-mock-generator"
+      aria-labelledby="start-mock-generator-heading"
     >
-      <div className="mx-auto max-w-[1200px] px-5 py-10 sm:py-12">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="max-w-xl space-y-1.5 min-w-0">
-            <div className="inline-flex items-center gap-2 text-sm font-medium text-primary">
-              <Wand2 className="h-4 w-4 shrink-0" aria-hidden />
-              Mock data generator
-            </div>
-            <h2 className="text-xl sm:text-2xl font-semibold tracking-tight">
-              Paste once. Get realistic data.
-            </h2>
-            <p className="text-muted-foreground text-sm">
-              Live preview in your browser — open the full tool for kinds, edge cases, and downloads.
-            </p>
+      <div className="flex flex-col gap-6">
+        <div className="space-y-2 max-w-2xl">
+          <h2
+            id="start-mock-generator-heading"
+            className="text-3xl font-semibold tracking-tight"
+          >
+            Mock data generator
+          </h2>
+          <p className="text-muted-foreground">
+            Pick a type, set how many objects, and randomize — runs in your browser.
+          </p>
+        </div>
+
+        <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end">
+          <div className="space-y-2 min-w-0 flex-1 sm:flex-none sm:min-w-[200px]" data-testid="start-type">
+            <Label htmlFor="start-type-select" className="text-sm font-medium">
+              Type
+            </Label>
+            <Select
+              value={typeId}
+              onValueChange={(value) => onTypeChange(value as PlaygroundPresetId)}
+              disabled={busy && !output}
+            >
+              <SelectTrigger
+                id="start-type-select"
+                className="min-h-11 w-full sm:w-[200px]"
+                data-testid="start-type-select"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {SIMPLE_TYPES.map((item) => (
+                  <SelectItem
+                    key={item.id}
+                    value={item.id}
+                    data-testid={`start-type-${item.id}`}
+                  >
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div
-            className="flex flex-wrap gap-1.5 shrink-0"
+            className="flex flex-wrap gap-1.5"
             role="group"
-            aria-label="Sample presets"
-            data-testid="start-presets"
+            aria-label="Number of objects"
+            data-testid="start-object-count"
           >
-            {COMPACT_PRESETS.map((item) => (
+            {SIMPLE_OBJECT_COUNTS.map((n) => (
               <Button
-                key={item.id}
+                key={n}
                 type="button"
                 size="sm"
-                variant={item.id === presetId ? 'default' : 'outline'}
-                className="min-h-9"
-                data-testid={`start-preset-${item.id}`}
-                disabled={busy && !records}
-                onClick={() => onPreset(item.id)}
+                variant={n === objectCount ? 'default' : 'outline'}
+                className="min-h-11 min-w-11"
+                data-testid={`start-count-${n}`}
+                disabled={busy && !output}
+                onClick={() => onCountChange(n)}
               >
-                {item.label}
+                {n}
               </Button>
             ))}
           </div>
+
+          <Button
+            type="button"
+            className="min-h-11 w-full sm:w-auto"
+            data-testid="start-randomize"
+            disabled={busy && !output}
+            onClick={onRandomize}
+          >
+            {busy && output ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Shuffle className="h-4 w-4 mr-2" />
+            )}
+            Randomize
+          </Button>
+
+          <Button
+            type="button"
+            variant="outline"
+            className="min-h-11 w-full sm:w-auto"
+            data-testid="start-copy-json"
+            disabled={output == null}
+            onClick={() => void onCopyJson()}
+          >
+            {copied ? (
+              <>
+                <Check className="h-4 w-4 mr-2" />
+                Copied
+              </>
+            ) : (
+              <>
+                <Copy className="h-4 w-4 mr-2" />
+                Copy JSON
+              </>
+            )}
+          </Button>
         </div>
 
-        <div className="mt-4 space-y-3">
-          <div
-            className="relative rounded-lg border border-zinc-200 bg-zinc-50"
-            data-testid="start-generated-output"
-          >
-            {!records && !error ? (
-              <div
-                className="flex items-center gap-2 p-3 text-xs text-zinc-500"
-                data-testid="start-generator-skeleton"
-                aria-busy="true"
-                aria-label="Loading generator"
-              >
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Loading generator…
-              </div>
-            ) : null}
-            {error ? (
-              <p className="p-3 text-sm text-red-700" role="alert">
-                {error}
-              </p>
-            ) : null}
-            {previewText ? (
-              <pre
-                className="p-3 text-xs font-mono text-zinc-800 whitespace-pre-wrap break-all leading-relaxed"
-                data-testid="start-generated-preview"
-              >
-                {previewText}
-              </pre>
-            ) : null}
-            {busy && records ? (
-              <div className="absolute top-2 right-2 rounded-md bg-white/90 border border-zinc-200 px-2 py-0.5 text-xs text-zinc-600 flex items-center gap-1.5">
-                <Loader2 className="h-3 w-3 animate-spin" />
-                Updating…
-              </div>
-            ) : null}
-          </div>
-
-          <Link
-            to={fullHref}
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline underline-offset-4 min-h-10"
-            data-testid="start-open-full-generator"
-          >
-            Open the full generator
-            <ArrowRight className="h-3.5 w-3.5" />
-          </Link>
+        <div
+          className="relative rounded-xl border border-border bg-muted/30 overflow-hidden"
+          data-testid="start-generated-output"
+        >
+          {!output && !error ? (
+            <div
+              className="flex items-center gap-2 p-4 text-sm text-muted-foreground"
+              data-testid="start-generator-skeleton"
+              aria-busy="true"
+              aria-label="Loading generator"
+            >
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Generating…
+            </div>
+          ) : null}
+          {error ? (
+            <p className="p-4 text-sm text-destructive" role="alert">
+              {error}
+            </p>
+          ) : null}
+          {output != null ? (
+            <pre
+              className="max-h-[280px] overflow-auto p-4 text-xs font-mono text-foreground whitespace-pre-wrap break-all leading-relaxed"
+              data-testid="start-generated-preview"
+            >
+              {JSON.stringify(output, null, 2)}
+            </pre>
+          ) : null}
         </div>
+
+        <Link
+          to={fullHref}
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline underline-offset-4 w-fit"
+          data-testid="start-open-full-generator"
+        >
+          Open the full tool
+          <ArrowRight className="h-3.5 w-3.5" />
+        </Link>
       </div>
     </section>
   )

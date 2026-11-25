@@ -315,11 +315,11 @@ export default function Introduction() {
         </div>
       </section>
 
-      {/* Compact mock-data teaser — after Features (hero) + Atlas; lazy engine */}
+      {/* Simple mock-data teaser — after Atlas; lazy engine */}
       <Suspense
         fallback={
-          <section className="bg-white border-b border-zinc-200 px-5 py-10" aria-busy="true">
-            <div className="mx-auto max-w-[1200px] flex items-center gap-2 text-sm text-zinc-500">
+          <section className="mx-auto max-w-[1200px] px-5 py-16 border-b border-border" aria-busy="true">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
               Loading mock data preview…
             </div>

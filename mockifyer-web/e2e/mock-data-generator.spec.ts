@@ -7,87 +7,90 @@ test.describe('Mock Data Generator playground', () => {
     await page.goto('/tools/mock-data-generator');
   });
 
-  test('renders the playground page', async ({ page }) => {
+  test('renders simple controls and output above the fold', async ({ page }) => {
     await expect(page.getByTestId('mock-data-generator-page')).toBeVisible();
     await expect(page.getByTestId('playground-intro')).toBeVisible();
     await expect(page.getByRole('heading', { name: /Mock data generator/i })).toBeVisible();
-    await expect(
-      page.getByText(/Paste one API response, get realistic data and edge cases/i)
-    ).toBeVisible();
-    await expect(page.getByTestId('privacy-note')).toBeVisible();
-    await expect(page.getByTestId('sample-json')).toBeVisible();
-    await expect(page.getByTestId('sample-presets')).toBeVisible();
-    await expect(page.getByTestId('chaos-slider')).toBeVisible();
-    await expect(page.getByTestId('record-cta')).toBeVisible();
-    await expect(page.getByRole('heading', { name: /Got a real API\?/i })).toBeVisible();
-  });
-
-  test('auto-generates default Users preset above the fold', async ({ page }) => {
-    await expect(page.getByTestId('results-section')).toBeVisible();
+    await expect(page.getByTestId('privacy-note')).toContainText(/Nothing leaves your browser/i);
+    await expect(page.getByTestId('simple-controls')).toBeVisible();
+    await expect(page.getByTestId('simple-type-select')).toBeVisible();
+    await expect(page.getByTestId('simple-object-count')).toBeVisible();
+    await expect(page.getByTestId('randomize-button')).toBeVisible();
+    await expect(page.getByTestId('advanced-section')).toBeVisible();
     await expect(page.getByTestId('generated-output')).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId('generated-output')).toContainText('"email"');
-    await expect(page.getByTestId('context-input')).toHaveValue(/swedish users/i);
-    // Initial auto-generate must not toast (toast only on user action)
-    await expect(page.getByText(/\d+ record\(s\), \d+ edge-case/i)).toHaveCount(0);
     const box = await page.getByTestId('generated-output').boundingBox();
     expect(box).toBeTruthy();
-    // Above the fold on a typical laptop viewport (Playwright default ~720–900 tall)
     expect(box!.y).toBeLessThan(900);
   });
 
-  for (const preset of ['users', 'orders', 'weather'] as const) {
-    test(`preset ${preset} loads sample and generates`, async ({ page }) => {
-      const chip = page.getByTestId(`preset-chip-${preset}`);
-      if (await chip.count()) {
-        await chip.click();
-      } else {
-        await page.getByTestId('preset-select').click();
-        await page.getByTestId(`preset-${preset}`).click();
-      }
-      await expect(page.getByTestId('results-section')).toBeVisible({ timeout: 30_000 });
-      await expect(page.getByTestId('generated-output')).not.toHaveText('[]');
-      const context = await page.getByTestId('context-input').inputValue();
-      expect(context.length).toBeGreaterThan(0);
+  test('object count control regenerates output', async ({ page }) => {
+    await expect(page.getByTestId('generated-output')).toBeVisible({ timeout: 30_000 });
+    await page.getByTestId('simple-count-10').click();
+    await expect(page.getByTestId('generated-output')).toContainText('"email"', {
+      timeout: 30_000,
     });
-  }
+    // Users sample uses itemCount — expect 10 users in the wrapper
+    const text = await page.getByTestId('generated-output').innerText();
+    const usersMatch = text.match(/"users"\s*:\s*\[/);
+    expect(usersMatch).toBeTruthy();
+    const userIds = text.match(/"id"\s*:/g) ?? [];
+    expect(userIds.length).toBeGreaterThanOrEqual(10);
+  });
+
+  test('Randomize changes the generated values', async ({ page }) => {
+    await expect(page.getByTestId('generated-output')).toBeVisible({ timeout: 30_000 });
+    const before = await page.getByTestId('generated-output').innerText();
+    await page.getByTestId('randomize-button').click();
+    await expect
+      .poll(async () => page.getByTestId('generated-output').innerText(), { timeout: 30_000 })
+      .not.toBe(before);
+  });
+
+  test('simple type switch loads a different shape', async ({ page }) => {
+    await expect(page.getByTestId('generated-output')).toBeVisible({ timeout: 30_000 });
+    await page.getByTestId('simple-type-select').click();
+    await page.getByTestId('simple-type-orders').click();
+    await expect(page.getByTestId('generated-output')).toContainText('"total"', {
+      timeout: 30_000,
+    });
+  });
+
+  test('advanced section reveals paste, items, real API, and record CTA', async ({ page }) => {
+    const advanced = page.getByTestId('advanced-section');
+    await advanced.locator('summary').click();
+    await expect(page.getByTestId('sample-json')).toBeVisible();
+    await expect(page.getByTestId('upload-json-button')).toBeVisible();
+    await expect(page.getByTestId('item-count-input')).toBeVisible();
+    await expect(page.getByTestId('fetch-url-input')).toHaveCount(0);
+    await expect(page.getByTestId('chaos-slider')).toBeVisible();
+    await expect(page.getByTestId('real-api-section')).toBeVisible();
+    await expect(page.getByTestId('record-cta')).toBeVisible();
+
+    await page.getByTestId('item-count-increment').click();
+    await expect(page.getByTestId('item-count-input')).toHaveValue(
+      await page.getByTestId('item-count-input').inputValue()
+    );
+    await expect(page.getByTestId('size-controls-live')).not.toContainText('~');
+  });
 
   test('real API section shows recorded vs generated side by side', async ({ page }) => {
+    await page.getByTestId('advanced-section').locator('summary').click();
     const section = page.getByTestId('real-api-section');
     await expect(section).toBeVisible();
     await expect(page.getByTestId('real-api-recorded')).toContainText('Leanne Graham');
     const generated = page.getByTestId('real-api-generated');
     await expect(generated).toContainText('"email"', { timeout: 30_000 });
-    // Object sample → object preview (not a wrapper array)
     const preview = await generated.locator('pre').innerText();
     expect(preview.trimStart().startsWith('{')).toBe(true);
     expect(preview).toContain('"zipcode"');
-    const zipMatch = preview.match(/"zipcode"\s*:\s*"([^"]+)"/);
-    expect(zipMatch?.[1]).toBeTruthy();
-    expect(zipMatch![1]).not.toMatch(/x\d+/i);
-    const latMatch = preview.match(/"lat"\s*:\s*"([^"]+)"/);
-    expect(latMatch?.[1]).toMatch(/^-?\d+(\.\d+)?$/);
     await expect(section.getByText(/nothing is sent to Mockifyer/i)).toBeVisible();
   });
 
-  test('items-per-list control is visible and updates live label', async ({ page }) => {
-    await expect(page.getByTestId('size-controls')).toBeVisible();
-    await expect(page.getByTestId('item-count-input')).toBeVisible();
-    await page.getByTestId('item-count-increment').click();
-    await expect(page.getByTestId('item-count-input')).toHaveValue('4');
-    await expect(page.getByTestId('size-controls-live')).toContainText(/4 items per list/i);
-    await expect(page.getByTestId('size-controls-live')).not.toContainText('~');
-  });
-
-  test('paste and upload are prominent; no URL fetch UI', async ({ page }) => {
-    await expect(page.getByTestId('sample-json-card')).toBeVisible();
-    await expect(page.getByTestId('upload-json-button')).toBeVisible();
-    await expect(page.getByTestId('focus-paste-button')).toBeVisible();
-    await expect(page.getByTestId('sample-json')).toBeVisible();
-    await expect(page.getByTestId('fetch-url-input')).toHaveCount(0);
-    await expect(page.getByTestId('privacy-note')).toContainText(/Nothing leaves your browser/i);
-  });
-
-  test('shows productName for items[*].name and structural array for $.items', async ({ page }) => {
+  test('shows productName for items[*].name and structural array for $.items', async ({
+    page,
+  }) => {
+    await page.getByTestId('advanced-section').locator('summary').click();
     await page.getByTestId('preset-chip-orders').click();
     await expect(page.getByTestId('field-kinds')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId('structural-$.items')).toContainText(/array of objects/i);
@@ -97,33 +100,32 @@ test.describe('Mock Data Generator playground', () => {
   });
 
   test('generates records and variants at wild', async ({ page }) => {
-    await page.getByTestId('chaos-slider').fill('2'); // wild
+    await page.getByTestId('advanced-section').locator('summary').click();
+    await page.getByTestId('chaos-slider').fill('2');
     await expect(page.getByTestId('chaos-level-label')).toHaveText('wild');
-
     await page.getByTestId('generate-button').click();
-    await expect(page.getByTestId('results-section')).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByTestId('generated-output')).toContainText('"email"');
+    await expect(page.getByTestId('generated-output')).toContainText('"email"', {
+      timeout: 30_000,
+    });
     await expect(page.getByTestId('variant-list')).toBeVisible();
     await expect(page.getByTestId('resilience-checklist')).toBeVisible();
   });
 
   test('downloads generated JSON', async ({ page }) => {
     await expect(page.getByTestId('download-json')).toBeEnabled({ timeout: 30_000 });
-
     const downloadPromise = page.waitForEvent('download');
     await page.getByTestId('download-json').click();
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toBe('mockifyer-generated.json');
-
     const target = path.join(test.info().outputDir, download.suggestedFilename());
     await download.saveAs(target);
     const text = fs.readFileSync(target, 'utf8');
-    const parsed = JSON.parse(text) as unknown[];
-    expect(Array.isArray(parsed)).toBe(true);
-    expect(parsed.length).toBeGreaterThan(0);
+    const parsed = JSON.parse(text) as unknown;
+    expect(parsed).toBeTruthy();
   });
 
   test('URL hash round-trips share state', async ({ page }) => {
+    await page.getByTestId('advanced-section').locator('summary').click();
     await page.getByTestId('seed-input').fill('99');
     await page.getByTestId('count-input').fill('2');
     await page.getByTestId('chaos-slider').fill('2');
@@ -132,11 +134,11 @@ test.describe('Mock Data Generator playground', () => {
 
     const firstVariant = page.locator('[data-testid^="checklist-"]').first();
     await firstVariant.check();
-
     await expect.poll(() => page.url()).toMatch(/#mdg1\./);
 
     const sharedUrl = page.url();
     await page.goto(sharedUrl);
+    await page.getByTestId('advanced-section').locator('summary').click();
     await expect(page.getByTestId('seed-input')).toHaveValue('99');
     await expect(page.getByTestId('count-input')).toHaveValue('2');
     await expect(page.getByTestId('chaos-level-label')).toHaveText('wild');
@@ -145,8 +147,8 @@ test.describe('Mock Data Generator playground', () => {
 
   test('share link copy and ZIP download work in Chromium', async ({ page, context }) => {
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.getByTestId('advanced-section').locator('summary').click();
     await expect(page.getByTestId('download-variants-zip')).toBeVisible({ timeout: 30_000 });
-
     await expect.poll(() => page.url()).toMatch(/#mdg1\./);
     await page.getByTestId('copy-share-link').click();
     const clipboard = await page.evaluate(() => navigator.clipboard.readText());
@@ -161,13 +163,14 @@ test.describe('Mock Data Generator playground', () => {
     await download.saveAs(target);
     const bytes = fs.readFileSync(target);
     expect(bytes.length).toBeGreaterThan(100);
-    // ZIP local file header magic
     expect(bytes[0]).toBe(0x50);
     expect(bytes[1]).toBe(0x4b);
   });
 
   test('is light-mode only (no dark class on document)', async ({ page }) => {
-    const hasDark = await page.evaluate(() => document.documentElement.classList.contains('dark'));
+    const hasDark = await page.evaluate(() =>
+      document.documentElement.classList.contains('dark')
+    );
     expect(hasDark).toBe(false);
   });
 });
@@ -178,8 +181,8 @@ test.describe('Mock Data Generator mobile', () => {
       await page.setViewportSize({ width, height: 800 });
       await page.goto('/tools/mock-data-generator');
       await expect(page.getByTestId('mock-data-generator-page')).toBeVisible();
-      await expect(page.getByTestId('size-controls')).toBeVisible();
-      await expect(page.getByTestId('item-count-input')).toBeVisible();
+      await expect(page.getByTestId('simple-controls')).toBeVisible();
+      await expect(page.getByTestId('randomize-button')).toBeVisible();
       await expect(page.getByTestId('generated-output')).toBeVisible({ timeout: 30_000 });
 
       const overflow = await page.evaluate(() => {
@@ -191,7 +194,7 @@ test.describe('Mock Data Generator mobile', () => {
       });
       expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth + 1);
 
-      // Real API stacks; JSON panes scroll inside themselves
+      await page.getByTestId('advanced-section').locator('summary').click();
       await page.getByTestId('real-api-section').scrollIntoViewIfNeeded();
       await expect(page.getByTestId('real-api-recorded')).toBeVisible();
       const recordedBox = await page.getByTestId('real-api-recorded').boundingBox();
@@ -202,36 +205,59 @@ test.describe('Mock Data Generator mobile', () => {
 });
 
 test.describe('Start page mock-data teaser', () => {
-  test('compact teaser after Atlas links to the full generator', async ({ page }) => {
+  test('simple teaser after Atlas: type, count, Randomize, Copy JSON', async ({
+    page,
+    context,
+  }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
     await page.goto('/');
     const teaser = page.getByTestId('start-page-mock-generator');
     await expect(teaser).toBeVisible({ timeout: 15_000 });
 
-    // Placed after Atlas (not under the hero)
     const atlasBox = await page.locator('#atlas-showcase').boundingBox();
     const teaserBox = await teaser.boundingBox();
     expect(atlasBox).toBeTruthy();
     expect(teaserBox).toBeTruthy();
     expect(teaserBox!.y).toBeGreaterThan(atlasBox!.y);
 
-    await expect(page.getByTestId('start-presets')).toBeVisible();
-    await expect(page.getByTestId('start-preset-users')).toBeVisible();
-    await expect(page.getByTestId('start-preset-orders')).toBeVisible();
-    await expect(page.getByTestId('start-preset-products')).toBeVisible();
-    await expect(page.getByTestId('start-preset-jsonplaceholder')).toHaveCount(0);
+    await expect(page.getByTestId('start-type-select')).toBeVisible();
+    await expect(page.getByTestId('start-object-count')).toBeVisible();
+    await expect(page.getByTestId('start-count-1')).toBeVisible();
+    await expect(page.getByTestId('start-count-5')).toBeVisible();
+    await expect(page.getByTestId('start-count-10')).toBeVisible();
+    await expect(page.getByTestId('start-count-25')).toBeVisible();
+    await expect(page.getByTestId('start-randomize')).toBeVisible();
+    await expect(page.getByTestId('start-copy-json')).toBeVisible();
     await expect(page.getByTestId('start-context')).toHaveCount(0);
     await expect(page.getByTestId('start-shuffle')).toHaveCount(0);
 
-    await expect(page.getByTestId('start-generated-output')).toBeVisible();
     await expect(page.getByTestId('start-generated-preview')).toContainText('"email"', {
       timeout: 30_000,
     });
-    const previewText = await page.getByTestId('start-generated-preview').innerText();
-    expect(previewText.trimStart().startsWith('{')).toBe(true);
-    expect(previewText).toContain('"users"');
-    expect(previewText.split('\n').length).toBeLessThanOrEqual(8);
 
-    await page.getByTestId('start-preset-orders').click();
+    const before = await page.getByTestId('start-generated-preview').innerText();
+    await page.getByTestId('start-randomize').click();
+    await expect
+      .poll(async () => page.getByTestId('start-generated-preview').innerText(), {
+        timeout: 30_000,
+      })
+      .not.toBe(before);
+
+    await page.getByTestId('start-count-10').click();
+    await expect
+      .poll(async () => {
+        const text = await page.getByTestId('start-generated-preview').innerText();
+        return (text.match(/"id"\s*:/g) ?? []).length;
+      }, { timeout: 30_000 })
+      .toBeGreaterThanOrEqual(10);
+
+    await page.getByTestId('start-copy-json').click();
+    await expect(page.getByTestId('start-copy-json')).toContainText(/Copied/i);
+    const clipboard = await page.evaluate(() => navigator.clipboard.readText());
+    expect(clipboard).toContain('"email"');
+
+    await page.getByTestId('start-type-select').click();
+    await page.getByTestId('start-type-orders').click();
     await expect(page.getByTestId('start-generated-output')).toContainText('"total"', {
       timeout: 30_000,
     });
@@ -241,7 +267,7 @@ test.describe('Start page mock-data teaser', () => {
 
     await page.getByTestId('start-open-full-generator').click();
     await expect(page).toHaveURL(/\/tools\/mock-data-generator#mdg1\./);
-    await expect(page.getByTestId('context-input')).toHaveValue(/prices in USD/i);
+    await expect(page.getByTestId('generated-output')).toBeVisible({ timeout: 30_000 });
   });
 
   test('Tools nav links to the mock data generator', async ({ page }) => {

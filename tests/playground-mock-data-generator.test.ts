@@ -41,6 +41,12 @@ import {
   partitionFieldRows,
   structuralArrayLabel,
 } from '../mockifyer-web/frontend/src/lib/mock-data-generator/field-kinds';
+import {
+  SIMPLE_OBJECT_COUNTS,
+  SIMPLE_TYPES,
+  formatSimpleOutput,
+  resolveSimpleGenerateOptions,
+} from '../mockifyer-web/frontend/src/lib/mock-data-generator/simple';
 
 const SAMPLE = {
   id: 1,
@@ -181,10 +187,25 @@ describe('playground sample presets', () => {
     }
   );
 
-  it('keeps start-page teaser presets to three chips', () => {
-    const teaser = PLAYGROUND_PRESETS.filter((p) => p.teaser);
-    expect(teaser.length).toBe(3);
-    expect(teaser.map((p) => p.id)).toEqual(['users', 'orders', 'products']);
+  it('exposes six simple types for the start teaser and tool', () => {
+    expect(SIMPLE_TYPES.map((t) => t.id)).toEqual([
+      'users',
+      'orders',
+      'products',
+      'blog',
+      'payments',
+      'flights',
+    ]);
+    expect(SIMPLE_OBJECT_COUNTS).toEqual([1, 5, 10, 25]);
+    const users = PLAYGROUND_PRESETS.find((p) => p.id === 'users')!;
+    expect(resolveSimpleGenerateOptions(users.sample, 10)).toEqual({
+      count: 1,
+      itemCount: 10,
+    });
+    const orders = PLAYGROUND_PRESETS.find((p) => p.id === 'orders')!;
+    expect(resolveSimpleGenerateOptions(orders.sample, 10)).toEqual({ count: 10 });
+    expect(formatSimpleOutput([{ a: 1 }])).toEqual({ a: 1 });
+    expect(formatSimpleOutput([{ a: 1 }, { a: 2 }])).toEqual([{ a: 1 }, { a: 2 }]);
   });
 
   it('products preset preserves catalog shape and money/sku kinds', async () => {

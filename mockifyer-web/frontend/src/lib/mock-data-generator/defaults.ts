@@ -17,9 +17,10 @@ export const DEFAULT_SAMPLE = {
 export const DEFAULT_SAMPLE_JSON = `${JSON.stringify(DEFAULT_SAMPLE, null, 2)}\n`
 
 export const DEFAULT_CONTEXT = 'prices in USD, 3 items'
-export const DEFAULT_COUNT = 3
+/** Default root-record count for advanced mode / share hashes. */
+export const DEFAULT_COUNT = 5
 /** Default nested list length when the Items control is set (Orders / products / …). */
-export const DEFAULT_ITEM_COUNT = 3
+export const DEFAULT_ITEM_COUNT = 5
 export const DEFAULT_SEED = 42
 export const MIN_RECORDS = 1
 export const MAX_RECORDS = 50
@@ -44,8 +45,6 @@ export interface PlaygroundPreset {
   label: string
   context: string
   sample: unknown
-  /** Shown on the start-page teaser (keep to 3–4). */
-  teaser?: boolean
   /** Static capture from a well-known public API (no live browser fetch). */
   realApi?: {
     name: string
@@ -60,7 +59,6 @@ export const PLAYGROUND_PRESETS: readonly PlaygroundPreset[] = [
     id: 'users',
     label: 'Users',
     context: 'swedish users, EU phone numbers',
-    teaser: true,
     sample: {
       users: [
         {
@@ -80,14 +78,12 @@ export const PLAYGROUND_PRESETS: readonly PlaygroundPreset[] = [
     id: 'orders',
     label: 'Orders',
     context: DEFAULT_CONTEXT,
-    teaser: true,
     sample: DEFAULT_SAMPLE,
   },
   {
     id: 'products',
     label: 'Products',
     context: 'catalog of products, prices in EUR',
-    teaser: true,
     sample: {
       products: [
         {
@@ -106,8 +102,6 @@ export const PLAYGROUND_PRESETS: readonly PlaygroundPreset[] = [
     id: 'jsonplaceholder',
     label: 'JSONPlaceholder',
     context: 'english users',
-    // Full tool page only — start teaser keeps 3 chips (Users / Orders / Products).
-    teaser: false,
     realApi: {
       name: 'JSONPlaceholder',
       sourceUrl: 'https://jsonplaceholder.typicode.com/users/1',
@@ -240,11 +234,6 @@ export const PLAYGROUND_PRESETS: readonly PlaygroundPreset[] = [
     },
   },
 ] as const
-
-/** Presets shown on the start-page teaser (3–4). */
-export const TEASER_PRESETS: readonly PlaygroundPreset[] = PLAYGROUND_PRESETS.filter(
-  (preset) => preset.teaser
-)
 
 export function presetSampleJson(preset: PlaygroundPreset): string {
   return `${JSON.stringify(preset.sample, null, 2)}\n`
