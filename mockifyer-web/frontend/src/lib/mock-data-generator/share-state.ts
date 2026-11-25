@@ -10,6 +10,11 @@ import {
   MAX_SHARE_HASH_LENGTH,
   type PlaygroundChaosLevel,
 } from './defaults'
+import {
+  DEFAULT_TYPES_LANGUAGE,
+  isTypesLanguage,
+  type TypesLanguage,
+} from './emit-types'
 
 export const SHARE_HASH_PREFIX = 'mdg1.'
 
@@ -28,6 +33,8 @@ export interface PlaygroundShareState {
   checked: string[]
   /** Optional field-kind overrides: path → kind. */
   overrides?: Record<string, string>
+  /** Types-tab language (TypeScript, Zod, Go, …). */
+  typesLanguage?: TypesLanguage
 }
 
 export type EncodeShareResult =
@@ -48,6 +55,9 @@ function compactPayload(state: PlaygroundShareState): Record<string, unknown> {
   }
   if (state.overrides && Object.keys(state.overrides).length > 0) {
     payload.o = state.overrides
+  }
+  if (state.typesLanguage && state.typesLanguage !== DEFAULT_TYPES_LANGUAGE) {
+    payload.tl = state.typesLanguage
   }
   return payload
 }
@@ -80,6 +90,7 @@ function expandPayload(raw: Record<string, unknown>): PlaygroundShareState | nul
     level,
     checked,
     overrides,
+    typesLanguage: isTypesLanguage(raw.tl) ? raw.tl : undefined,
   }
 }
 

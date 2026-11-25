@@ -150,9 +150,9 @@ export const PAGE_SEO: Record<string, PageSeoConfig> = {
     path: '/comparisons',
   },
   '/tools/mock-data-generator': {
-    title: 'Mock Data Generator — JSON to Realistic Mocks',
+    title: 'Free Mock Data Generator – Fake JSON & Types | Mockifyer',
     description:
-      'Paste one JSON sample and generate realistic records plus edge-case variants in your browser. Seeded, offline, shareable — then record the real API.',
+      'Free mock data generator: fake JSON (users, orders, more) plus types in TypeScript, Zod, JSON Schema, C#, Kotlin, Swift, Python, or Go. Browser-only.',
     path: '/tools/mock-data-generator',
   },
   /**

@@ -1,11 +1,11 @@
 /**
  * Minimal mock-data teaser for the start page (after Atlas).
- * Type + object count + Randomize + live JSON — lazy-loads the generator engine.
+ * Type + object count + Randomize + live JSON/types — lazy-loads the generator engine.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowRight, Check, Copy, Loader2, Shuffle } from 'lucide-react'
+import { ArrowRight, Loader2, Shuffle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import {
@@ -15,6 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import GeneratedOutputPanel from '@/components/GeneratedOutputPanel'
 import { DEFAULT_SEED } from '@/lib/mock-data-generator/defaults'
 import { loadGeneratorEngine } from '@/lib/mock-data-generator/engine'
 import {
@@ -52,10 +53,8 @@ export default function StartPageMockGenerator() {
   const [output, setOutput] = useState<unknown | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [copied, setCopied] = useState(false)
   const engineStarted = useRef(false)
   const generateSeq = useRef(0)
-  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const preset = simplePreset(typeId)
 
@@ -139,20 +138,6 @@ export default function StartPageMockGenerator() {
     setSeed(nextSeed)
     void runGenerate({ typeId, objectCount, seed: nextSeed })
   }
-
-  const onCopyJson = async () => {
-    if (output == null) return
-    await navigator.clipboard.writeText(`${JSON.stringify(output, null, 2)}\n`)
-    setCopied(true)
-    if (copiedTimer.current) clearTimeout(copiedTimer.current)
-    copiedTimer.current = setTimeout(() => setCopied(false), 1500)
-  }
-
-  useEffect(() => {
-    return () => {
-      if (copiedTimer.current) clearTimeout(copiedTimer.current)
-    }
-  }, [])
 
   const fullHref = buildSimpleToolHref({ preset, objectCount, seed })
 
@@ -244,58 +229,15 @@ export default function StartPageMockGenerator() {
             )}
             Randomize
           </Button>
-
-          <Button
-            type="button"
-            variant="outline"
-            className="min-h-11 w-full sm:w-auto"
-            data-testid="start-copy-json"
-            disabled={output == null}
-            onClick={() => void onCopyJson()}
-          >
-            {copied ? (
-              <>
-                <Check className="h-4 w-4 mr-2" />
-                Copied
-              </>
-            ) : (
-              <>
-                <Copy className="h-4 w-4 mr-2" />
-                Copy JSON
-              </>
-            )}
-          </Button>
         </div>
 
-        <div
-          className="relative rounded-xl border border-border bg-muted/30 overflow-hidden"
-          data-testid="start-generated-output"
-        >
-          {!output && !error ? (
-            <div
-              className="flex items-center gap-2 p-4 text-sm text-muted-foreground"
-              data-testid="start-generator-skeleton"
-              aria-busy="true"
-              aria-label="Loading generator"
-            >
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Generating…
-            </div>
-          ) : null}
-          {error ? (
-            <p className="p-4 text-sm text-destructive" role="alert">
-              {error}
-            </p>
-          ) : null}
-          {output != null ? (
-            <pre
-              className="max-h-[280px] overflow-auto p-4 text-xs font-mono text-foreground whitespace-pre-wrap break-all leading-relaxed"
-              data-testid="start-generated-preview"
-            >
-              {JSON.stringify(output, null, 2)}
-            </pre>
-          ) : null}
-        </div>
+        <GeneratedOutputPanel
+          output={output}
+          busy={busy}
+          error={error}
+          testIdPrefix="start"
+          rootTypeName="Root"
+        />
 
         <Link
           to={fullHref}

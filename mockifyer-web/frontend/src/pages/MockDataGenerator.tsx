@@ -2,9 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ArrowRight,
-  Check,
   ChevronDown,
-  Copy,
   Download,
   FileJson,
   Link2,
@@ -18,6 +16,12 @@ import {
   Upload,
   Wand2,
 } from 'lucide-react'
+import GeneratedOutputPanel from '@/components/GeneratedOutputPanel'
+import MockDataGeneratorSeo from '@/components/MockDataGeneratorSeo'
+import {
+  DEFAULT_TYPES_LANGUAGE,
+  type TypesLanguage,
+} from '@/lib/mock-data-generator/emit-types'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -134,18 +138,11 @@ export default function MockDataGenerator() {
   const [shareTooLarge, setShareTooLarge] = useState(false)
   const [engineReady, setEngineReady] = useState(false)
   const [bootstrapped, setBootstrapped] = useState(false)
-  const [copied, setCopied] = useState(false)
-  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [typesLanguage, setTypesLanguage] = useState<TypesLanguage>(DEFAULT_TYPES_LANGUAGE)
 
   useEffect(() => {
     setTheme('light')
   }, [setTheme])
-
-  useEffect(() => {
-    return () => {
-      if (copiedTimer.current) clearTimeout(copiedTimer.current)
-    }
-  }, [])
 
   // Hydrate from shareable URL hash once
   useEffect(() => {
@@ -165,6 +162,7 @@ export default function MockDataGenerator() {
       setSeed(state.seed)
       setLevel(state.level)
       if (state.overrides) setOverrides(state.overrides)
+      if (state.typesLanguage) setTypesLanguage(state.typesLanguage)
       const nextChecked: Record<string, boolean> = {}
       for (const slug of state.checked) {
         nextChecked[slug] = true
@@ -196,6 +194,7 @@ export default function MockDataGenerator() {
       level,
       checked: checkedSlugs,
       overrides,
+      typesLanguage,
     })
     if (!result.ok) {
       setShareTooLarge(true)
@@ -205,7 +204,7 @@ export default function MockDataGenerator() {
     if (window.location.hash !== result.hash) {
       window.history.replaceState(null, '', `${window.location.pathname}${result.hash}`)
     }
-  }, [inputText, context, seed, count, itemCount, level, checked, overrides])
+  }, [inputText, context, seed, count, itemCount, level, checked, overrides, typesLanguage])
 
   const sampleCli = useMemo(
     () => buildSampleCliCommand({ seed, count, context }),
@@ -450,15 +449,6 @@ export default function MockDataGenerator() {
     setOverrides({})
   }
 
-  const handleCopyRecords = async () => {
-    if (displayOutput == null) return
-    await navigator.clipboard.writeText(`${JSON.stringify(displayOutput, null, 2)}\n`)
-    setCopied(true)
-    if (copiedTimer.current) clearTimeout(copiedTimer.current)
-    copiedTimer.current = setTimeout(() => setCopied(false), 1500)
-    toast({ title: 'Copied' })
-  }
-
   const handleDownloadRecords = () => {
     if (displayOutput == null) return
     downloadJsonText(`${JSON.stringify(displayOutput, null, 2)}\n`, 'mockifyer-generated.json')
@@ -600,29 +590,20 @@ export default function MockDataGenerator() {
 
         {/* Immediate output */}
         <section data-testid="results-section" className="space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <h2 className="text-lg font-semibold tracking-tight">Generated JSON</h2>
-            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full sm:w-auto min-h-10"
-                data-testid="copy-json"
-                disabled={displayOutput == null}
-                onClick={() => void handleCopyRecords()}
-              >
-                {copied ? (
-                  <>
-                    <Check className="h-4 w-4 mr-1.5" />
-                    Copied
-                  </>
-                ) : (
-                  <>
-                    <Copy className="h-4 w-4 mr-1.5" />
-                    Copy JSON
-                  </>
-                )}
-              </Button>
+          <h2 className="text-lg font-semibold tracking-tight">Generated output</h2>
+          <GeneratedOutputPanel
+            output={displayOutput}
+            busy={busy}
+            error={error}
+            testIdPrefix="tool"
+            rootTypeName="Root"
+            typesLanguage={typesLanguage}
+            onTypesLanguageChange={setTypesLanguage}
+            preClassName="max-h-[min(480px,55vh)] overflow-auto p-3 sm:p-4 text-xs font-mono whitespace-pre-wrap break-all leading-relaxed"
+            onCopied={(tab) => {
+              toast({ title: tab === 'json' ? 'JSON copied' : 'Types copied' })
+            }}
+            extraActions={
               <Button
                 type="button"
                 variant="outline"
@@ -634,29 +615,8 @@ export default function MockDataGenerator() {
                 <Download className="h-4 w-4 mr-1.5" />
                 Download JSON
               </Button>
-            </div>
-          </div>
-          {error ? (
-            <p className="text-sm text-destructive" role="alert" data-testid="generate-error">
-              {error}
-            </p>
-          ) : null}
-          {displayOutput != null ? (
-            <pre
-              data-testid="generated-output"
-              className="max-h-[min(480px,55vh)] overflow-auto rounded-xl border border-border bg-zinc-50 p-3 sm:p-4 text-xs font-mono whitespace-pre-wrap break-all"
-            >
-              {JSON.stringify(displayOutput, null, 2)}
-            </pre>
-          ) : (
-            <div
-              className="min-h-[160px] rounded-xl border border-dashed border-border bg-muted/20 p-4 flex items-center gap-2 text-sm text-muted-foreground"
-              data-testid="generated-output-pending"
-            >
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Generating…
-            </div>
-          )}
+            }
+          />
         </section>
 
         {/* Advanced — collapsed by default */}
@@ -1255,6 +1215,8 @@ export default function MockDataGenerator() {
             </section>
           </div>
         </details>
+
+        <MockDataGeneratorSeo />
       </div>
     </div>
   )

@@ -28,7 +28,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-// mockifyer-web/scripts/prerender-static.ts
+// scripts/prerender-static.ts
 var prerender_static_exports = {};
 __export(prerender_static_exports, {
   HOMEPAGE_CANONICAL: () => HOMEPAGE_CANONICAL,
@@ -45,7 +45,7 @@ module.exports = __toCommonJS(prerender_static_exports);
 var import_fs = __toESM(require("fs"));
 var import_path = __toESM(require("path"));
 
-// mockifyer-web/frontend/src/lib/seo-config.ts
+// frontend/src/lib/seo-config.ts
 var SITE_URL = "https://mockifyer.dev";
 var SITE_NAME = "Mockifyer";
 var DEFAULT_TITLE = "Mockifyer \u2014 Record & Replay HTTP API Mocks";
@@ -157,8 +157,8 @@ var PAGE_SEO = {
     path: "/comparisons"
   },
   "/tools/mock-data-generator": {
-    title: "Mock Data Generator \u2014 JSON to Realistic Mocks",
-    description: "Paste one JSON sample and generate realistic records plus edge-case variants in your browser. Seeded, offline, shareable \u2014 then record the real API.",
+    title: "Free Mock Data Generator \u2013 Fake JSON & Types | Mockifyer",
+    description: "Free mock data generator: fake JSON (users, orders, more) plus types in TypeScript, Zod, JSON Schema, C#, Kotlin, Swift, Python, or Go. Browser-only.",
     path: "/tools/mock-data-generator"
   },
   /**
@@ -181,7 +181,7 @@ function formatPageTitle(title) {
   return `${title} | ${SITE_NAME}`;
 }
 
-// mockifyer-web/frontend/src/lib/faq.ts
+// frontend/src/lib/faq.ts
 var HOME_FAQ = [
   {
     question: "What is Mockifyer?",
@@ -217,7 +217,7 @@ var HOME_FAQ = [
   }
 ];
 
-// mockifyer-web/frontend/src/lib/product-docs.ts
+// frontend/src/lib/product-docs.ts
 var GUIDE_ITEMS = [
   { href: "/guides/mock-at-the-network-edge", label: "Mock at the Network Edge" },
   { href: "/guides/reproduce-tester-bugs", label: "Reproduce Tester Bugs" },
@@ -230,7 +230,87 @@ var GUIDE_ITEMS = [
   { href: "/guides/streaming", label: "Mocking SSE and Streaming APIs" }
 ];
 
-// mockifyer-web/frontend/src/lib/prerender-content.ts
+// frontend/src/lib/mock-data-generator/seo-content.ts
+var GENERATOR_FAQ = [
+  {
+    question: "Is the mock data generator free?",
+    answer: "Yes. The Mockifyer mock data generator on this page is free to use. No account is required."
+  },
+  {
+    question: "Does anything leave my browser?",
+    answer: "No. Sample JSON and generated records stay in your browser. Generation uses the same offline @sgedda/mockifyer-generator engine as the local CLI after the page loads \u2014 your data is not uploaded to Mockifyer."
+  },
+  {
+    question: "Can I generate fake user data and other API shapes?",
+    answer: "Yes. Choose a type such as Users, Orders, Products, Posts, Payments, or Bookings, set how many objects you want, and Randomize for a new seed. Advanced mode also accepts your own pasted JSON sample."
+  },
+  {
+    question: "Can I get TypeScript or other types from the generated JSON?",
+    answer: "Yes. Open the Types tab to infer shapes from the current output \u2014 nested objects, arrays, and optional fields when values vary. Choose TypeScript (default), Zod, JSON Schema, C#, Kotlin, Swift, Python TypedDict, or Go structs, then copy the shown language."
+  },
+  {
+    question: "Can I use the output in Jest or React Native?",
+    answer: "Yes. Copy the JSON into fixtures or tests, or download Mockifyer mock scenario files from Advanced. For on-device and CI replay of real HTTP shapes, record once with Mockifyer (axios or fetch) and keep mocks as JSON in your repo."
+  },
+  {
+    question: "Does locale or context matter?",
+    answer: "Optional context (for example swedish users or prices in SEK) steers names, phones, and currency in Advanced. Simple mode uses each type\u2019s default context so output stays realistic out of the box."
+  }
+];
+function buildGeneratorWebApplicationJsonLd(opts) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    name: "Mockifyer Mock Data Generator",
+    applicationCategory: "DeveloperApplication",
+    operatingSystem: "Any",
+    browserRequirements: "Requires JavaScript",
+    url: `${opts.siteUrl}${opts.path}`,
+    description: opts.description,
+    offers: {
+      "@type": "Offer",
+      price: "0",
+      priceCurrency: "USD"
+    },
+    featureList: [
+      "Fake JSON data generator",
+      "Random JSON generator with seed",
+      "Mock API response shapes (users, orders, products, and more)",
+      "JSON to TypeScript, Zod, JSON Schema, C#, Kotlin, Swift, Python, or Go",
+      "Runs offline in the browser"
+    ],
+    isPartOf: {
+      "@type": "SoftwareApplication",
+      name: "Mockifyer",
+      url: opts.siteUrl
+    }
+  };
+}
+function buildGeneratorFaqPageJsonLd(items) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: items.map((item) => ({
+      "@type": "Question",
+      name: item.question,
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: item.answer
+      }
+    }))
+  };
+}
+function buildGeneratorJsonLdGraph(opts) {
+  return {
+    "@context": "https://schema.org",
+    "@graph": [
+      buildGeneratorWebApplicationJsonLd(opts),
+      buildGeneratorFaqPageJsonLd(GENERATOR_FAQ)
+    ]
+  };
+}
+
+// frontend/src/lib/prerender-content.ts
 var CONTENT_ROUTES_WITH_FULL_BODY = /* @__PURE__ */ new Set([
   "/guides",
   "/guides/mock-at-the-network-edge",
@@ -521,24 +601,40 @@ function buildMockDataGeneratorBody() {
     summary: seo.description,
     sections: [
       {
-        heading: "Generate from one sample",
+        heading: "What is a mock data generator?",
         paragraphs: [
-          "Paste or upload a JSON response, add optional context (for example swedish users or prices in SEK), set a count and seed, then generate realistic records with the same shape.",
-          "Inferred field kinds are editable. Edge-case variants follow a chaos slider from realistic to nightmare. Identifier fields stay stable until nightmare, matching the CLI."
+          "A mock data generator creates realistic fake JSON for development and testing when a live API is missing, slow, or hard to reproduce. This free tool generates seeded records in your browser \u2014 a random JSON generator with stable shapes you can copy into fixtures, demos, and tests."
+        ]
+      },
+      {
+        heading: "Generate fake JSON for API testing",
+        paragraphs: [
+          "Pick a type (users, orders, products, posts, payments, bookings), choose how many objects, and Randomize for fresh values. Advanced mode accepts your own sample JSON so the structure stays yours while values change."
+        ]
+      },
+      {
+        heading: "Generate types from JSON",
+        paragraphs: [
+          "Open the Types tab to infer definitions from the current output \u2014 nested objects, arrays, and optional fields. Choose TypeScript by default, or Zod, JSON Schema, C#, Kotlin, Swift, Python, or Go, then copy the shown language."
+        ]
+      },
+      {
+        heading: "From generated data to recorded mocks with Mockifyer",
+        paragraphs: [
+          "Generated JSON is a starting point. When a real backend exists, Getting Started shows how to record live HTTP with Mockifyer, store mocks as JSON in your repo, and replay them in CI or on device."
         ]
       },
       {
         heading: "Nothing leaves your browser",
         paragraphs: [
-          "The playground uses the same @sgedda/mockifyer-generator engine as the local CLI. Generation runs offline after the page loads \u2014 no account and no server round-trip for your sample JSON.",
-          "Download plain JSON or Mockifyer mock scenario files, copy a shareable URL with compressed state in the hash, and repeat locally with npx -p @sgedda/mockifyer-generator mockifyer-generate."
+          "The playground uses the same @sgedda/mockifyer-generator engine as the local CLI. Generation runs offline after the page loads \u2014 no account and no upload of your sample JSON."
         ]
       },
       {
-        heading: "Then record the real API",
-        paragraphs: [
-          "No API yet? Generate from one sample, then follow Getting Started to record the real one when the backend exists. Generated scenarios drop into mock-data/ beside recorded mocks."
-        ]
+        heading: "Frequently asked questions",
+        paragraphs: GENERATOR_FAQ.map(
+          (item) => `${item.question} ${item.answer}`
+        )
       }
     ],
     links: [
@@ -646,13 +742,23 @@ function getRouteJsonLd(routePath) {
   if (routePath === "/faq") {
     return buildFaqPageJsonLd();
   }
+  if (routePath === "/tools/mock-data-generator") {
+    const seo = PAGE_SEO[routePath];
+    if (!seo) return null;
+    return buildGeneratorJsonLdGraph({
+      siteUrl: SITE_URL,
+      title: seo.title,
+      description: seo.description,
+      path: seo.path
+    });
+  }
   if (routePath.startsWith("/guides/") && PAGE_SEO[routePath]) {
     return buildTechArticleJsonLd(PAGE_SEO[routePath]);
   }
   return null;
 }
 
-// mockifyer-web/scripts/prerender-static.ts
+// scripts/prerender-static.ts
 var NOT_FOUND_SEO = {
   title: "Page Not Found",
   description: "The page you are looking for does not exist.",

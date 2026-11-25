@@ -173,6 +173,37 @@ test.describe('Mock Data Generator playground', () => {
     );
     expect(hasDark).toBe(false);
   });
+
+  test('Types tab language select emits Go and SEO section stays below the tool', async ({
+    page,
+  }) => {
+    await expect(page.getByTestId('generated-output')).toBeVisible({ timeout: 30_000 });
+    await page.getByTestId('tool-tab-types').click();
+    await expect(page.getByTestId('tool-types-language-select')).toBeVisible();
+    await expect(page.getByTestId('generated-output')).toContainText(/export interface/i);
+
+    await page.getByTestId('tool-types-language-select').click();
+    await page.getByTestId('tool-types-lang-go').click();
+    await expect(page.getByTestId('generated-output')).toContainText(/type \w+ struct/i);
+
+    const seo = page.getByTestId('generator-seo-section');
+    await expect(seo).toBeVisible();
+    await expect(seo.getByRole('heading', { name: 'What is a mock data generator?' })).toBeVisible();
+    await expect(
+      seo.getByRole('heading', { name: 'Generate fake JSON for API testing' })
+    ).toBeVisible();
+    await expect(seo.getByRole('heading', { name: 'Generate types from JSON' })).toBeVisible();
+    await expect(
+      seo.getByRole('heading', { name: 'From generated data to recorded mocks with Mockifyer' })
+    ).toBeVisible();
+    await expect(page.getByTestId('generator-faq')).toBeVisible();
+
+    const toolBox = await page.getByTestId('results-section').boundingBox();
+    const seoBox = await seo.boundingBox();
+    expect(toolBox).toBeTruthy();
+    expect(seoBox).toBeTruthy();
+    expect(seoBox!.y).toBeGreaterThan(toolBox!.y);
+  });
 });
 
 test.describe('Mock Data Generator mobile', () => {
@@ -205,7 +236,7 @@ test.describe('Mock Data Generator mobile', () => {
 });
 
 test.describe('Start page mock-data teaser', () => {
-  test('simple teaser after Atlas: type, count, Randomize, Copy JSON', async ({
+  test('simple teaser after Atlas: type, count, Randomize, JSON/Types', async ({
     page,
     context,
   }) => {
@@ -227,7 +258,9 @@ test.describe('Start page mock-data teaser', () => {
     await expect(page.getByTestId('start-count-10')).toBeVisible();
     await expect(page.getByTestId('start-count-25')).toBeVisible();
     await expect(page.getByTestId('start-randomize')).toBeVisible();
-    await expect(page.getByTestId('start-copy-json')).toBeVisible();
+    await expect(page.getByTestId('start-copy-output')).toBeVisible();
+    await expect(page.getByTestId('start-tab-json')).toBeVisible();
+    await expect(page.getByTestId('start-tab-types')).toBeVisible();
     await expect(page.getByTestId('start-context')).toHaveCount(0);
     await expect(page.getByTestId('start-shuffle')).toHaveCount(0);
 
@@ -251,13 +284,18 @@ test.describe('Start page mock-data teaser', () => {
       }, { timeout: 30_000 })
       .toBeGreaterThanOrEqual(10);
 
-    await page.getByTestId('start-copy-json').click();
-    await expect(page.getByTestId('start-copy-json')).toContainText(/Copied/i);
+    await page.getByTestId('start-copy-output').click();
+    await expect(page.getByTestId('start-copy-output')).toContainText(/Copied/i);
     const clipboard = await page.evaluate(() => navigator.clipboard.readText());
     expect(clipboard).toContain('"email"');
 
+    await page.getByTestId('start-tab-types').click();
+    await expect(page.getByTestId('start-types-language-select')).toBeVisible();
+    await expect(page.getByTestId('start-generated-preview')).toContainText(/interface|type /i);
+
     await page.getByTestId('start-type-select').click();
     await page.getByTestId('start-type-orders').click();
+    await page.getByTestId('start-tab-json').click();
     await expect(page.getByTestId('start-generated-output')).toContainText('"total"', {
       timeout: 30_000,
     });

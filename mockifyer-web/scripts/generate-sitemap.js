@@ -28,7 +28,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-// mockifyer-web/scripts/generate-sitemap.ts
+// scripts/generate-sitemap.ts
 var generate_sitemap_exports = {};
 __export(generate_sitemap_exports, {
   generateSitemap: () => generateSitemap,
@@ -38,7 +38,7 @@ module.exports = __toCommonJS(generate_sitemap_exports);
 var import_fs = __toESM(require("fs"));
 var import_path = __toESM(require("path"));
 
-// mockifyer-web/frontend/src/lib/seo-config.ts
+// frontend/src/lib/seo-config.ts
 var SITE_URL = "https://mockifyer.dev";
 var DEFAULT_TITLE = "Mockifyer \u2014 Record & Replay HTTP API Mocks";
 var DEFAULT_DESCRIPTION = "Open-source API mocking for JavaScript and React Native. Record and replay HTTP, edit mocks in a dashboard, catch API drift in CI. Mocks stay in your repo.";
@@ -149,8 +149,8 @@ var PAGE_SEO = {
     path: "/comparisons"
   },
   "/tools/mock-data-generator": {
-    title: "Mock Data Generator \u2014 JSON to Realistic Mocks",
-    description: "Paste one JSON sample and generate realistic records plus edge-case variants in your browser. Seeded, offline, shareable \u2014 then record the real API.",
+    title: "Free Mock Data Generator \u2013 Fake JSON & Types | Mockifyer",
+    description: "Free mock data generator: fake JSON (users, orders, more) plus types in TypeScript, Zod, JSON Schema, C#, Kotlin, Swift, Python, or Go. Browser-only.",
     path: "/tools/mock-data-generator"
   },
   /**
@@ -164,7 +164,7 @@ var PAGE_SEO = {
   }
 };
 
-// mockifyer-web/scripts/generate-sitemap.ts
+// scripts/generate-sitemap.ts
 var ROUTE_CONFIG = {
   "/": { priority: "1.0", changefreq: "weekly" },
   "/getting-started": { priority: "0.9", changefreq: "monthly" },

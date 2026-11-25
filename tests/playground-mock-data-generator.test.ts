@@ -75,7 +75,7 @@ const SAMPLE_MOCK = {
 };
 
 describe('playground shareable URL state', () => {
-  it('round-trips input, context, seed, count, itemCount, slider, and checklist', () => {
+  it('round-trips input, context, seed, count, itemCount, slider, checklist, and types language', () => {
     const encoded = encodeShareHash({
       input: JSON.stringify(DEFAULT_SAMPLE, null, 2),
       context: 'prices in SEK, 20 orders',
@@ -85,6 +85,7 @@ describe('playground shareable URL state', () => {
       level: 'wild',
       checked: ['empty-lists', 'http-404'],
       overrides: { '$.email': 'email' },
+      typesLanguage: 'python',
     });
     expect(encoded.ok).toBe(true);
     if (!encoded.ok) return;
@@ -99,6 +100,7 @@ describe('playground shareable URL state', () => {
       level: 'wild',
       checked: ['empty-lists', 'http-404'],
       overrides: { '$.email': 'email' },
+      typesLanguage: 'python',
     });
   });
 
