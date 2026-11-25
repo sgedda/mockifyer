@@ -388,14 +388,19 @@ export default function MockDataGenerator() {
     }) => {
       const preset = simplePreset(opts.typeId)
       const size = resolveSimpleGenerateOptions(preset.sample, opts.objectCount)
-      const nextItemCount = opts.itemCountValue ?? size.itemCount
+      // When How many maps onto the sole top-level list (`{ users: […] }` →
+      // itemCount = N), that must win over the separate Items-per-list state.
+      // Otherwise seed/locale regenerates keep the old itemCount (e.g. 5) while
+      // the status line claims How many (e.g. 10).
+      const nextItemCount =
+        typeof size.itemCount === 'number'
+          ? size.itemCount
+          : opts.itemCountValue ?? size.itemCount
       setInputText(presetSampleJson(preset))
       setContext(preset.context)
       setCount(size.count)
       if (typeof nextItemCount === 'number') {
         setItemCount(nextItemCount)
-      } else if (typeof size.itemCount === 'number') {
-        setItemCount(size.itemCount)
       }
       setOverrides({})
       return runGenerate({
@@ -404,7 +409,7 @@ export default function MockDataGenerator() {
         localeCode: opts.localeCode,
         kindOverrides: {},
         count: size.count,
-        itemCount: nextItemCount ?? size.itemCount,
+        itemCount: nextItemCount,
         seedValue: opts.seedValue,
         silent: opts.silent,
         entityCount: opts.objectCount,
