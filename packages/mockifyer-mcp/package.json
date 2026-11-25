@@ -2,6 +2,7 @@
   "name": "@sgedda/mockifyer-mcp",
   "version": "0.1.5",
   "description": "MCP server for Mockifyer — query mocks and lightweight AI context from the dashboard API",
+  "mcpName": "io.github.sgedda/mockifyer-mcp",
   "type": "module",
   "main": "dist/cli.js",
   "types": "dist/cli.d.ts",
@@ -11,7 +12,8 @@
   "files": [
     "dist",
     "README.md",
-    "mcp-config.example.json"
+    "mcp-config.example.json",
+    "server.json"
   ],
   "scripts": {
     "build": "tsc && chmod +x dist/cli.js",
@@ -22,7 +24,16 @@
     "mcp",
     "mockifyer",
     "mock",
-    "model-context-protocol"
+    "model-context-protocol",
+    "api-mocking",
+    "record-replay",
+    "http-recording",
+    "mock-server",
+    "msw-alternative",
+    "vcr",
+    "nodejs",
+    "cursor",
+    "claude-desktop"
   ],
   "author": {
     "name": "Sebastian Gedda",

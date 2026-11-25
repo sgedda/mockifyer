@@ -4,14 +4,24 @@
 
 ## Packages (install these, not the repo root)
 
-| Package | Version | Purpose |
-|---------|---------|---------|
-| `@sgedda/mockifyer-core` | 1.10.190 | Types, matching, scenarios, dates, activation, AI context |
-| `@sgedda/mockifyer-axios` | 1.10.35 | `setupMockifyer` for Axios |
-| `@sgedda/mockifyer-fetch` | 1.8.106 | fetch, React Native, dashboard proxy |
-| `@sgedda/mockifyer-dashboard` | 1.5.93 | CLI + UI, Redis proxy, client lanes |
-| `@sgedda/mockifyer-mcp` | 0.1.5 | 42 MCP tools for Cursor/Claude (not on npm — build from `packages/mockifyer-mcp`) |
-| `@sgedda/mockifyer-test-helper` | 1.8.9 | Test utilities (not on npm — build from `packages/mockifyer-test-helper`) |
+Prefer npm registry versions over hardcoding here.
+
+| Package | Purpose |
+|---------|---------|
+| `@sgedda/mockifyer-core` | Types, matching, scenarios, dates, activation, AI context |
+| `@sgedda/mockifyer-axios` | `setupMockifyer` for Axios |
+| `@sgedda/mockifyer-fetch` | fetch, React Native, dashboard proxy |
+| `@sgedda/mockifyer-dashboard` | CLI + UI, Redis proxy, client lanes |
+| `@sgedda/mockifyer-mcp` | 42 MCP tools for Cursor/Claude — `npx @sgedda/mockifyer-mcp` (goes live once published) |
+| `@sgedda/mockifyer-test-helper` | Test utilities (not on npm — build from `packages/mockifyer-test-helper`) |
+
+## Add Mockifyer to this repo
+
+```bash
+npx mockifyer-init-ai
+```
+
+Installs `docs/mockifyer-ai/` (`INSTRUCTIONS.md` + reference) from `@sgedda/mockifyer-core`.
 
 ## Setup (axios)
 
@@ -64,9 +74,10 @@ Request keys: normalized query + sorted variables JSON.
 
 ```bash
 npx @sgedda/mockifyer-dashboard --path ./mock-data
+npx @sgedda/mockifyer-mcp
 ```
 
-MCP server (42 tools) includes: `mockifyer_get_mock_ai_context`, `mockifyer_search_mocks`, `mockifyer_set_field_overrides`, `mockifyer_list_scenarios`, `mockifyer_explain_value`, `mockifyer_explain_incident`, `mockifyer_set_mock_behavior` (status/delay overrides), override group tools, Atlas tools, fixture pool tools, and `mockifyer_promote_response`. Build from `packages/mockifyer-mcp` (not on npm).
+MCP server (42 tools) includes: `mockifyer_get_mock_ai_context`, `mockifyer_search_mocks`, `mockifyer_set_field_overrides`, `mockifyer_list_scenarios`, `mockifyer_explain_value`, `mockifyer_explain_incident`, `mockifyer_set_mock_behavior` (status/delay overrides), override group tools, Atlas tools, fixture pool tools, and `mockifyer_promote_response`. Use `npx @sgedda/mockifyer-mcp` once published (or build from `packages/mockifyer-mcp` until then).
 
 Dashboard mock API also exposes `/api/mocks/:file/ai-context` for lightweight field/schema projections.
 

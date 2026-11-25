@@ -1,6 +1,6 @@
 {
   "name": "@sgedda/mockifyer-dashboard",
-  "version": "1.5.98",
+  "version": "1.5.99",
   "description": "Standalone CLI dashboard for viewing and managing Mockifyer mock data",
   "main": "dist/server.js",
   "types": "dist/server.d.ts",
@@ -28,7 +28,14 @@
     "dashboard",
     "api",
     "testing",
-    "mockifyer"
+    "mockifyer",
+    "api-mocking",
+    "mock-server",
+    "record-replay",
+    "http-recording",
+    "vcr",
+    "msw-alternative",
+    "nodejs"
   ],
   "author": {
     "name": "Sebastian Gedda",

@@ -7,6 +7,7 @@ on:
       - "axios-v*"
       - "fetch-v*"
       - "generator-v*"
+      - "mcp-v*"
 
 jobs:
   quality:
@@ -73,6 +74,7 @@ jobs:
             axios-v*)     echo "PKG_DIR=packages/mockifyer-axios"     >> $GITHUB_OUTPUT ;;
             fetch-v*)     echo "PKG_DIR=packages/mockifyer-fetch"     >> $GITHUB_OUTPUT ;;
             generator-v*) echo "PKG_DIR=packages/mockifyer-generator" >> $GITHUB_OUTPUT ;;
+            mcp-v*)       echo "PKG_DIR=packages/mockifyer-mcp"       >> $GITHUB_OUTPUT ;;
             *)
               echo "Unsupported tag: $TAG"
               exit 1
@@ -140,5 +142,6 @@ jobs:
           echo "  - @sgedda/mockifyer-axios: https://www.npmjs.com/package/@sgedda/mockifyer-axios"
           echo "  - @sgedda/mockifyer-fetch: https://www.npmjs.com/package/@sgedda/mockifyer-fetch"
           echo "  - @sgedda/mockifyer-generator: https://www.npmjs.com/package/@sgedda/mockifyer-generator"
+          echo "  - @sgedda/mockifyer-mcp: https://www.npmjs.com/package/@sgedda/mockifyer-mcp"
           echo "📦 GitHub Packages: https://github.com/${{ github.repository }}?tab=packages"
           echo "📝 Release: https://github.com/${{ github.repository }}/releases/tag/${GITHUB_REF#refs/tags/}"

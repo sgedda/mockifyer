@@ -93,6 +93,10 @@ import {
   formatDateStr,
   getCurrentDate,
   isMockRecordingSidecarDir,
+  captureReadableStreamChunks,
+  detectStreamKind,
+  teeResponseBodyForRecording,
+  type CapturedStreamRecording,
 } from '@sgedda/mockifyer-core';
 
 import { mirrorProxyRecordingToClient } from './core-proxy';
@@ -1171,6 +1175,7 @@ export class MockifyerClass {
           const url = response.config?.url || (response as any).request?.responseURL || (response as any).url || '';
           const reqUrl = this.resolveLoggedRequestUrl(response.config, url);
           const reqMethod = (response.config?.method || 'GET').toUpperCase();
+          const liveStream = this.isLiveStreamResponse(response);
           this.logNetworkEvent(
             {
               method: reqMethod,
@@ -1179,12 +1184,42 @@ export class MockifyerClass {
               status: response.status,
               durationMs,
               requestBody: response.config?.data,
-              responseBody: response.data,
+              responseBody: liveStream ? '[stream]' : response.data,
             },
             this.readRequestCorrelation(response.config),
             response.config?.headers
           );
           this.unwrapResponseInlineTrace(response);
+
+          // SSE / chunked bodies are ReadableStreams. JSON.stringify of that object
+          // is `{}`, and date/field overrides clone it the same way — so a live
+          // refresh would both serve an empty body and overwrite the mock file.
+          if (liveStream) {
+            const correlation = this.readRequestCorrelation(response.config);
+            if (resolveShouldPersistLiveCapture(matchedMock.mockData, this.config)) {
+              const recording = this.beginMatchedStreamCapture(response);
+              if (recording) {
+                void this.persistMatchedStreamCapture(
+                  matchedMock,
+                  response,
+                  recording,
+                  durationMs,
+                  correlation
+                ).catch((err) => {
+                  logger.error(
+                    '[Mockifyer-Fetch] Failed to refresh stream mock from live API:',
+                    err
+                  );
+                });
+              } else {
+                logger.warn(
+                  '[Mockifyer-Fetch] Live stream refresh could not be recorded; leaving the stored mock unchanged.'
+                );
+              }
+            }
+            delete (response.config as any).__mockifyer_matchedMock;
+            return response;
+          }
 
           const capturedResponse: StoredResponse = {
             status: response.status,
@@ -1588,6 +1623,69 @@ export class MockifyerClass {
     } finally {
       this.savingResponses.delete(requestKey);
     }
+  }
+
+  /**
+   * True when this upstream response is a live SSE/chunked body rather than a buffered value.
+   * Refresh/passthrough must not JSON-clone that stream.
+   */
+  private isLiveStreamResponse(response: HTTPResponse): boolean {
+    if (response.mockifyerStreamRecording) {
+      return true;
+    }
+    return typeof ReadableStream !== 'undefined' && response.data instanceof ReadableStream;
+  }
+
+  /**
+   * Start (or reuse) a capped recording of a live stream without blocking the caller.
+   * When fetch already teed the body for record mode, reuse that promise.
+   * Otherwise tee here so the caller keeps the live branch and refresh can persist chunks.
+   */
+  private beginMatchedStreamCapture(
+    response: HTTPResponse
+  ): Promise<CapturedStreamRecording> | null {
+    if (response.mockifyerStreamRecording) {
+      return response.mockifyerStreamRecording;
+    }
+    if (typeof ReadableStream === 'undefined' || !(response.data instanceof ReadableStream)) {
+      return null;
+    }
+    const teed = teeResponseBodyForRecording(response.data);
+    if (!teed) {
+      return null;
+    }
+    response.data = teed.live;
+    const kind = detectStreamKind(response.headers) ?? 'bytes';
+    return captureReadableStreamChunks(teed.record, kind, {
+      maxBytes: this.config.streamRecordMaxBytes,
+      maxDurationMs: this.config.streamRecordMaxDurationMs,
+    });
+  }
+
+  /**
+   * Persist a refreshed stream mock once the recording branch hits EOF or its caps.
+   * Writes the concatenated text plus the chunk timeline — never `{}` from a ReadableStream.
+   */
+  private async persistMatchedStreamCapture(
+    cachedMock: CachedMockData,
+    response: HTTPResponse,
+    recording: Promise<CapturedStreamRecording>,
+    durationMs: number | undefined,
+    liveCorrelation: RequestCorrelationContext | undefined
+  ): Promise<void> {
+    const captured = await recording;
+    const capturedResponse: StoredResponse = {
+      status: response.status,
+      data: captured.concatenated,
+      headers: (response.headers as Record<string, string>) || {},
+      stream: captured.stream,
+    };
+    await this.persistMatchedMockAfterLiveCapture(
+      cachedMock,
+      capturedResponse,
+      durationMs,
+      liveCorrelation
+    );
   }
 
   private async persistMatchedMockAfterLiveCapture(

@@ -201,133 +201,17 @@ app.post('/api/test/generate', (req: express.Request, res: express.Response) => 
   }
 });
 
-// Test execution endpoint
-app.post('/api/test/run', async (req: express.Request, res: express.Response) => {
-  try {
-    const { testCode, mockData } = req.body;
-    
-    if (!testCode) {
-      return res.status(400).json({ error: 'Test code is required' });
-    }
-
-    const fs = require('fs');
-    const { exec } = require('child_process');
-    const { promisify } = require('util');
-    const execAsync = promisify(exec);
-    const os = require('os');
-    const tmpDir = path.join(os.tmpdir(), 'mockifyer-tests');
-    
-    // Ensure temp directory exists
-    if (!fs.existsSync(tmpDir)) {
-      fs.mkdirSync(tmpDir, { recursive: true });
-    }
-    
-    // Create a temporary test file
-    const testFileName = `test-${Date.now()}.test.ts`;
-    const testFilePath = path.join(tmpDir, testFileName);
-    
-    // Write test code to file
-    fs.writeFileSync(testFilePath, testCode, 'utf-8');
-    
-    // Create a temporary jest config if needed
-    const jestConfigPath = path.join(tmpDir, 'jest.config.js');
-    if (!fs.existsSync(jestConfigPath)) {
-      const jestConfig = `
-module.exports = {
-  testEnvironment: 'node',
-  preset: 'ts-jest',
-  testMatch: ['**/*.test.ts'],
-  moduleNameMapper: {
-    '^@sgedda/mockifyer-core$': '${path.join(process.cwd(), 'node_modules/@sgedda/mockifyer-core/dist/index.js').replace(/\\/g, '/')}',
-    '^@sgedda/mockifyer-fetch$': '${path.join(process.cwd(), 'node_modules/@sgedda/mockifyer-fetch/dist/index.js').replace(/\\/g, '/')}',
-    '^@sgedda/mockifyer-axios$': '${path.join(process.cwd(), 'node_modules/@sgedda/mockifyer-axios/dist/index.js').replace(/\\/g, '/')}',
-  },
-  transform: {
-    '^.+\\.ts$': ['ts-jest', { tsconfig: { esModuleInterop: true } }],
-  },
-  collectCoverage: false,
-  verbose: true,
-};
-`;
-      fs.writeFileSync(jestConfigPath, jestConfig, 'utf-8');
-    }
-    
-    // Run Jest on the test file
-    const jestCommand = `npx jest "${testFilePath}" --config="${jestConfigPath}" --no-coverage --json`;
-    
-    try {
-      const { stdout, stderr } = await execAsync(jestCommand, {
-        cwd: process.cwd(),
-        timeout: 30000, // 30 second timeout
-        maxBuffer: 10 * 1024 * 1024, // 10MB buffer
-      });
-      
-      let testResults;
-      try {
-        testResults = JSON.parse(stdout);
-      } catch (e) {
-        // If JSON parsing fails, try to extract info from stdout
-        testResults = {
-          success: stdout.includes('PASS') || stdout.includes('✓'),
-          numPassedTests: stdout.match(/(\d+) passed/)?.[1] || '0',
-          numFailedTests: stdout.match(/(\d+) failed/)?.[1] || '0',
-          output: stdout,
-          error: stderr,
-        };
-      }
-      
-      // Clean up test file
-      try {
-        fs.unlinkSync(testFilePath);
-      } catch (e) {
-        // Ignore cleanup errors
-      }
-      
-      res.json({
-        success: testResults.success || testResults.numFailedTests === 0,
-        results: testResults,
-        output: stdout,
-        error: stderr || null,
-      });
-    } catch (execError: any) {
-      // Jest execution failed
-      let errorOutput = execError.stdout || execError.stderr || execError.message;
-      
-      // Try to parse Jest JSON output even from errors
-      let testResults;
-      try {
-        testResults = JSON.parse(execError.stdout || '{}');
-      } catch (e) {
-        testResults = {
-          success: false,
-          numFailedTests: 1,
-          numPassedTests: 0,
-          testResults: [],
-        };
-      }
-      
-      // Clean up test file
-      try {
-        fs.unlinkSync(testFilePath);
-      } catch (e) {
-        // Ignore cleanup errors
-      }
-      
-      res.json({
-        success: false,
-        results: testResults,
-        output: execError.stdout || '',
-        error: errorOutput,
-      });
-    }
-  } catch (error: any) {
-    console.error('[Test Execution Error]:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-      output: '',
-    });
-  }
+/**
+ * Remote Jest execution is disabled.
+ * The previous handler wrote the request body to a temp file and ran `npx jest`,
+ * which executes arbitrary code in the public web process. Generating a test
+ * string locally (`POST /api/test/generate`) does not run it.
+ */
+app.post('/api/test/run', (_req: express.Request, res: express.Response) => {
+  res.status(410).json({
+    success: false,
+    error: 'Remote test execution is disabled',
+  });
 });
 
 // Status endpoint for dashboard (must be BEFORE catch-all route)

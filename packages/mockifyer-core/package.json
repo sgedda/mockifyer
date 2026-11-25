@@ -114,7 +114,16 @@
     "api",
     "testing",
     "http",
-    "intercept"
+    "intercept",
+    "api-mocking",
+    "record-replay",
+    "vcr",
+    "msw-alternative",
+    "mock-server",
+    "http-recording",
+    "react-native",
+    "expo",
+    "nodejs"
   ],
   "author": {
     "name": "Sebastian Gedda",

@@ -1,6 +1,6 @@
 {
   "name": "@sgedda/mockifyer-fetch",
-  "version": "1.8.108",
+  "version": "1.8.109",
   "description": "Mockifyer for Fetch - API mocking and logging utility for storing and replaying API responses",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -52,7 +52,15 @@
     "testing",
     "http",
     "intercept",
-    "fetch"
+    "fetch",
+    "api-mocking",
+    "record-replay",
+    "vcr",
+    "msw-alternative",
+    "http-recording",
+    "react-native",
+    "expo",
+    "nodejs"
   ],
   "author": {
     "name": "Sebastian Gedda",

@@ -48,6 +48,11 @@ describe('drift-management', () => {
       } else if (pathname === '/vendor/user') {
         res.writeHead(200, { 'Content-Type': 'application/vnd.github+json' });
         res.end(JSON.stringify({ id: 9, name: 'Vendor', stable: true }));
+      } else if (pathname === '/forecast') {
+        const host = String(req.headers.host || '');
+        const source = host.startsWith('127.0.0.1') ? 'ip' : 'localhost';
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ name: 'Forecast', source, extra: true }));
       } else {
         res.writeHead(404);
         res.end();
@@ -407,6 +412,68 @@ describe('drift-management', () => {
       expect(JSON.parse(fs.readFileSync(secondPath, 'utf-8')).response.data.kind).toBe('stored-other');
     });
 
+    it('does not update another host when the same path matches more than one origin', async () => {
+      const ipPath = path.join(testDir, 'default', 'a-ip.json');
+      const localhostPath = path.join(testDir, 'default', 'b-localhost.json');
+      const ipUrl = `http://127.0.0.1:${serverPort}/forecast`;
+      const localhostUrl = `http://localhost:${serverPort}/forecast`;
+      createMockFile(
+        'default',
+        {
+          request: { method: 'GET', url: ipUrl, headers: {}, queryParams: {} },
+          response: { status: 200, data: { name: 'Forecast', source: 'ip' } },
+        } as MockData,
+        'a-ip.json'
+      );
+      createMockFile(
+        'default',
+        {
+          request: { method: 'GET', url: localhostUrl, headers: {}, queryParams: {} },
+          response: { status: 200, data: { name: 'Forecast', source: 'localhost' } },
+        } as MockData,
+        'b-localhost.json'
+      );
+
+      const ambiguous = await acceptDrift({
+        method: 'GET',
+        path: '/forecast',
+        mockDataPath: testDir,
+        scenario: 'default',
+        driftOptions: {},
+      });
+
+      expect(ambiguous.success).toBe(false);
+      expect(ambiguous.message).toContain('Multiple mocks match');
+      expect(JSON.parse(fs.readFileSync(ipPath, 'utf-8')).response.data).toEqual({
+        name: 'Forecast',
+        source: 'ip',
+      });
+      expect(JSON.parse(fs.readFileSync(localhostPath, 'utf-8')).response.data).toEqual({
+        name: 'Forecast',
+        source: 'localhost',
+      });
+
+      const selected = await acceptDrift({
+        method: 'GET',
+        path: localhostUrl,
+        mockDataPath: testDir,
+        scenario: 'default',
+        driftOptions: {},
+      });
+
+      expect(selected.success).toBe(true);
+      expect(selected.filePath).toBe(localhostPath);
+      expect(JSON.parse(fs.readFileSync(localhostPath, 'utf-8')).response.data).toEqual({
+        name: 'Forecast',
+        source: 'localhost',
+        extra: true,
+      });
+      expect(JSON.parse(fs.readFileSync(ipPath, 'utf-8')).response.data).toEqual({
+        name: 'Forecast',
+        source: 'ip',
+      });
+    });
+
     it('accepts the only query variant when the path omits that query', async () => {
       const mockPath = path.join(testDir, 'default', 'only-dated.json');
       createMockFile(
@@ -583,6 +650,58 @@ describe('drift-management', () => {
       expect(result.message).toContain('Multiple endpoints match');
       const history = loadDriftHistory(testDir, 'default');
       expect(history!.mockReports.every((report) => report.snoozedUntil == null)).toBe(true);
+    });
+
+    it('does not snooze a different host when the path matches more than one origin', async () => {
+      const ipUrl = `http://127.0.0.1:${serverPort}/forecast`;
+      const localhostUrl = `http://localhost:${serverPort}/forecast`;
+      createMockFile(
+        'default',
+        {
+          request: { method: 'GET', url: ipUrl, headers: {}, queryParams: {} },
+          response: { status: 200, data: { name: 'Forecast', source: 'ip' } },
+        } as MockData,
+        'a-ip.json'
+      );
+      createMockFile(
+        'default',
+        {
+          request: { method: 'GET', url: localhostUrl, headers: {}, queryParams: {} },
+          response: { status: 200, data: { name: 'Forecast', source: 'localhost' } },
+        } as MockData,
+        'b-localhost.json'
+      );
+
+      await checkDrift({
+        scenario: 'default',
+        mockDataPath: testDir,
+        driftOptions: {},
+      });
+
+      const ambiguous = await snoozeEndpoint({
+        method: 'GET',
+        path: '/forecast',
+        days: 7,
+        mockDataPath: testDir,
+        scenario: 'default',
+      });
+      expect(ambiguous.success).toBe(false);
+      expect(ambiguous.message).toContain('Multiple endpoints match');
+
+      const selected = await snoozeEndpoint({
+        method: 'GET',
+        path: localhostUrl,
+        days: 7,
+        mockDataPath: testDir,
+        scenario: 'default',
+      });
+      expect(selected.success).toBe(true);
+
+      const history = loadDriftHistory(testDir, 'default');
+      const ipReport = history!.mockReports.find((report) => report.url === ipUrl);
+      const localhostReport = history!.mockReports.find((report) => report.url === localhostUrl);
+      expect(ipReport?.snoozedUntil).toBeUndefined();
+      expect(localhostReport?.snoozedUntil).toBe(selected.expiresAt);
     });
   });
 

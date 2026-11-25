@@ -14,6 +14,16 @@ npm install @sgedda/mockifyer-core @sgedda/mockifyer-fetch
 
 Optional: `@sgedda/mockifyer-dashboard`, `@sgedda/mockifyer-mcp`, `@sgedda/mockifyer-test-helper`
 
+## Add Mockifyer to this repo
+
+For AI assistants in your app repo (editor-agnostic):
+
+```bash
+npx mockifyer-init-ai
+```
+
+Installs `docs/mockifyer-ai/` from `@sgedda/mockifyer-core`. Online reference: https://mockifyer.dev/llms.txt
+
 ## Node.js (axios)
 
 Call `setupMockifyer` **before** importing axios. Skip init in production (`NODE_ENV=production`).
@@ -76,11 +86,12 @@ await fetch('https://api.example.com/orders', {
 
 ```bash
 npx @sgedda/mockifyer-dashboard --path ./mock-data
+npx @sgedda/mockifyer-mcp
 ```
 
 With Redis: `--provider redis --redis-url redis://127.0.0.1:6379`
 
-`@sgedda/mockifyer-mcp` connects Cursor/Claude to the dashboard (`mockifyer_get_mock_ai_context`, search, field overrides).
+`npx @sgedda/mockifyer-mcp` connects Cursor/Claude to the dashboard (`mockifyer_get_mock_ai_context`, search, field overrides). Goes live once the package is published to npm.
 
 ## Links
 
