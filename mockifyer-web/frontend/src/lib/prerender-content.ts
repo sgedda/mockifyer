@@ -355,7 +355,7 @@ function buildMockDataGeneratorBody(): PrerenderBodyContent {
       {
         heading: 'Generate types from JSON',
         paragraphs: [
-          'Generated types appear beside the JSON on desktop — nested objects, arrays, and optional fields. Choose TypeScript by default, or Zod, JSON Schema, C#, Kotlin, Swift, Python, or Go, then copy the shown language.',
+          'Use the Types tab beside the JSON on desktop (Types view on mobile) — nested objects, arrays, and optional fields. Choose TypeScript by default, or Zod, JSON Schema, C#, Kotlin, Swift, Python, or Go, then copy the shown language.',
         ],
       },
       {

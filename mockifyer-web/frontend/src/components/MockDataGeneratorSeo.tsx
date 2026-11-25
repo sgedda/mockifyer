@@ -37,10 +37,10 @@ export default function MockDataGeneratorSeo() {
       <div className="space-y-3 max-w-3xl">
         <h2 className="text-2xl font-semibold tracking-tight">Generate types from JSON</h2>
         <p className="text-muted-foreground text-sm sm:text-base leading-relaxed">
-          Generated types appear beside the JSON on desktop — nested objects become their own types,
-          arrays are typed, and fields that vary across records are marked optional. Choose
-          TypeScript by default, or Zod, JSON Schema, C#, Kotlin, Swift, Python, or Go, then copy
-          the language you need for mock JSON for testing.
+          Use the Types tab beside the JSON on desktop (Types view on mobile) — nested objects become
+          their own types, arrays are typed, and fields that vary across records are marked optional.
+          Choose TypeScript by default, or Zod, JSON Schema, C#, Kotlin, Swift, Python, or Go, then
+          copy the language you need for mock JSON for testing.
         </p>
       </div>
 

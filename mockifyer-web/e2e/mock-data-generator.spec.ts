@@ -304,7 +304,7 @@ test.describe('Mock Data Generator mobile', () => {
 });
 
 test.describe('Start page mock-data teaser', () => {
-  test('simple teaser after Atlas: type, count, Generate, JSON/Types', async ({
+  test('simple teaser after Atlas/comparison: type, count, Generate, JSON/Types', async ({
     page,
     context,
   }) => {
@@ -313,12 +313,16 @@ test.describe('Start page mock-data teaser', () => {
     await page.goto('/');
     const teaser = page.getByTestId('start-page-mock-generator');
     await expect(teaser).toBeVisible({ timeout: 15_000 });
+    await expect(teaser.getByRole('heading', { name: /Free mock data generator/i })).toBeVisible();
 
     const atlasBox = await page.locator('#atlas-showcase').boundingBox();
+    const comparisonBox = await page.getByTestId('comparison-section').boundingBox();
     const teaserBox = await teaser.boundingBox();
     expect(atlasBox).toBeTruthy();
+    expect(comparisonBox).toBeTruthy();
     expect(teaserBox).toBeTruthy();
     expect(teaserBox!.y).toBeGreaterThan(atlasBox!.y);
+    expect(teaserBox!.y).toBeGreaterThan(comparisonBox!.y);
 
     await expect(page.getByTestId('start-type-select')).toBeVisible();
     await expect(page.getByTestId('start-object-count')).toBeVisible();

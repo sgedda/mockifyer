@@ -199,14 +199,16 @@ export default function StartPageMockGenerator() {
     >
       <div className="flex flex-col gap-6">
         <div className="space-y-2 max-w-2xl">
+          <p className="text-sm font-medium text-primary">Free tools</p>
           <h2
             id="start-mock-generator-heading"
             className="text-3xl font-semibold tracking-tight"
           >
-            Mock data generator
+            Free mock data generator
           </h2>
           <p className="text-muted-foreground">
-            Pick a type, set how many objects, and Generate — runs in your browser.
+            Standalone browser tool—fake JSON and types with no API required. Pick a type, set how
+            many, Generate, then open the full tool for locales, seed control, and more languages.
           </p>
         </div>
 

@@ -246,7 +246,7 @@ var GENERATOR_FAQ = [
   },
   {
     question: "Can I get TypeScript or other types from the generated JSON?",
-    answer: "Yes. Generated types appear beside the JSON on desktop (and under the Types view on mobile). Nested objects, arrays, and optional fields are inferred. Choose TypeScript (default), Zod, JSON Schema, C#, Kotlin, Swift, Python TypedDict, or Go structs, then copy the shown language."
+    answer: "Yes. Use the Types tab (beside JSON on desktop; Types view on mobile). Nested objects, arrays, and optional fields are inferred. Choose TypeScript (default), Zod, JSON Schema, C#, Kotlin, Swift, Python TypedDict, or Go structs, then copy the shown language."
   },
   {
     question: "Can I use the output in Jest or React Native?",
