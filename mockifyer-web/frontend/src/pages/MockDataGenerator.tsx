@@ -154,17 +154,26 @@ export default function MockDataGenerator() {
   }, [])
 
   const outputNoun = useCallback(
-    (recordCount: number) => {
+    (count: number) => {
       if (mode === 'pick') {
         const label = SIMPLE_TYPES.find((item) => item.id === typeId)?.label ?? 'records'
-        if (recordCount === 1) {
+        if (count === 1) {
           return label.endsWith('s') ? label.slice(0, -1).toLowerCase() : label.toLowerCase()
         }
         return label.toLowerCase()
       }
-      return recordCount === 1 ? 'record' : 'records'
+      return count === 1 ? 'record' : 'records'
     },
     [mode, typeId]
+  )
+
+  /** Prefer how-many / entity count over root wrapper length (`{ users: […] }` → 1). */
+  const visibleEntityCount = useCallback(
+    (recordCount: number) => {
+      if (mode === 'pick') return objectCount
+      return recordCount
+    },
+    [mode, objectCount]
   )
 
   /** Feedback on the output pane after generate / sample load. */
@@ -175,15 +184,16 @@ export default function MockDataGenerator() {
       fromSample?: boolean
       scroll?: boolean
     }) => {
-      const noun = outputNoun(opts.recordCount)
+      const count = visibleEntityCount(opts.recordCount)
+      const noun = outputNoun(count)
       const time = new Date().toLocaleTimeString([], {
         hour: '2-digit',
         minute: '2-digit',
         second: '2-digit',
       })
       const lead = opts.fromSample
-        ? `Generated ${opts.recordCount} ${noun} from your sample`
-        : `Updated · ${opts.recordCount} ${noun}`
+        ? `Generated ${count} ${noun} from your sample`
+        : `Updated · ${count} ${noun}`
       setOutputStatus(`${lead} · seed ${opts.seedValue} · ${time}`)
       setFocusPulse(true)
       setOutputFlash(true)
@@ -198,7 +208,7 @@ export default function MockDataGenerator() {
         })
       }
     },
-    [outputNoun]
+    [outputNoun, visibleEntityCount]
   )
 
   const revealToolAfterSample = useCallback(
