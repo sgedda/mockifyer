@@ -14,9 +14,19 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
-    /* Path aliases (no baseUrl — removed in TypeScript 7; paths must be relative) */
+    /* Path aliases (no baseUrl — removed in TypeScript 7; paths must be relative).
+       Prefer monorepo sources when present; otherwise the published npm package
+       (browser-safe "." entry — not ./node). TypeScript tries path candidates in order. */
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@sgedda/mockifyer-generator": [
+        "../../packages/mockifyer-generator/src/index.ts",
+        "./node_modules/@sgedda/mockifyer-generator/dist/index.d.ts"
+      ],
+      /* When tsc follows the monorepo alias into packages/mockifyer-generator/src,
+         resolve faker from this frontend install (CI may not have generator/node_modules). */
+      "@faker-js/faker": ["./node_modules/@faker-js/faker/dist/index.d.ts"],
+      "@faker-js/faker/*": ["./node_modules/@faker-js/faker/dist/*"]
     },
 
     /* Linting */
@@ -28,5 +38,3 @@
   "include": ["src"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }
-
-

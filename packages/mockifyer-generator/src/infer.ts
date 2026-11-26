@@ -7,8 +7,26 @@ const ISO_TIMESTAMP_RE =
   /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:?\d{2})?$/;
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const URL_RE = /^https?:\/\/[^\s]+$/i;
-const PHONE_RE = /^\+?[\d\s().-]{7,20}$/;
+/**
+ * Phone-shaped strings. Excludes decimal coordinates (`-37.3159`) and bare
+ * ZIP / ZIP+4 (`92998-3874`) — those are handled by zip / lat / lng kinds.
+ */
+const PHONE_RE =
+  /^(?:\+?\d{1,3}[\s.-]?)?(?:\(?\d{2,4}\)?[\s.-]?){2,}\d{2,4}(?:\s*(?:x|ext\.?)\s*\d+)?$/i;
+const COORDINATE_STRING_RE = /^-?\d{1,3}\.\d+$/;
+const ZIP_LIKE_RE = /^\d{3,10}(?:[-\s]\d{2,4})?$/;
 const CURRENCY_CODE_RE = /^[A-Z]{3}$/;
+
+function looksLikePhone(value: string): boolean {
+  const trimmed = value.trim();
+  if (COORDINATE_STRING_RE.test(trimmed)) {
+    return false;
+  }
+  if (ZIP_LIKE_RE.test(trimmed) && !/[().x+]/i.test(trimmed)) {
+    return false;
+  }
+  return PHONE_RE.test(trimmed) && /\d{3,}/.test(trimmed);
+}
 
 /** Max distinct string values before we stop treating a field as enum-like. */
 const ENUM_MAX_CARDINALITY = 12;
@@ -178,18 +196,23 @@ export function inferFieldKind(
   const nameStreet = /^(street|street1|address1|addressline1|line1)$/.test(nk);
   const nameCity = /^(city|town|locality)$/.test(nk);
   const nameZip = /^(zip|zipcode|postal|postcode|postalcode)$/.test(nk);
+  const nameLat = /^(lat|latitude)$/.test(nk);
+  const nameLng = /^(lng|lon|long|longitude)$/.test(nk);
   const nameCountry = /^(country|countrycode|nation)$/.test(nk);
   const nameStatusLike = /^(status|state|type|kind|role|level|tier|phase|mode|category)$/.test(
     nk
   );
+  const underCompany =
+    typeof path === 'string' && /(^|\.)company(\.|$)/i.test(path.replace(/\[\*\]/g, ''));
 
   const allUuid = strings.length > 0 && strings.every((s) => UUID_RE.test(s));
   const allEmail = strings.length > 0 && strings.every((s) => EMAIL_RE.test(s));
   const allIsoTs = strings.length > 0 && strings.every((s) => ISO_TIMESTAMP_RE.test(s));
   const allIsoDate = strings.length > 0 && strings.every((s) => ISO_DATE_RE.test(s));
   const allUrl = strings.length > 0 && strings.every((s) => URL_RE.test(s));
-  const allPhone =
-    strings.length > 0 && strings.every((s) => PHONE_RE.test(s) && /\d{3,}/.test(s));
+  const allPhone = strings.length > 0 && strings.every((s) => looksLikePhone(s));
+  const allCoordinates =
+    strings.length > 0 && strings.every((s) => COORDINATE_STRING_RE.test(s.trim()));
   const allCurrency = strings.length > 0 && strings.every((s) => CURRENCY_CODE_RE.test(s));
   const allInts = numbers.length > 0 && numbers.every((n) => Number.isInteger(n));
   const moneyishNumbers =
@@ -218,8 +241,29 @@ export function inferFieldKind(
   if (nameLast) {
     return { kind: FieldKind.LastName, confidence: 0.85 };
   }
+  // Company / org `name` is not a person — avoid FullName under `.company`.
+  if (nameFull && underCompany && nk === 'name') {
+    return { kind: FieldKind.FreeText, confidence: 0.8 };
+  }
   if (nameFull && !nameEmail && !nameUuid && !nameStatusLike) {
     return { kind: FieldKind.FullName, confidence: nk === 'name' ? 0.7 : 0.82 };
+  }
+  // Zip / geo before phone — ZIP+4 and decimal coordinates match digit/dash regexes.
+  if (nameZip) {
+    return { kind: FieldKind.Zip, confidence: 0.9 };
+  }
+  if (nameLat) {
+    return { kind: FieldKind.Latitude, confidence: 0.95 };
+  }
+  if (nameLng) {
+    return { kind: FieldKind.Longitude, confidence: 0.95 };
+  }
+  if (allCoordinates && !namePhone && typeof path === 'string' && /\.geo\./i.test(path)) {
+    const isLng = /lng|lon|long/i.test(lastSegment(path));
+    return {
+      kind: isLng ? FieldKind.Longitude : FieldKind.Latitude,
+      confidence: 0.88,
+    };
   }
   // Dates before phone — ISO dates look phone-like to a loose digit/dash regex.
   if (allIsoTs || (nameTs && (allIsoTs || allIsoDate || strings.length > 0))) {
@@ -251,9 +295,6 @@ export function inferFieldKind(
   }
   if (nameCity) {
     return { kind: FieldKind.City, confidence: 0.85 };
-  }
-  if (nameZip) {
-    return { kind: FieldKind.Zip, confidence: 0.85 };
   }
   if (nameCountry) {
     return { kind: FieldKind.Country, confidence: 0.85 };

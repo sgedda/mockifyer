@@ -99,6 +99,16 @@ describe('parseContext', () => {
     expect(parseContext('')).toEqual({});
     expect(parseContext('   ')).toEqual({});
   });
+
+  it('parses EU / E.164 phone format hints', () => {
+    expect(parseContext('swedish users, EU phone numbers').phoneFormat).toBe(
+      'international'
+    );
+    expect(parseContext('E.164 phones').phoneFormat).toBe('international');
+    expect(parseContext('international phones').phoneFormat).toBe('international');
+    expect(parseContext('national phones').phoneFormat).toBe('national');
+    expect(parseContext('swedish users').phoneFormat).toBeUndefined();
+  });
 });
 
 describe('generator — lazy locales', () => {
@@ -225,6 +235,53 @@ describe('generator — context options change output', () => {
     }) as Array<{ status: string }>;
     const paid = records.filter((r) => r.status === 'paid').length;
     expect(paid).toBeGreaterThan(70);
+  });
+
+  it('swedish locale context pins country to SE', async () => {
+    const userSample = {
+      users: [
+        {
+          id: '7c9e6679-7425-40de-944b-e07fc1f90ae7',
+          email: 'ada@example.com',
+          firstName: 'Ada',
+          lastName: 'Lovelace',
+          phone: '+46 70 123 45 67',
+          city: 'Stockholm',
+          country: 'SE',
+          active: true,
+        },
+      ],
+    };
+    for (let seed = 0; seed < 25; seed++) {
+      const [record] = (await generateAsync(userSample, {
+        count: 1,
+        seed,
+        context: 'swedish users',
+      })) as Array<{ users: Array<{ country: string }> }>;
+      expect(record.users.length).toBeGreaterThanOrEqual(1);
+      for (const user of record.users) {
+        expect(user.country).toBe('SE');
+      }
+    }
+  });
+
+  it('EU phone numbers context emits consistent E.164 phones', async () => {
+    const userSample = {
+      phone: '+46 70 123 45 67',
+      country: 'SE',
+      firstName: 'Ada',
+    };
+    const e164 = /^\+[1-9]\d{7,14}$/;
+    for (let seed = 0; seed < 30; seed++) {
+      const [record] = (await generateAsync(userSample, {
+        count: 1,
+        seed,
+        context: 'swedish users, EU phone numbers',
+      })) as Array<{ phone: string; country: string }>;
+      expect(record.country).toBe('SE');
+      expect(record.phone).toMatch(e164);
+      expect(record.phone.startsWith('+46')).toBe(true);
+    }
   });
 });
 

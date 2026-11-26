@@ -416,7 +416,7 @@ npx mockifyer-dashboard --provider filesystem --path ./mock-data`}
       <section id="next-steps">
         <h2 className="text-3xl font-semibold tracking-tight mb-4">Next Steps</h2>
 
-        <div className="grid md:grid-cols-3 gap-4">
+        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
           <Link to="/getting-started">
             <Card className="h-full hover:border-primary/50 transition-colors cursor-pointer">
               <CardHeader>
@@ -425,6 +425,19 @@ npx mockifyer-dashboard --provider filesystem --path ./mock-data`}
               <CardContent>
                 <p className="text-sm text-muted-foreground">
                   Complete setup guide, configuration reference, and advanced features
+                </p>
+              </CardContent>
+            </Card>
+          </Link>
+
+          <Link to="/tools/mock-data-generator">
+            <Card className="h-full hover:border-primary/50 transition-colors cursor-pointer">
+              <CardHeader>
+                <CardTitle className="text-lg">Mock Data Generator</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">
+                  Free fake JSON plus generated types for fixtures before you record a real API
                 </p>
               </CardContent>
             </Card>

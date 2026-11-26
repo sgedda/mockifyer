@@ -1,0 +1,18 @@
+{
+  "jsonplaceholder.typicode.com": {
+    "recordResponses": true,
+    "autoMock": true
+  },
+  "jsonplaceholder.typicode.com/users/:id": {
+    "recordResponses": true,
+    "autoMock": true
+  },
+  "api.open-meteo.com": {
+    "recordResponses": true,
+    "autoMock": true
+  },
+  "api.open-meteo.com/v1/forecast": {
+    "recordResponses": true,
+    "autoMock": true
+  }
+}

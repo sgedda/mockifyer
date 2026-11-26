@@ -3,6 +3,11 @@ import { HOME_FAQ } from './faq'
 import { buildGuideFaqPageJsonLd } from './prerender-content'
 import { RN_GUIDE_FAQ } from './rn-guide-faq'
 import {
+  buildGeneratorFaqPageJsonLd,
+  buildGeneratorWebApplicationJsonLd,
+  GENERATOR_FAQ,
+} from './mock-data-generator/seo-content'
+import {
   DEFAULT_DESCRIPTION,
   DEFAULT_KEYWORDS,
   DEFAULT_TITLE,
@@ -23,6 +28,7 @@ import {
 const JSON_LD_ID = 'mockifyer-json-ld'
 const FAQ_JSON_LD_ID = 'mockifyer-faq-json-ld'
 const ARTICLE_JSON_LD_ID = 'mockifyer-article-json-ld'
+const GENERATOR_APP_JSON_LD_ID = 'mockifyer-generator-app-json-ld'
 
 function upsertMeta(name: string, content: string, attribute: 'name' | 'property' = 'name'): void {
   let element = document.head.querySelector<HTMLMetaElement>(
@@ -114,6 +120,7 @@ export function usePageSeo(config: PageSeoConfig | undefined): void {
     const isFaq = config.path === '/faq'
     const isRnMockGuide = config.path === '/guides/how-to-mock-api-calls-in-react-native'
     const isGuideArticle = Boolean(config.path?.startsWith('/guides/'))
+    const isGenerator = config.path === '/tools/mock-data-generator'
     upsertJsonLd(JSON_LD_ID, isHome ? buildSoftwareApplicationJsonLd() : null)
     upsertJsonLd(
       FAQ_JSON_LD_ID,
@@ -121,9 +128,22 @@ export function usePageSeo(config: PageSeoConfig | undefined): void {
         ? buildFaqPageJsonLd(HOME_FAQ)
         : isRnMockGuide
           ? buildGuideFaqPageJsonLd(RN_GUIDE_FAQ)
-          : null,
+          : isGenerator
+            ? buildGeneratorFaqPageJsonLd(GENERATOR_FAQ)
+            : null,
     )
     upsertJsonLd(ARTICLE_JSON_LD_ID, isGuideArticle ? buildTechArticleJsonLd(config) : null)
+    upsertJsonLd(
+      GENERATOR_APP_JSON_LD_ID,
+      isGenerator
+        ? buildGeneratorWebApplicationJsonLd({
+            siteUrl: SITE_URL,
+            title: title,
+            description,
+            path: config.path ?? '/tools/mock-data-generator',
+          })
+        : null
+    )
 
     return () => {
       document.title = DEFAULT_TITLE
@@ -139,6 +159,7 @@ export function usePageSeo(config: PageSeoConfig | undefined): void {
       upsertJsonLd(JSON_LD_ID, buildSoftwareApplicationJsonLd())
       upsertJsonLd(FAQ_JSON_LD_ID, null)
       upsertJsonLd(ARTICLE_JSON_LD_ID, null)
+      upsertJsonLd(GENERATOR_APP_JSON_LD_ID, null)
     }
   }, [config])
 }

@@ -108,6 +108,7 @@ Guide: https://mockifyer.dev/guides/how-to-mock-api-calls-in-react-native — co
 - https://mockifyer.dev/config-reference.md
 - https://mockifyer.dev/e2e-tutorial
 - https://mockifyer.dev/guides/how-to-mock-api-calls-in-react-native
+- https://mockifyer.dev/tools/mock-data-generator — free fake JSON plus generated types in TypeScript, Zod, JSON Schema, C#, Kotlin, Swift, Python, or Go (browser-only)
 - https://mockifyer.dev/guides/atlas-from-playwright
 - https://mockifyer.dev/atlas/wanderweird/
 - https://mockifyer.dev/guides/streaming

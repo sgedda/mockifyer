@@ -34,6 +34,8 @@ export default function Navigation() {
     return location.pathname === '/guides' || location.pathname.startsWith('/guides/')
   }
 
+  const isToolsActive = () => location.pathname.startsWith('/tools/')
+
   return (
     <nav className="sticky top-0 z-40 border-b border-border/80 bg-background/80 backdrop-blur">
       <div className="mx-auto flex h-16 max-w-[1200px] items-center gap-4 px-5">
@@ -84,6 +86,34 @@ export default function Navigation() {
                   </Link>
                 </DropdownMenuItem>
               ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* Tools Dropdown */}
+          <DropdownMenu modal={false}>
+            <DropdownMenuTrigger asChild>
+              <button
+                data-testid="nav-tools-trigger"
+                className={`px-3 py-1.5 rounded-md text-[15px] font-medium transition-colors inline-flex items-center gap-1 ${
+                  isToolsActive()
+                    ? 'text-foreground bg-muted'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
+                }`}
+              >
+                Tools
+                <ChevronDown className="h-4 w-4" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem asChild>
+                <Link
+                  to="/tools/mock-data-generator"
+                  className="cursor-pointer"
+                  data-testid="nav-mock-data-generator"
+                >
+                  Mock Data Generator
+                </Link>
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </nav>
@@ -194,6 +224,22 @@ export default function Navigation() {
               {guide.label}
             </Link>
           ))}
+
+          <div className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            Tools
+          </div>
+          <Link
+            to="/tools/mock-data-generator"
+            onClick={() => setMobileMenuOpen(false)}
+            data-testid="nav-mock-data-generator-mobile"
+            className={`block px-3 py-2 ml-2 rounded-lg text-sm font-medium ${
+              isActive('/tools/mock-data-generator')
+                ? 'text-foreground bg-muted'
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
+            }`}
+          >
+            Mock Data Generator
+          </Link>
           
           <a
             href="https://github.com/sgedda/mockifyer"

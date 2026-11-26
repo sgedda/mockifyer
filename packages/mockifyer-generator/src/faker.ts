@@ -72,7 +72,13 @@ export async function loadLocale(locale?: string | null): Promise<SupportedLocal
   }
 
   const pending = (async () => {
-    const mod = await loader();
+    let mod: { faker: Faker };
+    try {
+      mod = await loader();
+    } catch (first) {
+      // One retry for transient network / race during deploy.
+      mod = await loader();
+    }
     localeFakers.set(code, mod.faker);
   })();
   loadInflight.set(code, pending);

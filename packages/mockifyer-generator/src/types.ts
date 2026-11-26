@@ -23,6 +23,15 @@ export enum FieldKind {
   City = 'city',
   Zip = 'zip',
   Country = 'country',
+  /**
+   * Geographic latitude. When samples are strings (e.g. JSONPlaceholder
+   * `geo.lat`), generated values stay strings; numeric samples stay numbers.
+   */
+  Latitude = 'latitude',
+  /**
+   * Geographic longitude. Same string-vs-number preservation as {@link Latitude}.
+   */
+  Longitude = 'longitude',
   Boolean = 'boolean',
   FreeText = 'freeText',
   Number = 'number',

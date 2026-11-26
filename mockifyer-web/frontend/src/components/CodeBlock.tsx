@@ -29,7 +29,7 @@ export default function CodeBlock({ code, language = 'typescript', className, sm
   }
 
   return (
-    <div className={cn('relative group rounded-lg overflow-hidden border border-border bg-muted/50', className)}>
+    <div className={cn('relative group rounded-lg overflow-hidden border border-border bg-muted/50 max-w-full', className)}>
       <div className="absolute top-2 right-2 z-10">
         <Button
           variant="ghost"
@@ -41,7 +41,7 @@ export default function CodeBlock({ code, language = 'typescript', className, sm
           Copy
         </Button>
       </div>
-      <div className={cn('overflow-auto', small ? 'p-3' : 'p-4')}>
+      <div className={cn('overflow-x-auto max-w-full', small ? 'p-3' : 'p-4')}>
         <SyntaxHighlighter
           language={language}
           style={syntaxStyle}
@@ -53,11 +53,15 @@ export default function CodeBlock({ code, language = 'typescript', className, sm
             borderRadius: '0',
             background: 'transparent',
             display: 'block',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-all',
           }}
           codeTagProps={{
             style: {
               background: 'transparent',
               fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
             }
           }}
           PreTag={({ children, ...props }: any) => (

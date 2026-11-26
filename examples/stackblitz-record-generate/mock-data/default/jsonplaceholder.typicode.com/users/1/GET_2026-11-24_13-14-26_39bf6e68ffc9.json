@@ -1,0 +1,64 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "https://jsonplaceholder.typicode.com/users/1",
+    "headers": {
+      "x-mockifyer-request-id": "e7ec01e9-0102-48e6-a9ea-0f73628219d3"
+    }
+  },
+  "response": {
+    "status": 200,
+    "data": {
+      "id": 1,
+      "name": "Leanne Graham",
+      "username": "Bret",
+      "email": "Sincere@april.biz",
+      "address": {
+        "street": "Kulas Light",
+        "suite": "Apt. 556",
+        "city": "Gwenborough",
+        "zipcode": "92998-3874",
+        "geo": {
+          "lat": "-37.3159",
+          "lng": "81.1496"
+        }
+      },
+      "phone": "1-770-736-8031 x56442",
+      "website": "hildegard.org",
+      "company": {
+        "name": "Romaguera-Crona",
+        "catchPhrase": "Multi-layered client-server neural-net",
+        "bs": "harness real-time e-markets"
+      }
+    },
+    "headers": {
+      "access-control-allow-credentials": "true",
+      "age": "6474",
+      "alt-svc": "h3=\":443\"; ma=86400",
+      "cache-control": "max-age=43200",
+      "cf-cache-status": "HIT",
+      "cf-ray": "a5f8ad3a8d4542c6-EWR",
+      "connection": "keep-alive",
+      "content-encoding": "br",
+      "content-type": "application/json; charset=utf-8",
+      "date": "Tue, 24 Nov 2026 13:14:26 GMT",
+      "etag": "W/\"1fd-+2Y3G3w049iSZtw5t1mzSnunngE\"",
+      "expires": "-1",
+      "nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.0,\"max_age\":604800}",
+      "pragma": "no-cache",
+      "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=9LS9ADTYxCAET8vn2LHrEh6wBGBPnM%2FM%2FW0uY4bG26V%2FT4UHuoW7z%2Brgg6mYJCxYXwiaC2MZLdEkIQuwOo4QOXzwCx7U9jLAAjXcbpDoNKefFoN%2BhvMCaWJQfxf81varb5Y5VAUW%2Bu6jN0DADcpz\"}]}",
+      "server": "cloudflare",
+      "transfer-encoding": "chunked",
+      "vary": "Origin, Accept-Encoding",
+      "x-content-type-options": "nosniff",
+      "x-powered-by": "Express",
+      "x-ratelimit-limit": "3600000",
+      "x-ratelimit-remaining": "3599239",
+      "x-ratelimit-reset": "1790812826"
+    }
+  },
+  "timestamp": "2026-11-24T13:14:26.361Z",
+  "duration": 104,
+  "sessionId": "session-1795526066360-jq4lizgq8",
+  "requestId": "e7ec01e9-0102-48e6-a9ea-0f73628219d3"
+}

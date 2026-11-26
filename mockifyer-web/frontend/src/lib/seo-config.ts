@@ -155,6 +155,12 @@ export const PAGE_SEO: Record<string, PageSeoConfig> = {
       'Compare Mockifyer with MSW, Polly.js, and Nock. Learn when record-replay fits better than in-code handlers for API testing.',
     path: '/comparisons',
   },
+  '/tools/mock-data-generator': {
+    title: 'Free Mock Data Generator – Fake JSON & Types | Mockifyer',
+    description:
+      'Free mock data generator: fake JSON (users, orders, more) plus types in TypeScript, Zod, JSON Schema, C#, Kotlin, Swift, Python, or Go. Browser-only.',
+    path: '/tools/mock-data-generator',
+  },
   /**
    * Static Atlas HTML (not an SPA route). Prerender skips /atlas/* and Express
    * serves frontend/public/atlas/wanderweird/index.html. Listed for SEO/sitemap.

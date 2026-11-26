@@ -33,6 +33,7 @@ const BrowserRecordReplay = lazy(() => import('./pages/guides/BrowserRecordRepla
 const MockifyerAtlas = lazy(() => import('./pages/guides/MockifyerAtlas'))
 const AtlasFromPlaywright = lazy(() => import('./pages/guides/AtlasFromPlaywright'))
 const Streaming = lazy(() => import('./pages/guides/Streaming'))
+const MockDataGenerator = lazy(() => import('./pages/MockDataGenerator'))
 const NotFound = lazy(() => import('./pages/NotFound'))
 
 function HashScrollHandler() {
@@ -40,8 +41,14 @@ function HashScrollHandler() {
 
   useEffect(() => {
     if (location.hash) {
+      const id = location.hash.substring(1)
+      // Playground share state lives in the hash (`#mdg1.…`) — not an element id
+      if (id.startsWith('mdg1.')) {
+        return
+      }
+
       const scrollToHash = () => {
-        const element = document.getElementById(location.hash.substring(1))
+        const element = document.getElementById(id)
         if (element) {
           const headerOffset = 64
           const elementPosition = element.getBoundingClientRect().top
@@ -126,6 +133,7 @@ function App() {
               <Route path="/comparisons" element={<Comparisons />} />
               <Route path="/e2e-tutorial" element={<E2ETutorial />} />
               <Route path="/contact" element={<Contact />} />
+              <Route path="/tools/mock-data-generator" element={<MockDataGenerator />} />
               
               {/* 404 catch-all */}
               <Route path="*" element={<NotFound />} />

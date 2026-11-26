@@ -30,6 +30,11 @@ export default function Footer() {
                   E2E Tutorial
                 </Link>
               </li>
+              <li>
+                <Link to="/tools/mock-data-generator" className="hover:text-foreground transition-colors">
+                  Mock Data Generator
+                </Link>
+              </li>
             </ul>
           </div>
           

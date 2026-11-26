@@ -1,0 +1,4 @@
+node_modules/
+last-mock-path.txt
+sample-out.json
+mock-data/generated-*/

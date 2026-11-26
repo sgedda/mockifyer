@@ -3,13 +3,15 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Link } from 'react-router-dom'
-import { CheckCircle2, Code, Zap, BookOpen, Play, Shield, Terminal, Monitor, TestTube, Clock, ExternalLink, AlertCircle } from 'lucide-react'
+import { CheckCircle2, Code, Zap, BookOpen, Play, Shield, Terminal, Monitor, TestTube, Clock, AlertCircle } from 'lucide-react'
 import CodeBlock from '@/components/CodeBlock'
 import PackagesOverview from '@/components/PackagesOverview'
 import { MCP_TOOLS } from '@/lib/product-docs'
 
 const STACKBLITZ_QUICKSTART_URL =
   'https://stackblitz.com/github/sgedda/mockifyer/tree/main/examples/stackblitz-quickstart'
+const STACKBLITZ_RECORD_GENERATE_URL =
+  'https://stackblitz.com/github/sgedda/mockifyer/tree/main/examples/stackblitz-record-generate'
 
 export default function GettingStarted() {
   return (
@@ -22,16 +24,36 @@ export default function GettingStarted() {
         <p className="text-muted-foreground mt-4 text-lg max-w-3xl">
           Install, configure selective recording, run your app, activate a mock, and see it replay — about five steps to your first mock.
         </p>
-        <div className="mt-6">
-          <a href={STACKBLITZ_QUICKSTART_URL} target="_blank" rel="noopener noreferrer">
-            <Button variant="outline" className="font-medium">
-              <ExternalLink className="mr-2 h-4 w-4" />
-              Open in StackBlitz
-            </Button>
-          </a>
-          <p className="text-xs text-muted-foreground mt-2">
-            Browser Node demo: record one public API call, then replay with the network blocked. Dashboard is not available in StackBlitz.
-          </p>
+        <div className="mt-6 flex flex-col sm:flex-row flex-wrap items-start gap-4">
+          <div>
+            <a
+              href={STACKBLITZ_RECORD_GENERATE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block"
+            >
+              <img
+                alt="Open in StackBlitz"
+                src="https://developer.stackblitz.com/img/open_in_stackblitz.svg"
+                width={146}
+                height={28}
+                className="h-7 w-auto"
+              />
+            </a>
+            <p className="text-xs text-muted-foreground mt-2">
+              Selective record → replay → generate in the browser (Node WebContainer). Dashboard is not available in StackBlitz.
+            </p>
+          </div>
+          <div>
+            <Link to="/tools/mock-data-generator">
+              <Button variant="outline" className="font-medium">
+                Free mock data generator
+              </Button>
+            </Link>
+            <p className="text-xs text-muted-foreground mt-2 max-w-xs">
+              No API yet? Generate fake JSON and types in your browser, then come back here to record the real one.
+            </p>
+          </div>
         </div>
       </header>
 

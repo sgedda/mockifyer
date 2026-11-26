@@ -41,6 +41,7 @@
     "axios-mock-adapter": "^1.22.0",
     "esbuild": "^0.28.2",
     "express": "^5.3.0",
+    "fflate": "^0.8.2",
     "jest": "^30.5.2",
     "playwright": "^1.65.1",
     "supertest": "^7.3.2",
