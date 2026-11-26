@@ -121,9 +121,12 @@ app.use('/mockifyer', createServer(publicDir, mockDataPath, config))
 - ✏️ **Edit Mock Data** - Edit response data with JSON editor
 - 📊 **Statistics** - View mock file statistics, usage, and service hops
 - 🔗 **Hops** - Multi-service request chains recorded in the active scenario
+- 📉 **Drift** - Dashboard **`/drift`** tab to run checks, accept, snooze, and accept-all-warnings (see [Drift Check](../../docs/DRIFT_CHECK.md))
 - 🔍 **Search** - Search by filename, endpoint, or method
 - 💾 **Save Changes** - Save edited mock data back to files
 - 🗑️ **Delete Mocks** - Delete unwanted mock files
+
+**Proxy recording on upstream failure:** when recording is on and the upstream request fails (e.g. a timeout), `/api/proxy` still saves a request-only placeholder (`alwaysUseRealApi: true`). The hop shows up in **Hops**, you can open it in the editor, and **Use saved mock** captures the response on the next retry.
 
 ## Path Detection
 

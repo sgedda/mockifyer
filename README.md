@@ -30,6 +30,7 @@ This repository is a **monorepo**. Prefer the scoped packages below; the root `p
 | [`@sgedda/mockifyer-fetch`](./packages/mockifyer-fetch) | **`fetch` / React Native** — `setupMockifyer`, **`initMockifyerForDashboardProxy`** (Node) and **`initMockifyerForReactNativeDashboard`** (Expo) for mockifyer-dashboard + Redis |
 | [`@sgedda/mockifyer-axios`](./packages/mockifyer-axios) | **Axios** — `setupMockifyer`, **`initMockifyerForDashboardProxy`** (Node dashboard + Redis/SQLite proxy) |
 | [`@sgedda/mockifyer-dashboard`](./packages/mockifyer-dashboard) | Local UI to browse/edit `mock-data` (optional; separate dev server) |
+| [`@sgedda/mockifyer-generator`](./packages/mockifyer-generator) | **Mock data generator**: field-kind inference, seeded offline generation and edge-case variants. Includes the `mockifyer-generate` CLI (`variants <mock.json>`, `sample [sample.json]`), which writes scenarios that `setupMockifyer` can replay |
 | [`@sgedda/mockifyer-mcp`](./packages/mockifyer-mcp) | **MCP Server** — [Model Context Protocol](https://modelcontextprotocol.io) integration for Cursor and Claude Desktop (query/modify mocks via natural language) |
 
 **Example Projects:**
@@ -52,6 +53,13 @@ npm install @sgedda/mockifyer-core @sgedda/mockifyer-axios
 # npm install @sgedda/mockifyer-core @sgedda/mockifyer-fetch
 ```
 
+**Quick start** (no install required):
+
+```bash
+npx -p @sgedda/mockifyer-core mockifyer init   # detects axios/fetch/React Native, prints setup with selective recording
+npx -p @sgedda/mockifyer-core mockifyer try    # records one real request, then replays it with the network blocked
+```
+
 **AI assistants** in your app repo (editor-agnostic):
 
 ```bash
@@ -62,7 +70,7 @@ Installs `docs/mockifyer-ai/` (`INSTRUCTIONS.md` + reference). Docs ship with `@
 
 ## AI Integration (MCP)
 
-**Model Context Protocol** support for Cursor and Claude Desktop lets you query and edit mocks with natural language. Start the dashboard, then run the MCP server (goes live on npm once published):
+**Model Context Protocol** support for Cursor and Claude Desktop lets you query and edit mocks with natural language. Start the dashboard, then run the MCP server from npm:
 
 ```bash
 npx @sgedda/mockifyer-dashboard --path ./mock-data

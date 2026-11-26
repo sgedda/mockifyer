@@ -154,13 +154,18 @@ Configure drift detection per endpoint or pattern in `mockifyer.drift.json`:
 
 ## Management Commands
 
+You can also manage drift from the dashboard **`/drift`** tab (Accept Live, Snooze, Accept All Warnings). The UI sends the full recorded URL automatically, so multi-host paths are not ambiguous.
+
 ### Accept Drift (Re-record)
 
 When drift is expected (API update), accept it by re-fetching the live endpoint:
 
 ```bash
-# Accept one endpoint
+# Accept one endpoint (path + query)
 mockifyer-drift-check --accept "GET /api/users/123"
+
+# When the same path exists on more than one host, pass the full URL
+mockifyer-drift-check --accept "GET https://api.backup.example/v1/forecast"
 
 # Accept all warnings (non-breaking changes only)
 mockifyer-drift-check --accept-all-warnings
@@ -168,9 +173,12 @@ mockifyer-drift-check --accept-all-warnings
 
 This:
 - Fetches the latest response from the live API
+- Parses `application/json` and `*+json` content types (e.g. `application/problem+json`) as JSON before compare and accept
 - Updates the mock file's `response.status` and `response.data`
 - Preserves all other mock fields (request, metadata, etc.)
 - Writes a minimal git diff (only response changes)
+
+**Matching:** `--accept "GET /path"` matches **path + query exactly** first. If you omit the query string, it falls back to a **path-only** match only when that path is unique. If several mocks share the same path (different hosts or different query strings), accept/snooze refuse and write nothing — include the query string, or pass the full recorded URL (e.g. `GET https://api.backup.example/v1/forecast`).
 
 **Review before committing:** Always review the diff to ensure changes are intentional.
 
@@ -208,6 +216,9 @@ mockifyer-drift-check --snooze "GET /api/users/123"
 
 # Snooze for 30 days
 mockifyer-drift-check --snooze "GET /api/users/123" --days 30
+
+# Same multi-host / query rules as --accept: use a full URL when a bare path is ambiguous
+mockifyer-drift-check --snooze "GET https://api.backup.example/v1/forecast" --days 7
 ```
 
 Snoozed endpoints:
@@ -290,10 +301,10 @@ DRIFT_CHECK=1 npm test
 
 | Command | Description |
 |---------|-------------|
-| `--accept <method path>` | Re-fetch live endpoint and update mock |
+| `--accept <method path-or-url>` | Re-fetch live endpoint and update mock. Prefer path+query; when the same path exists on more than one host (or several query variants), pass the full recorded URL or nothing is written |
 | `--accept-all-warnings` | Accept all endpoints with warnings only |
 | `--ignore-field <endpoint> <path>` | Add ignore rule for specific endpoint |
-| `--snooze <method path>` | Snooze endpoint drift for N days |
+| `--snooze <method path-or-url>` | Snooze endpoint drift for N days (same path/URL matching rules as `--accept`) |
 | `--days <n>` | Days to snooze (use with `--snooze`, default: 7) |
 
 ## Config File (Optional)
@@ -586,6 +597,13 @@ mockifyer-drift-check --allow-unsafe-methods
 - Increase timeout: `--timeout 30000` (30 seconds)
 - Check for auth errors (401/403): pass `--header "Authorization: ..."`
 - If an endpoint is unreachable, it's reported as "skipped" (doesn't fail the run)
+
+### "Invalid scenario name"
+
+Scenario names must be a **single path segment**: letters, numbers, hyphens, and underscores only (`^[A-Za-z0-9_-]+$`). Values like `../x` or names with `/` are rejected.
+
+- CLI and library (`checkDrift`, `acceptDrift`, `snoozeEndpoint`, etc.) **throw** on an unsafe name
+- Dashboard `/api/drift/*` returns **400** with the same message
 
 ## Exit Codes
 
