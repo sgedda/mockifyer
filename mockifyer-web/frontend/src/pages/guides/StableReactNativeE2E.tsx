@@ -353,6 +353,17 @@ await setupMockifyerForReactNative({
               </CardContent>
             </Card>
           </Link>
+
+          <Link to="/guides/how-to-mock-api-calls-in-react-native">
+            <Card className="hover:bg-accent transition-colors cursor-pointer">
+              <CardContent className="p-6">
+                <h3 className="font-semibold mb-2">How to Mock API Calls in React Native</h3>
+                <p className="text-sm text-muted-foreground">
+                  Setup, selective recording, shared Redis storage, and FAQ
+                </p>
+              </CardContent>
+            </Card>
+          </Link>
         </div>
       </section>
     </div>

@@ -508,6 +508,7 @@ const HTML_ROUTES_FALLBACK = [
   '/guides/mockifyer-atlas',
   '/guides/atlas-from-playwright',
   '/guides/react-native-without-msw',
+  '/guides/how-to-mock-api-calls-in-react-native',
   '/guides/browser-record-replay',
   '/guides/streaming',
   '/tools/mock-data-generator',

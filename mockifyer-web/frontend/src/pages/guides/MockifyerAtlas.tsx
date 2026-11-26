@@ -507,6 +507,17 @@ npm install --save-dev @sgedda/mockifyer-core@latest`} />
             </Card>
           </Link>
 
+          <Link to="/guides/how-to-mock-api-calls-in-react-native">
+            <Card className="hover:bg-accent transition-colors cursor-pointer">
+              <CardContent className="p-6">
+                <h3 className="font-semibold mb-2">How to Mock API Calls in React Native</h3>
+                <p className="text-sm text-muted-foreground">
+                  Mock fetch/axios on device, shared Redis storage, and E2E scenarios
+                </p>
+              </CardContent>
+            </Card>
+          </Link>
+
           <Link to="/e2e-tutorial">
             <Card className="hover:bg-accent transition-colors cursor-pointer">
               <CardContent className="p-6">

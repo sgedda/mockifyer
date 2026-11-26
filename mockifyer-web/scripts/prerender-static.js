@@ -28,7 +28,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-// scripts/prerender-static.ts
+// mockifyer-web/scripts/prerender-static.ts
 var prerender_static_exports = {};
 __export(prerender_static_exports, {
   HOMEPAGE_CANONICAL: () => HOMEPAGE_CANONICAL,
@@ -45,7 +45,7 @@ module.exports = __toCommonJS(prerender_static_exports);
 var import_fs = __toESM(require("fs"));
 var import_path = __toESM(require("path"));
 
-// frontend/src/lib/seo-config.ts
+// mockifyer-web/frontend/src/lib/seo-config.ts
 var SITE_URL = "https://mockifyer.dev";
 var SITE_NAME = "Mockifyer";
 var DEFAULT_TITLE = "Mockifyer \u2014 Record & Replay HTTP API Mocks";
@@ -88,8 +88,13 @@ var PAGE_SEO = {
   },
   "/guides": {
     title: "Mockifyer Guides",
-    description: "Practical guides for record-replay API mocking: network-edge testing, React Native E2E, mock drift, SSE/streaming, Atlas maps, and browser record-replay.",
+    description: "Practical guides for record-replay API mocking: React Native, E2E, mock drift, SSE/streaming, Atlas maps, and browser record-replay.",
     path: "/guides"
+  },
+  "/guides/how-to-mock-api-calls-in-react-native": {
+    title: "How to Mock API Calls in React Native",
+    description: "How to mock API calls in React Native and Expo: MSW, stubs, or record-replay. Mock fetch/axios; share Redis scenarios across devices.",
+    path: "/guides/how-to-mock-api-calls-in-react-native"
   },
   "/guides/mock-at-the-network-edge": {
     title: "Mock at the Network Edge - Testing Guide",
@@ -181,7 +186,7 @@ function formatPageTitle(title) {
   return `${title} | ${SITE_NAME}`;
 }
 
-// frontend/src/lib/faq.ts
+// mockifyer-web/frontend/src/lib/faq.ts
 var HOME_FAQ = [
   {
     question: "What is Mockifyer?",
@@ -217,9 +222,10 @@ var HOME_FAQ = [
   }
 ];
 
-// frontend/src/lib/product-docs.ts
+// mockifyer-web/frontend/src/lib/product-docs.ts
 var GUIDE_ITEMS = [
   { href: "/guides/mock-at-the-network-edge", label: "Mock at the Network Edge" },
+  { href: "/guides/how-to-mock-api-calls-in-react-native", label: "How to Mock API Calls in React Native" },
   { href: "/guides/reproduce-tester-bugs", label: "Reproduce Tester Bugs" },
   { href: "/guides/stable-react-native-e2e", label: "Stable React Native E2E" },
   { href: "/guides/mock-drift", label: "Stop Mock Drift" },
@@ -230,7 +236,31 @@ var GUIDE_ITEMS = [
   { href: "/guides/streaming", label: "Mocking SSE and Streaming APIs" }
 ];
 
-// frontend/src/lib/mock-data-generator/seo-content.ts
+// mockifyer-web/frontend/src/lib/rn-guide-faq.ts
+var RN_GUIDE_FAQ = [
+  {
+    question: "Does Mockifyer support Expo API mocking?",
+    answer: "Yes. setupMockifyerForReactNative targets Expo and React Native. In development it uses the Hybrid provider (device FileSystem plus Metro project sync). Expo web resolves the browser entry of @sgedda/mockifyer-fetch."
+  },
+  {
+    question: "How do I make sure mocks are off in release / store builds?",
+    answer: "Set MOCKIFYER_MODE=off (alias: disabled). Launch arguments are ignored in that mode. Gate recordMode on __DEV__. For E2E-only activation use launch_client. Note: isDev: false alone still loads the Memory provider with bundled mocks when mode is on \u2014 off is the hard disable."
+  },
+  {
+    question: "Can I mock fetch and axios in React Native?",
+    answer: "Fetch: yes via @sgedda/mockifyer-fetch and setupMockifyerForReactNative. Axios: yes via @sgedda/mockifyer-axios with useGlobalAxios: true. Patching fetch does not automatically intercept axios on React Native."
+  },
+  {
+    question: "Can MSW and Mockifyer coexist?",
+    answer: "Yes in practice: MSW for a few hand-authored endpoints, Mockifyer for recorded traffic across many systems. Prefer one interceptor per client instance so they do not fight over the same request."
+  },
+  {
+    question: "What is Mockifyer global storage / shared mocks?",
+    answer: "Run the dashboard with --provider redis (or sqlite) so mocks and scenarios live in a shared store. Point the app at the dashboard with initMockifyerForReactNativeDashboard or proxyBaseUrl. Teammates, CI, and demo devices then load the same recordings without local mock-data files."
+  }
+];
+
+// mockifyer-web/frontend/src/lib/mock-data-generator/seo-content.ts
 var GENERATOR_FAQ = [
   {
     question: "Is the mock data generator free?",
@@ -310,10 +340,11 @@ function buildGeneratorJsonLdGraph(opts) {
   };
 }
 
-// frontend/src/lib/prerender-content.ts
+// mockifyer-web/frontend/src/lib/prerender-content.ts
 var CONTENT_ROUTES_WITH_FULL_BODY = /* @__PURE__ */ new Set([
   "/guides",
   "/guides/mock-at-the-network-edge",
+  "/guides/how-to-mock-api-calls-in-react-native",
   "/guides/reproduce-tester-bugs",
   "/guides/stable-react-native-e2e",
   "/guides/mock-drift",
@@ -413,6 +444,30 @@ var GUIDE_BODIES = {
       }
     ]
   },
+  "/guides/how-to-mock-api-calls-in-react-native": {
+    h1: "How to mock API calls in React Native",
+    summary: "How to mock API calls in React Native and Expo: compare stubs, MSW (msw/native), a React Native mock server, and Mockifyer record-replay for fetch and axios, including Redis/SQLite global storage for shared scenarios.",
+    sections: [
+      {
+        heading: "Why mock for offline development",
+        paragraphs: [
+          "Mock HTTP so you can develop offline, demo stable states, keep Detox/Maestro deterministic, and build UI before backends ship."
+        ]
+      },
+      {
+        heading: "Mock fetch and axios in React Native",
+        paragraphs: [
+          "Install @sgedda/mockifyer-fetch, configure Metro with configureMetroForMockifyer, and call setupMockifyerForReactNative. For axios use @sgedda/mockifyer-axios with useGlobalAxios: true. Record selectively into _scratch until you activate mocks."
+        ]
+      },
+      {
+        heading: "Global storage / shared mocks",
+        paragraphs: [
+          "Run the dashboard with --provider redis (or sqlite) so mocks and scenarios live in a shared store. Point the app with initMockifyerForReactNativeDashboard or proxyBaseUrl so teammates, CI, and demo devices load the same recordings without local mock-data files."
+        ]
+      }
+    ]
+  },
   "/guides/react-native-without-msw": {
     h1: "MSW vs Recording in React Native",
     summary: "Compare MSW and Mockifyer for React Native. Recording works on device with no service worker and supports Expo and bare React Native.",
@@ -488,7 +543,7 @@ function buildGuidesHub() {
       {
         heading: "Published Guides",
         paragraphs: [
-          "Practical guides for record-replay API mocking: network-edge testing, React Native E2E stability, mock drift detection, SSE/streaming, Atlas architecture maps, and browser record-replay.",
+          "Practical guides for record-replay API mocking: network-edge testing, how to mock API calls in React Native, E2E stability, mock drift detection, SSE/streaming, Atlas architecture maps, and browser record-replay.",
           "Each guide links to install steps, configuration tips, and related docs so you can go from concept to a working setup quickly."
         ]
       }
@@ -563,6 +618,7 @@ function buildComparisonsBody() {
     ],
     links: [
       ...NAV_LINKS.filter((link) => link.href !== "/comparisons"),
+      { href: "/guides/how-to-mock-api-calls-in-react-native", label: "How to Mock API Calls in React Native" },
       { href: "/guides/react-native-without-msw", label: "MSW vs Recording in React Native" },
       { href: "/guides/mock-drift", label: "Stop Mock Drift" }
     ]
@@ -617,7 +673,7 @@ function buildMockDataGeneratorBody() {
       {
         heading: "Generate types from JSON",
         paragraphs: [
-          "Generated types appear beside the JSON on desktop \u2014 nested objects, arrays, and optional fields. Choose TypeScript by default, or Zod, JSON Schema, C#, Kotlin, Swift, Python, or Go, then copy the shown language."
+          "Use the Types tab beside the JSON on desktop (Types view on mobile) \u2014 nested objects, arrays, and optional fields. Choose TypeScript by default, or Zod, JSON Schema, C#, Kotlin, Swift, Python, or Go, then copy the shown language."
         ]
       },
       {
@@ -740,9 +796,33 @@ function buildTechArticleJsonLd(seo) {
     mainEntityOfPage: `${SITE_URL}${seo.path}`
   };
 }
+function buildGuideFaqPageJsonLd(items) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: items.map((item) => ({
+      "@type": "Question",
+      name: item.question,
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: item.answer
+      }
+    }))
+  };
+}
 function getRouteJsonLd(routePath) {
   if (routePath === "/faq") {
     return buildFaqPageJsonLd();
+  }
+  if (routePath === "/guides/how-to-mock-api-calls-in-react-native" && PAGE_SEO[routePath]) {
+    const article = buildTechArticleJsonLd(PAGE_SEO[routePath]);
+    const faq = buildGuideFaqPageJsonLd(RN_GUIDE_FAQ);
+    const { "@context": _a, ...articleNode } = article;
+    const { "@context": _f, ...faqNode } = faq;
+    return {
+      "@context": "https://schema.org",
+      "@graph": [articleNode, faqNode]
+    };
   }
   if (routePath === "/tools/mock-data-generator") {
     const seo = PAGE_SEO[routePath];
@@ -760,7 +840,7 @@ function getRouteJsonLd(routePath) {
   return null;
 }
 
-// scripts/prerender-static.ts
+// mockifyer-web/scripts/prerender-static.ts
 var NOT_FOUND_SEO = {
   title: "Page Not Found",
   description: "The page you are looking for does not exist.",

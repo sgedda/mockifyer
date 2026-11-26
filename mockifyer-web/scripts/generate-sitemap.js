@@ -28,7 +28,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-// scripts/generate-sitemap.ts
+// mockifyer-web/scripts/generate-sitemap.ts
 var generate_sitemap_exports = {};
 __export(generate_sitemap_exports, {
   generateSitemap: () => generateSitemap,
@@ -38,7 +38,7 @@ module.exports = __toCommonJS(generate_sitemap_exports);
 var import_fs = __toESM(require("fs"));
 var import_path = __toESM(require("path"));
 
-// frontend/src/lib/seo-config.ts
+// mockifyer-web/frontend/src/lib/seo-config.ts
 var SITE_URL = "https://mockifyer.dev";
 var DEFAULT_TITLE = "Mockifyer \u2014 Record & Replay HTTP API Mocks";
 var DEFAULT_DESCRIPTION = "Open-source API mocking for JavaScript and React Native. Record and replay HTTP, edit mocks in a dashboard, catch API drift in CI. Mocks stay in your repo.";
@@ -80,8 +80,13 @@ var PAGE_SEO = {
   },
   "/guides": {
     title: "Mockifyer Guides",
-    description: "Practical guides for record-replay API mocking: network-edge testing, React Native E2E, mock drift, SSE/streaming, Atlas maps, and browser record-replay.",
+    description: "Practical guides for record-replay API mocking: React Native, E2E, mock drift, SSE/streaming, Atlas maps, and browser record-replay.",
     path: "/guides"
+  },
+  "/guides/how-to-mock-api-calls-in-react-native": {
+    title: "How to Mock API Calls in React Native",
+    description: "How to mock API calls in React Native and Expo: MSW, stubs, or record-replay. Mock fetch/axios; share Redis scenarios across devices.",
+    path: "/guides/how-to-mock-api-calls-in-react-native"
   },
   "/guides/mock-at-the-network-edge": {
     title: "Mock at the Network Edge - Testing Guide",
@@ -164,7 +169,7 @@ var PAGE_SEO = {
   }
 };
 
-// scripts/generate-sitemap.ts
+// mockifyer-web/scripts/generate-sitemap.ts
 var ROUTE_CONFIG = {
   "/": { priority: "1.0", changefreq: "weekly" },
   "/getting-started": { priority: "0.9", changefreq: "monthly" },
@@ -181,6 +186,7 @@ var ROUTE_CONFIG = {
   "/guides/mock-drift": { priority: "0.7", changefreq: "monthly" },
   "/guides/mockifyer-atlas": { priority: "0.7", changefreq: "monthly" },
   "/guides/atlas-from-playwright": { priority: "0.7", changefreq: "monthly" },
+  "/guides/how-to-mock-api-calls-in-react-native": { priority: "0.7", changefreq: "monthly" },
   "/guides/react-native-without-msw": { priority: "0.7", changefreq: "monthly" },
   "/guides/reproduce-tester-bugs": { priority: "0.7", changefreq: "monthly" },
   "/guides/stable-react-native-e2e": { priority: "0.7", changefreq: "monthly" },

@@ -6,6 +6,7 @@
 
 import { HOME_FAQ } from './faq'
 import { GUIDE_ITEMS } from './product-docs'
+import { RN_GUIDE_FAQ } from './rn-guide-faq'
 import {
   GENERATOR_FAQ,
   buildGeneratorJsonLdGraph,
@@ -33,6 +34,7 @@ export interface PrerenderBodyContent {
 export const CONTENT_ROUTES_WITH_FULL_BODY = new Set([
   '/guides',
   '/guides/mock-at-the-network-edge',
+  '/guides/how-to-mock-api-calls-in-react-native',
   '/guides/reproduce-tester-bugs',
   '/guides/stable-react-native-e2e',
   '/guides/mock-drift',
@@ -140,6 +142,31 @@ const GUIDE_BODIES: Record<string, Omit<PrerenderBodyContent, 'links'>> = {
       },
     ],
   },
+  '/guides/how-to-mock-api-calls-in-react-native': {
+    h1: 'How to mock API calls in React Native',
+    summary:
+      'How to mock API calls in React Native and Expo: compare stubs, MSW (msw/native), a React Native mock server, and Mockifyer record-replay for fetch and axios, including Redis/SQLite global storage for shared scenarios.',
+    sections: [
+      {
+        heading: 'Why mock for offline development',
+        paragraphs: [
+          'Mock HTTP so you can develop offline, demo stable states, keep Detox/Maestro deterministic, and build UI before backends ship.',
+        ],
+      },
+      {
+        heading: 'Mock fetch and axios in React Native',
+        paragraphs: [
+          'Install @sgedda/mockifyer-fetch, configure Metro with configureMetroForMockifyer, and call setupMockifyerForReactNative. For axios use @sgedda/mockifyer-axios with useGlobalAxios: true. Record selectively into _scratch until you activate mocks.',
+        ],
+      },
+      {
+        heading: 'Global storage / shared mocks',
+        paragraphs: [
+          'Run the dashboard with --provider redis (or sqlite) so mocks and scenarios live in a shared store. Point the app with initMockifyerForReactNativeDashboard or proxyBaseUrl so teammates, CI, and demo devices load the same recordings without local mock-data files.',
+        ],
+      },
+    ],
+  },
   '/guides/react-native-without-msw': {
     h1: 'MSW vs Recording in React Native',
     summary:
@@ -221,7 +248,7 @@ function buildGuidesHub(): PrerenderBodyContent {
       {
         heading: 'Published Guides',
         paragraphs: [
-          'Practical guides for record-replay API mocking: network-edge testing, React Native E2E stability, mock drift detection, SSE/streaming, Atlas architecture maps, and browser record-replay.',
+          'Practical guides for record-replay API mocking: network-edge testing, how to mock API calls in React Native, E2E stability, mock drift detection, SSE/streaming, Atlas architecture maps, and browser record-replay.',
           'Each guide links to install steps, configuration tips, and related docs so you can go from concept to a working setup quickly.',
         ],
       },
@@ -299,6 +326,7 @@ function buildComparisonsBody(): PrerenderBodyContent {
     ],
     links: [
       ...NAV_LINKS.filter((link) => link.href !== '/comparisons'),
+      { href: '/guides/how-to-mock-api-calls-in-react-native', label: 'How to Mock API Calls in React Native' },
       { href: '/guides/react-native-without-msw', label: 'MSW vs Recording in React Native' },
       { href: '/guides/mock-drift', label: 'Stop Mock Drift' },
     ],
@@ -509,9 +537,36 @@ export function buildTechArticleJsonLd(seo: PageSeoConfig): Record<string, unkno
 /**
  * Route-specific JSON-LD for raw HTML (homepage SoftwareApplication stays in the shell).
  */
+export function buildGuideFaqPageJsonLd(
+  items: ReadonlyArray<{ question: string; answer: string }>,
+): Record<string, unknown> {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: items.map((item) => ({
+      '@type': 'Question',
+      name: item.question,
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: item.answer,
+      },
+    })),
+  }
+}
+
 export function getRouteJsonLd(routePath: string): Record<string, unknown> | null {
   if (routePath === '/faq') {
     return buildFaqPageJsonLd()
+  }
+  if (routePath === '/guides/how-to-mock-api-calls-in-react-native' && PAGE_SEO[routePath]) {
+    const article = buildTechArticleJsonLd(PAGE_SEO[routePath])
+    const faq = buildGuideFaqPageJsonLd(RN_GUIDE_FAQ)
+    const { '@context': _a, ...articleNode } = article
+    const { '@context': _f, ...faqNode } = faq
+    return {
+      '@context': 'https://schema.org',
+      '@graph': [articleNode, faqNode],
+    }
   }
   if (routePath === '/tools/mock-data-generator') {
     const seo = PAGE_SEO[routePath]

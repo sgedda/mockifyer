@@ -1036,6 +1036,17 @@ npm install @sgedda/mockifyer-dashboard@latest`} />
             </Card>
           </Link>
 
+          <Link to="/guides/how-to-mock-api-calls-in-react-native">
+            <Card className="hover:bg-accent transition-colors cursor-pointer">
+              <CardContent className="p-6">
+                <h3 className="font-semibold mb-2">How to Mock API Calls in React Native</h3>
+                <p className="text-sm text-muted-foreground">
+                  Expo fetch/axios mocking, shared Redis storage, and offline demos
+                </p>
+              </CardContent>
+            </Card>
+          </Link>
+
           <Link to="/dashboard">
             <Card className="hover:bg-accent transition-colors cursor-pointer">
               <CardContent className="p-6">

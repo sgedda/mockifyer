@@ -456,6 +456,19 @@ npx mockifyer-dashboard --provider filesystem --path ./mock-data`}
             </Card>
           </Link>
 
+          <Link to="/guides/how-to-mock-api-calls-in-react-native">
+            <Card className="h-full hover:border-primary/50 transition-colors cursor-pointer">
+              <CardHeader>
+                <CardTitle className="text-lg">How to Mock API Calls in React Native</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">
+                  Full how-to: fetch/axios, Expo, shared Redis storage, FAQ
+                </p>
+              </CardContent>
+            </Card>
+          </Link>
+
           <Link to="/faq">
             <Card className="h-full hover:border-primary/50 transition-colors cursor-pointer">
               <CardHeader>

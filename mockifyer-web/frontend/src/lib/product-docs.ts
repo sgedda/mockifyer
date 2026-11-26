@@ -272,6 +272,7 @@ export interface GuideItem {
 
 export const GUIDE_ITEMS: GuideItem[] = [
   { href: '/guides/mock-at-the-network-edge', label: 'Mock at the Network Edge' },
+  { href: '/guides/how-to-mock-api-calls-in-react-native', label: 'How to Mock API Calls in React Native' },
   { href: '/guides/reproduce-tester-bugs', label: 'Reproduce Tester Bugs' },
   { href: '/guides/stable-react-native-e2e', label: 'Stable React Native E2E' },
   { href: '/guides/mock-drift', label: 'Stop Mock Drift' },

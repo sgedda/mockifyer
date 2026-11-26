@@ -68,8 +68,14 @@ export const PAGE_SEO: Record<string, PageSeoConfig> = {
   '/guides': {
     title: 'Mockifyer Guides',
     description:
-      'Practical guides for record-replay API mocking: network-edge testing, React Native E2E, mock drift, SSE/streaming, Atlas maps, and browser record-replay.',
+      'Practical guides for record-replay API mocking: React Native, E2E, mock drift, SSE/streaming, Atlas maps, and browser record-replay.',
     path: '/guides',
+  },
+  '/guides/how-to-mock-api-calls-in-react-native': {
+    title: 'How to Mock API Calls in React Native',
+    description:
+      'How to mock API calls in React Native and Expo: MSW, stubs, or record-replay. Mock fetch/axios; share Redis scenarios across devices.',
+    path: '/guides/how-to-mock-api-calls-in-react-native',
   },
   '/guides/mock-at-the-network-edge': {
     title: 'Mock at the Network Edge - Testing Guide',

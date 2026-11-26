@@ -219,7 +219,10 @@ export default function Introduction() {
             <h3 className="font-semibold text-lg mb-2">React Native &amp; Expo</h3>
             <p className="text-sm text-muted-foreground">
               Record and replay on device or simulator. Switch scenarios from your dev menu and keep
-              mocks as JSON in the repo.
+              mocks as JSON in the repo.{' '}
+              <Link to="/guides/how-to-mock-api-calls-in-react-native" className="text-primary hover:underline">
+                How to mock API calls in React Native →
+              </Link>
             </p>
           </div>
         </div>

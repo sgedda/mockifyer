@@ -29,6 +29,7 @@ const ROUTE_CONFIG: Record<string, RouteMeta> = {
   '/guides/mock-drift': { priority: '0.7', changefreq: 'monthly' },
   '/guides/mockifyer-atlas': { priority: '0.7', changefreq: 'monthly' },
   '/guides/atlas-from-playwright': { priority: '0.7', changefreq: 'monthly' },
+  '/guides/how-to-mock-api-calls-in-react-native': { priority: '0.7', changefreq: 'monthly' },
   '/guides/react-native-without-msw': { priority: '0.7', changefreq: 'monthly' },
   '/guides/reproduce-tester-bugs': { priority: '0.7', changefreq: 'monthly' },
   '/guides/stable-react-native-e2e': { priority: '0.7', changefreq: 'monthly' },

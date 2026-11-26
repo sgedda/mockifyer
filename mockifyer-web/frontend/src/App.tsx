@@ -28,6 +28,7 @@ const ReproduceTesterBugs = lazy(() => import('./pages/guides/ReproduceTesterBug
 const StableReactNativeE2E = lazy(() => import('./pages/guides/StableReactNativeE2E'))
 const MockDrift = lazy(() => import('./pages/guides/MockDrift'))
 const ReactNativeWithoutMSW = lazy(() => import('./pages/guides/ReactNativeWithoutMSW'))
+const HowToMockApiCallsInReactNative = lazy(() => import('./pages/guides/HowToMockApiCallsInReactNative'))
 const BrowserRecordReplay = lazy(() => import('./pages/guides/BrowserRecordReplay'))
 const MockifyerAtlas = lazy(() => import('./pages/guides/MockifyerAtlas'))
 const AtlasFromPlaywright = lazy(() => import('./pages/guides/AtlasFromPlaywright'))
@@ -114,6 +115,7 @@ function App() {
               <Route path="/guides/stable-react-native-e2e" element={<StableReactNativeE2E />} />
               <Route path="/guides/mock-drift" element={<MockDrift />} />
               <Route path="/guides/react-native-without-msw" element={<ReactNativeWithoutMSW />} />
+              <Route path="/guides/how-to-mock-api-calls-in-react-native" element={<HowToMockApiCallsInReactNative />} />
               <Route path="/guides/browser-record-replay" element={<BrowserRecordReplay />} />
               <Route path="/guides/mockifyer-atlas" element={<MockifyerAtlas />} />
               <Route path="/guides/atlas-from-playwright" element={<AtlasFromPlaywright />} />
