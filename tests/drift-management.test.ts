@@ -48,6 +48,9 @@ describe('drift-management', () => {
       } else if (pathname === '/vendor/user') {
         res.writeHead(200, { 'Content-Type': 'application/vnd.github+json' });
         res.end(JSON.stringify({ id: 9, name: 'Vendor', stable: true }));
+      } else if (pathname === '/events') {
+        res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+        res.end('data: accepted-event\n\n');
       } else if (pathname === '/forecast') {
         const host = String(req.headers.host || '');
         const source = host.startsWith('127.0.0.1') ? 'ip' : 'localhost';
@@ -228,6 +231,50 @@ describe('drift-management', () => {
   });
 
   describe('accept drift', () => {
+    it('replaces a stored SSE timeline so replay cannot keep the pre-accept events', async () => {
+      const mockPath = path.join(testDir, 'default', 'events.json');
+      createMockFile(
+        'default',
+        {
+          request: {
+            method: 'GET',
+            url: `http://localhost:${serverPort}/events`,
+            headers: {},
+            queryParams: {},
+          },
+          response: {
+            status: 200,
+            data: 'data: stale-event\n\n',
+            headers: { 'content-type': 'text/event-stream' },
+            stream: {
+              kind: 'sse',
+              chunks: [{ offsetMs: 0, data: 'data: stale-event\n\n' }],
+            },
+          },
+        } as unknown as MockData,
+        'events.json'
+      );
+
+      const result = await acceptDrift({
+        method: 'GET',
+        path: '/events',
+        mockDataPath: testDir,
+        scenario: 'default',
+        driftOptions: {},
+      });
+
+      expect(result.success).toBe(true);
+
+      const updatedMock = JSON.parse(fs.readFileSync(mockPath, 'utf-8'));
+      expect(updatedMock.response.data).toContain('accepted-event');
+      expect(updatedMock.response.data).not.toContain('stale-event');
+      const replayed = (updatedMock.response.stream?.chunks ?? [])
+        .map((chunk: { data?: string }) => chunk.data ?? '')
+        .join('');
+      expect(replayed).toContain('accepted-event');
+      expect(replayed).not.toContain('stale-event');
+    });
+
     it('should accept one endpoint and update mock file', async () => {
       const mockPath = path.join(testDir, 'default', 'user3.json');
       createMockFile(

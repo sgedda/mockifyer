@@ -17,6 +17,42 @@ import { checkDrift } from './check-drift';
 import { omitProxyUpstreamRequestHeaders } from '../proxy-upstream-headers';
 import { requireSafeScenarioName } from './safe-scenario';
 import { readDriftResponseBody } from './response-body';
+import { detectStreamKind } from '../stream-response';
+import type { StreamKind } from '../../types';
+
+/**
+ * Persist an accepted live body.
+ * When the mock still has a stream timeline, replace those chunks with the
+ * accepted text. Replay reads the timeline first, so stale chunks would hide
+ * the update. A non-text body (or an empty one) drops the timeline and replays
+ * `response.data` directly.
+ */
+function applyAcceptedResponseBody(
+  mockData: MockData,
+  status: number,
+  actualBody: unknown,
+  contentType: string | null
+): void {
+  mockData.response.status = status;
+  mockData.response.data = actualBody;
+
+  const previous = mockData.response.stream;
+  if (!previous) {
+    return;
+  }
+
+  if (typeof actualBody !== 'string' || actualBody.length === 0) {
+    delete mockData.response.stream;
+    return;
+  }
+
+  const detected = detectStreamKind({ 'content-type': contentType ?? '' });
+  const kind: StreamKind = detected ?? previous.kind;
+  mockData.response.stream = {
+    kind,
+    chunks: [{ offsetMs: 0, data: actualBody }],
+  };
+}
 
 /**
  * Accept drift for one endpoint: re-fetch live and update mock file.
@@ -130,9 +166,15 @@ export async function acceptDrift(options: {
 
     const actualBody = await readDriftResponseBody(response);
 
-    // Update only the response fields
-    mockData.response.status = response.status;
-    mockData.response.data = actualBody;
+    // Update the stored body and drop or replace any previous stream timeline.
+    // Fetch replay prefers `response.stream` chunks over `response.data`, so
+    // leaving the old chunks in place would keep serving the pre-accept events.
+    applyAcceptedResponseBody(
+      mockData,
+      response.status,
+      actualBody,
+      response.headers.get('content-type')
+    );
 
     // Write back to file
     fs.writeFileSync(mockFile.filePath, JSON.stringify(mockData, null, 2) + '\n');
