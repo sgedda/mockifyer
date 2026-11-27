@@ -241,8 +241,9 @@ jobs:
             exit 1
           fi
 
-      # The `gui` project always records (app + dashboard) and traces; the `chromium` project
-      # records only on failure unless E2E_VIDEO is on (schedule / manual checkbox).
+      # The `gui` project always records (app + dashboard/Atlas) and traces — including
+      # dashboard-gui-atlas (interactive Atlas map) and dashboard-gui-offline (wander-api down).
+      # The `chromium` project records only on failure unless E2E_VIDEO is on (schedule / manual checkbox).
       - name: Run E2E tests
         working-directory: e2e
         env:
