@@ -43,6 +43,8 @@ import {
   createReplayReadableStream,
   supportsReadableStreamBody,
   summarizeStoredStream,
+  storedStreamMatchesResponseData,
+  syncStoredResponseStream,
 } from '../packages/mockifyer-core/src/index.react-native';
 import {
   ENV_VARS as ENV_VARS_FROM_RN_ENTRY,
@@ -97,6 +99,8 @@ describe('mockifyer-fetch React Native entry', () => {
     expect(typeof createReplayReadableStream).toBe('function');
     expect(typeof supportsReadableStreamBody).toBe('function');
     expect(typeof summarizeStoredStream).toBe('function');
+    expect(typeof storedStreamMatchesResponseData).toBe('function');
+    expect(typeof syncStoredResponseStream).toBe('function');
   });
 
   it('keeps dynamic require() out of the Metro sibling-setup entry', () => {

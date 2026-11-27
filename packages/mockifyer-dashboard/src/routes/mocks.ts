@@ -27,6 +27,7 @@ import {
   normalizeDomainPathRule,
   readMockParentRequestIds,
   parseScenarioName,
+  syncStoredResponseStream,
 } from '@sgedda/mockifyer-core';
 import { getDashboardContext, resolveRedisDiskMirrorOptions } from '../utils/dashboard-context';
 import { RedactedRequestHeadersError } from '../utils/proxy-recording-privacy';
@@ -1251,6 +1252,9 @@ router.patch('/*/pool-ref', async (req: Request, res: Response) => {
         };
       }
       existingData.timestamp = new Date().toISOString();
+      if (existingData.response) {
+        syncStoredResponseStream(existingData.response);
+      }
     };
 
     if (isCentralizedDashboardProvider(config.provider)) {
@@ -1359,6 +1363,7 @@ router.post('/*/copy-array-item', async (req: Request, res: Response) => {
 
         const copyResult = copyArrayItemInResponseData(existingData.response.data, copyParams);
         existingData.response.data = copyResult.data;
+        syncStoredResponseStream(existingData.response);
         existingData.timestamp = new Date().toISOString();
         await store.setByHash(hash, existingData, scenario);
 
@@ -1393,6 +1398,7 @@ router.post('/*/copy-array-item', async (req: Request, res: Response) => {
 
     const copyResult = copyArrayItemInResponseData(existingData.response.data, copyParams);
     existingData.response.data = copyResult.data;
+    syncStoredResponseStream(existingData.response);
     existingData.timestamp = new Date().toISOString();
     fs.writeFileSync(filePath, JSON.stringify(existingData, null, 2), 'utf-8');
 

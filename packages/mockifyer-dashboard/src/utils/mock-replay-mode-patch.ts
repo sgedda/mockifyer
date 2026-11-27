@@ -1,5 +1,9 @@
 import type { MockData, MockReplayMode } from '@sgedda/mockifyer-core';
-import { applyMockReplayModeSetting, resolveMockReplayMode } from '@sgedda/mockifyer-core';
+import {
+  applyMockReplayModeSetting,
+  resolveMockReplayMode,
+  syncStoredResponseStream,
+} from '@sgedda/mockifyer-core';
 
 export interface MockReplayModeListFlags {
   replayMode: MockReplayMode;
@@ -45,6 +49,7 @@ export function applyResponseDataFromBody(mockData: MockData, responseData: unkn
     mockData.response.status = DEFAULT_RESPONSE_STATUS;
   }
   delete mockData.responsePending;
+  syncStoredResponseStream(mockData.response);
 }
 
 /**

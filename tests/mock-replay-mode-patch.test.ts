@@ -75,4 +75,49 @@ describe('applyResponseDataFromBody', () => {
     applyResponseDataFromBody(mock, { error: 'still nope' });
     expect(mock.response.status).toBe(404);
   });
+
+  it('replaces an SSE timeline when the saved body changes', () => {
+    const mock = snapshot({
+      response: {
+        status: 200,
+        data: 'data: stale\n\n',
+        headers: { 'content-type': 'text/event-stream' },
+        stream: {
+          kind: 'sse',
+          chunks: [
+            { offsetMs: 0, data: 'data: sta' },
+            { offsetMs: 15, data: 'le\n\n' },
+          ],
+        },
+      },
+    });
+
+    applyResponseDataFromBody(mock, 'data: stale\n\n');
+    expect(mock.response.stream?.chunks).toHaveLength(2);
+
+    applyResponseDataFromBody(mock, 'data: fresh\n\n');
+    expect(mock.response.data).toBe('data: fresh\n\n');
+    expect(mock.response.stream).toEqual({
+      kind: 'sse',
+      chunks: [{ offsetMs: 0, data: 'data: fresh\n\n' }],
+    });
+  });
+
+  it('drops the timeline when the saved body is no longer the stream text', () => {
+    const mock = snapshot({
+      response: {
+        status: 200,
+        data: 'data: stale\n\n',
+        headers: { 'content-type': 'text/event-stream' },
+        stream: {
+          kind: 'sse',
+          chunks: [{ offsetMs: 0, data: 'data: stale\n\n' }],
+        },
+      },
+    });
+
+    applyResponseDataFromBody(mock, { ok: false });
+    expect(mock.response.data).toEqual({ ok: false });
+    expect(mock.response.stream).toBeUndefined();
+  });
 });

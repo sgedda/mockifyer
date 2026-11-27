@@ -10,6 +10,7 @@ import type { StreamReplayMode, StoredResponseStream } from '@sgedda/mockifyer-c
 import {
   createReplayReadableStream,
   resolveStreamReplayMode,
+  storedStreamMatchesResponseData,
   supportsReadableStreamBody,
 } from '@sgedda/mockifyer-core';
 
@@ -33,8 +34,9 @@ export interface BodyInitForFetchResponseOptions {
  * Body argument for `new Response(body, { status })`.
  * Returns `null` for null-body statuses so Node/undici does not throw.
  * When `data` is already a ReadableStream, it is returned as-is (live passthrough).
- * When `options.stream` is set and the runtime supports ReadableStream bodies,
- * returns a paced replay stream; otherwise falls back to the flat concatenated body.
+ * When `options.stream` matches this body and the runtime supports ReadableStream
+ * bodies, returns a paced replay stream. A timeline that disagrees with `data`
+ * is ignored so an edited or overridden body is not hidden by stale chunks.
  */
 export function bodyInitForFetchResponse(
   status: number,
@@ -48,10 +50,11 @@ export function bodyInitForFetchResponse(
     return data as BodyInit;
   }
   const storedStream = options?.stream;
+  // A timeline that no longer equals this body is stale (dashboard edit, override,
+  // pool embed). Prefer the body so replay cannot keep the previous events.
   if (
     storedStream &&
-    Array.isArray(storedStream.chunks) &&
-    storedStream.chunks.length > 0 &&
+    storedStreamMatchesResponseData(storedStream, data) &&
     supportsReadableStreamBody()
   ) {
     return createReplayReadableStream(
