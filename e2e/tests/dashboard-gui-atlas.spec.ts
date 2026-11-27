@@ -1,26 +1,28 @@
-import { expect } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 import { test, holdForClip, openAppFromLogin, presentChange, presentationPause, PRESENTATION } from '../lib/gui';
 import { ACTOR, documented } from '../lib/docs';
+import { dashboard } from '../lib/dashboard';
 import { followLaneAndWait, pinToBaseAndWait } from '../lib/stack';
-import { expectTemperature, temperatureTile } from '../lib/app';
+import { expectTemperature, expectTemperatureAfterRefetch, temperatureTile } from '../lib/app';
 import { EXPECTED_TEMP, BASE_SCENARIO, PRESENTATION_HOLD_MS, PRESENTATION_NAV_HOLD_MS } from '../lib/env';
-import { generateAtlasReport } from '../lib/atlas-report';
+import { ATLAS_GUI_EVENT_LIMIT, generateAtlasReport } from '../lib/atlas-report';
 
 /**
  * Presentation recording: interactive Atlas architecture map.
  * Left pane = WanderWeird Discover (the traffic source). Right pane = generated Atlas HTML
  * (Architecture view → system diagram → endpoint row → hop/value inspection detail).
  *
- * Atlas HTML is normally only written in global teardown; this test generates it mid-run from
- * the session's network events so Playwright can film the interactive page.
+ * Atlas HTML is normally only written in global teardown; this test generates a bounded
+ * mid-run report from a fresh Discover session so Playwright can film the interactive page
+ * without embedding the full CI network-log backlog (1k+ events → multi‑MB HTML / 90s timeouts).
  */
 const BASE_TEMP = EXPECTED_TEMP[BASE_SCENARIO];
-const { dashboardUi: UI, app: APP, helper: HELPER } = ACTOR;
-/** Atlas HTML generation + Architecture walkthrough; match the tracing GUI budget when not presenting. */
-const ATLAS_TIMEOUT_MS = PRESENTATION ? 300_000 : 180_000;
+const { dashboardUi: UI, app: APP, helper: HELPER, dashboardApi: API } = ACTOR;
+/** Fresh session + bounded HTML should finish well under the default 120s; presentation holds need more. */
+const ATLAS_TIMEOUT_MS = PRESENTATION ? 240_000 : 120_000;
 
 /** Index of the first endpoint inventory row that saw traffic (`data-calls` > 0), else 0. */
-async function observedEndpointIndex(page: import('@playwright/test').Page): Promise<number> {
+async function observedEndpointIndex(page: Page): Promise<number> {
   return page.locator('.atlas-endpoint-row').first().evaluate(() => {
     const rows = Array.from(document.querySelectorAll<HTMLElement>('.atlas-endpoint-row'));
     const idx = rows.findIndex((row) => Number(row.getAttribute('data-calls') || '0') > 0);
@@ -42,31 +44,42 @@ test.describe('Atlas architecture map GUI', { tag: '@gui' }, () => {
   test(
     'interactive Atlas architecture map: diagram, endpoint row, and detail pane',
     documented(
-      'After an app Discover load, the generated Atlas Architecture page shows the system diagram; clicking an observed endpoint opens the Endpoint Detail inspection pane with request/response context.',
+      'After a fresh Discover load, a bounded Atlas Architecture page shows the system diagram; clicking an observed endpoint opens the Endpoint Detail pane; Timeline hop select shows hop inspection.',
       [
         [HELPER, 'beforeAll: restart wander-api unpinned so Discover traffic is recorded'],
         [UI, 'Start screen: dashboard opens at / (Statistics) while the app signs in'],
         [APP, 'Login → Discover: Atlantis Temperature tile shows the base mock value'],
-        [HELPER, 'Generate interactive Atlas HTML from dashboard network events into e2e/atlas-report/'],
+        [API, `Clear ${BASE_SCENARIO} network log so Atlas is not built from the CI backlog`],
+        [APP, 'Refetch Discover to seed a small, current hop set'],
+        [HELPER, `Generate Atlas HTML (limit ${ATLAS_GUI_EVENT_LIMIT}, skip code scan) into e2e/atlas-report/`],
         [UI, 'Navigate the dashboard pane to the generated Atlas index (Architecture view)'],
         [UI, 'Scroll to System Diagram; outline Open diagram; open the SVG diagram popup briefly'],
         [UI, 'Scroll to Endpoint inventory; click an observed endpoint row'],
         [UI, 'Architecture detail pane shows Endpoint Detail (host, method, path, last observed / body)'],
-        [UI, 'Switch to Timeline; select a hop so the detail pane shows hop inspection'],
+        [UI, 'Switch to Timeline; select a .hop-row so the detail pane shows hop inspection'],
         [HELPER, 'afterAll: pin wander-api back to the base scenario'],
       ],
     ),
     async ({ page, dash }) => {
       test.setTimeout(ATLAS_TIMEOUT_MS);
 
-      await expectTemperature(page, BASE_TEMP);
+      // Root cause of CI 90s timeouts: mid-suite Atlas pulled 1k+ events (and rescanned the
+      // WanderWeird tree ~9s). Seed a small session instead; teardown still builds the full report.
+      await dashboard.clearNetworkEvents(BASE_SCENARIO);
+      await expectTemperatureAfterRefetch(page, BASE_TEMP);
 
-      const atlas = await generateAtlasReport();
+      const atlas = await generateAtlasReport({
+        scenario: BASE_SCENARIO,
+        limit: ATLAS_GUI_EVENT_LIMIT,
+        skipCodeScan: true,
+      });
       expect(atlas.eventCount, 'network events for Atlas').toBeGreaterThan(0);
+      expect(atlas.eventCount, 'bounded Atlas session').toBeLessThanOrEqual(ATLAS_GUI_EVENT_LIMIT);
 
       await dash.page.goto(atlas.indexUrl);
       await expect(dash.page.locator('#atlas-app')).toBeVisible({ timeout: 15_000 });
-      await expect(dash.page.getByRole('button', { name: 'Architecture', exact: true })).toHaveClass(/active/);
+      const architectureTab = dash.page.locator('.tabs').getByRole('button', { name: 'Architecture', exact: true });
+      await expect(architectureTab).toHaveClass(/active/);
       await expect(dash.page.getByRole('heading', { name: 'System Diagram' })).toBeVisible({ timeout: 15_000 });
       await presentationPause(dash.page, PRESENTATION_HOLD_MS);
 
@@ -105,22 +118,21 @@ test.describe('Atlas architecture map GUI', { tag: '@gui' }, () => {
       await expect(detail.getByText('Method', { exact: true })).toBeVisible();
       await presentChange(detail, async () => undefined);
 
-      // Prefer the top tab (Architecture / Timeline / Data); the Architecture panel also has a nav hint.
       const timeline = dash.page.locator('.tabs').getByRole('button', { name: 'Timeline', exact: true });
       await presentChange(timeline, async () => {
         await timeline.click();
         await expect(timeline).toHaveClass(/active/);
       }, PRESENTATION_NAV_HOLD_MS);
 
-      const hopRow = dash.page.locator('[data-select]').first();
-      if (await hopRow.count()) {
-        await hopRow.scrollIntoViewIfNeeded();
-        await presentChange(hopRow, async () => {
-          await hopRow.click();
-        });
-        await expect(detail).toBeVisible();
-        await presentationPause(dash.page, PRESENTATION_HOLD_MS);
-      }
+      // Prefer Trace hop rows — bare [data-select] also matches Architecture/Map affordances.
+      const hopRow = dash.page.locator('#timeline-content .hop-row[data-select]').first();
+      await expect(hopRow).toBeVisible({ timeout: 15_000 });
+      await hopRow.scrollIntoViewIfNeeded();
+      await presentChange(hopRow, async () => {
+        await hopRow.click({ timeout: 10_000 });
+      });
+      await expect(detail).toBeVisible();
+      await presentationPause(dash.page, PRESENTATION_HOLD_MS);
 
       await holdForClip(temperatureTile(page));
     },

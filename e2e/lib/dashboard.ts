@@ -77,6 +77,12 @@ export class Dashboard {
   async networkEvents(scenario: string, limit = 50): Promise<Json[]> {
     return (await this.ok('GET', `/network-events?scenario=${encodeURIComponent(scenario)}&limit=${limit}`)).events;
   }
+  /** Clear the scenario network log (optional client lane). Used to seed a small Atlas session. */
+  clearNetworkEvents(scenario: string, clientId?: string) {
+    const q = new URLSearchParams({ scenario });
+    if (clientId) q.set('clientId', clientId);
+    return this.ok('DELETE', `/network-events?${q}`);
+  }
 }
 
 /** Atlantis Discover through the gateway, the same call the app makes. */
