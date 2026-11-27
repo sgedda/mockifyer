@@ -55,19 +55,22 @@ E2E_PRESENTATION=1 npm run test:gui          # presentation mode: slow, readable
 | `dashboard.spec.ts` | scenarios, mocks and client lanes are listed; Settings UI shows the lane select; PUT without fields → 400 |
 | `overrides.spec.ts` | `PUT /api/mocks/<file> {responseData}`, `PATCH …/field-overrides`, and MCP `mockifyer_set_field_overrides` each change the temperature shown in the app |
 | `scenarios.spec.ts` | lane switch heatwave → rainy-weekend → base moves the app 44° → 11° → 99°; lane wins over global (`lane_redis`); a pinned service ignores its lane (`body_override`); `POST /api/scenario-config/create` clones mocks, resets them to live API (`passthrough`) and switches global; “Use saved mock” (`replayMode: stored`); delete |
-| `offline.spec.ts` | wander-api stopped: app still renders Atlantis from saved mocks; with mocks on live API the gateway answers a 5xx JSON error instead of crashing |
+| `offline.spec.ts` | wander-api stopped: app still renders Atlantis from saved mocks; with mocks on live API the gateway answers a 5xx JSON error instead of crashing (API-level; blank Chromium frame if filmed — see `dashboard-gui-offline.spec.ts` for the presentation recording) |
 | `trace.spec.ts` | an app load logs a `mock-hit` for Open-Meteo with `parentRequestId`; MCP `mockifyer_list_network_events` returns it |
 | `dates.spec.ts` | scenario `fixedDate` set / invalid → 400 / clear; client-lane `fixedDate` set and clear (API level only: the app computes dates from the browser clock) |
 | `main-features.spec.ts` | features on `main` newer than the demo's installed dashboard 1.5.92: status/delay overrides (#476, REST + MCP `mockifyer_set_mock_behavior`) and explain-value (#477, REST + MCP `mockifyer_explain_value`) |
 | `dashboard-gui.spec.ts` (`@gui`) | the real dashboard UI changes what the app shows; see below |
+| `dashboard-gui-atlas.spec.ts` (`@gui`) | presentation recording of the interactive Atlas architecture map (generated mid-run from network events, then filmed: diagram → endpoint row → detail pane) |
+| `dashboard-gui-offline.spec.ts` (`@gui`) | presentation recording: wander-api stopped while Discover still renders from hop mocks; Network shows the wander hop as Mock |
 
 ### Dashboard GUI tests (`@gui`, project `gui`)
 
-Every other spec drives the dashboard through its HTTP API (`lib/dashboard.ts`). These seven tests (plus the
-from-scratch test below) use the
-**dashboard UI** like a user would, in a second browser context (1280×800, so the sidebar is shown), while
-the app runs in the first (`page`, 430×900). Each test ends by asserting the **new value on screen in the
-app**, so the recording shows the change travel from the dashboard to the app.
+Every other spec drives the dashboard through its HTTP API (`lib/dashboard.ts`). These GUI tests use the
+**dashboard UI** (or the generated Atlas HTML) like a user would, in a second browser context (1280×800), while
+the app runs in the first (`page`, 430×900). Demo-stack tests assert the **value on screen in the app**, so the
+recording shows the change travel from the dashboard to the app. Spec files match
+`dashboard-gui(-[a-z]+)?\.spec\.ts` (`playwright.config.ts` `gui` project), so CI uploads their side-by-side
+clips in `e2e-gui-videos` automatically — no workflow change needed for new GUI recordings.
 
 | Test | Dashboard UI steps | App shows |
 |---|---|---|
@@ -78,6 +81,8 @@ app**, so the recording shows the change travel from the dashboard to the app.
 | header Scenario picker | remove the lane, header picker → heatwave, then tick "Lane global fallback" | strict default (#484): live weather, not 44°; with the fallback on: 44° |
 | Network view | lane → heatwave, header → heatwave, Network filtered to the lane, Clear, app reload | 44°, and the trace lists the Open-Meteo `Mock` hop under wander-api `GET /discover` |
 | tracing walkthrough | Network: Bodies on, Clear, Paused, Trace: Collapse all → expand `GET /api/discover` → `GET /discover` → Open-Meteo hop; Details (Source, Status, Duration, Lane, Request headers, Response body); Client connections; then a heatwave lane switch and a 503 status override | 99° (body `"temperature_2m": 99`, Mock) → 44° (heatwave, Last resolved heatwave) → 18° (Open-Meteo hop 503, wander-api body `"source": "fallback"`) |
+| Atlas architecture map (`dashboard-gui-atlas`) | Clear the scenario network log, refetch Discover, generate a **bounded** Atlas HTML (`limit` 150, skip code scan — avoids the 1k+ event CI backlog); open Architecture; zoom/open system diagram; click an observed endpoint row; detail pane shows Endpoint Detail; Timeline `.hop-row` select | base temperature stays on screen (traffic source for the map) |
+| offline hop replay (`dashboard-gui-offline`) | Store gateway → wander-api `/discover` hops as saved mocks; stop wander-api; Network Clear → app reload; trace shows wander hop as Mock | 99° from hop mocks while wander-api is down |
 
 Both panes start at their entry screen, and the two recordings start together: the GUI `beforeEach`
 requests the dashboard first, so it waits on its start screen while the app signs in. The **app** opens
@@ -254,10 +259,11 @@ demo data), composes the GUI clips and writes the run docs. Artifacts of every r
 
 | Artifact | Contents |
 |---|---|
-| `e2e-gui-videos` | one side-by-side mp4 per GUI test (app left, dashboard right) with its `.md` description of the same base name, `e2e-run-summary.md`, and `other-tests/*.md` |
+| `e2e-gui-videos` | one side-by-side mp4 per GUI test (app left, dashboard/Atlas right) with its `.md` description of the same base name, `e2e-run-summary.md`, and `other-tests/*.md` — includes Atlas (`dashboard-gui-atlas--…mp4`) and offline replay (`dashboard-gui-offline--…mp4`) |
 | `e2e-videos` | individual recordings: `gui-videos/individual/*.{app,dashboard}.webm` plus any other test's video (failures, or all with `E2E_VIDEO=on`) |
 | `e2e-report` | Playwright HTML report (`npx playwright show-report <dir>`) |
 | `e2e-traces` | `trace.zip` per GUI test, plus traces of failed tests (`npx playwright show-trace <zip>`) |
+| `atlas-architecture` | interactive Atlas HTML from global teardown (`e2e/atlas-report/`; the Atlas GUI test also regenerates this mid-run to film it) |
 | `e2e-logs` | on failure only: `test-results/` and the dashboard, services, Metro and wander-api logs |
 
 Demo data seeding (`seed-demo-data.ts`) creates the three scenarios (guide-demo-2 99°, heatwave 44°,
