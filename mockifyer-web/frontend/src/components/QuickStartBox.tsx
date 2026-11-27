@@ -35,9 +35,9 @@ setupMockifyerForReactNative({
 
     if (isRN && !isFetch) {
       return `// mockifyer-setup.ts
-import { setupMockifyerForReactNative } from '@sgedda/mockifyer-axios';
+import { setupMockifyer } from '@sgedda/mockifyer-axios';
 
-setupMockifyerForReactNative({
+setupMockifyer({
   mockDataPath: './mock-data',
   recordMode: true,
   useGlobalAxios: true
@@ -78,7 +78,7 @@ process.env.MOCKIFYER_RECORD_DEFAULT_ALWAYS_USE_REAL_API = 'false';
 setupMockifyerForReactNative({
   mockDataPath: './mock-data',
   recordMode: true,
-  domainPathRulesMode: 'record_all'
+  config: { domainPathRulesMode: 'record_all' }
 });`
     }
 
@@ -87,7 +87,7 @@ setupMockifyerForReactNative({
 process.env.MOCKIFYER_RECORD_RESPONSES = 'true';
 process.env.MOCKIFYER_RECORD_DEFAULT_ALWAYS_USE_REAL_API = 'false';
 
-setupMockifyerForReactNative({
+setupMockifyer({
   mockDataPath: './mock-data',
   recordMode: true,
   useGlobalAxios: true,
