@@ -1,0 +1,4 @@
+# Allow all mock fixtures in this demo to be committed
+!mock-data/
+!mock-data/**
+test-results/

@@ -1,0 +1,41 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "http://localhost:3003/currency",
+    "headers": {
+      "x-mockifyer-request-id": "9eef736f-39a2-4478-85d0-77acf7a53aa5",
+      "x-mockifyer-parent-request-id": "demo-record-001"
+    },
+    "queryParams": {
+      "from": "USD",
+      "to": "EUR"
+    }
+  },
+  "response": {
+    "status": 200,
+    "data": {
+      "base": "USD",
+      "rates": {
+        "EUR": 0.92345
+      },
+      "date": "2026-11-10"
+    },
+    "headers": {
+      "connection": "keep-alive",
+      "content-length": "58",
+      "content-type": "application/json; charset=utf-8",
+      "date": "Tue, 10 Nov 2026 19:18:16 GMT",
+      "etag": "W/\"3a-iZhaT7Gt0EehwiAHVh6x5RCWXFA\"",
+      "keep-alive": "timeout=5",
+      "x-powered-by": "Express"
+    }
+  },
+  "timestamp": "2026-11-10T19:18:16.145Z",
+  "duration": 5,
+  "sessionId": "session-1794338295625-ycc4zrshc",
+  "requestId": "9eef736f-39a2-4478-85d0-77acf7a53aa5",
+  "parentRequestId": "demo-record-001",
+  "parentRequestIds": [
+    "demo-record-001"
+  ]
+}
