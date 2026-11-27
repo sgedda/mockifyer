@@ -16,7 +16,8 @@ import { generateAtlasReport } from '../lib/atlas-report';
  */
 const BASE_TEMP = EXPECTED_TEMP[BASE_SCENARIO];
 const { dashboardUi: UI, app: APP, helper: HELPER } = ACTOR;
-const ATLAS_TIMEOUT_MS = PRESENTATION ? 180_000 : 90_000;
+/** Atlas HTML generation + Architecture walkthrough; match the tracing GUI budget when not presenting. */
+const ATLAS_TIMEOUT_MS = PRESENTATION ? 300_000 : 180_000;
 
 /** Index of the first endpoint inventory row that saw traffic (`data-calls` > 0), else 0. */
 async function observedEndpointIndex(page: import('@playwright/test').Page): Promise<number> {
