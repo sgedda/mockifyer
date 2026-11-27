@@ -4,6 +4,7 @@
  */
 
 import { ensureTestData } from './lib/setup';
+import { androidOn, APP_SERVER_URL } from './lib/env';
 
 const VERIFY_ATTEMPTS = 4;
 const VERIFY_ATTEMPT_TIMEOUT_MS = 10_000;
@@ -100,7 +101,7 @@ export default async function globalSetup() {
     verifyService('Dashboard', 'http://127.0.0.1:3002/api/health'),
     verifyService('Gateway', 'http://127.0.0.1:4200/health'),
     verifyService('Wander-api', 'http://127.0.0.1:4203/health'),
-    verifyService('Metro', 'http://127.0.0.1:8090'),
+    verifyService(androidOn() ? 'Metro (Android)' : 'Metro', APP_SERVER_URL),
     verifyAthensMock(),
   ]);
 
