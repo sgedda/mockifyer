@@ -23,4 +23,27 @@ describe('bodyInitForFetchResponse', () => {
     expect(bodyInitForFetchResponse(200, 'plain')).toBe('plain');
     expect(bodyInitForFetchResponse(404, null)).toBe('null');
   });
+
+  it('replays a chunk timeline only when it still equals the body', async () => {
+    const matching = bodyInitForFetchResponse(200, 'data: a\n\ndata: b\n\n', {
+      stream: {
+        kind: 'sse',
+        chunks: [
+          { offsetMs: 0, data: 'data: a\n\n' },
+          { offsetMs: 20, data: 'data: b\n\n' },
+        ],
+      },
+      streamReplay: 'immediate',
+    });
+    expect(matching).toBeInstanceOf(ReadableStream);
+    expect(await new Response(matching as BodyInit).text()).toBe('data: a\n\ndata: b\n\n');
+
+    const edited = bodyInitForFetchResponse(200, 'data: fresh\n\n', {
+      stream: {
+        kind: 'sse',
+        chunks: [{ offsetMs: 0, data: 'data: stale\n\n' }],
+      },
+    });
+    expect(edited).toBe('data: fresh\n\n');
+  });
 });

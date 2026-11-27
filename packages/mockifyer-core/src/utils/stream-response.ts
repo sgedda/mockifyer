@@ -477,6 +477,61 @@ export function createReplayReadableStream(
 }
 
 /**
+ * True when `data` is the same payload the chunk timeline would emit.
+ * Object bodies match only when `JSON.stringify(data)` equals the joined chunks,
+ * which is how flat replay serializes them.
+ */
+export function storedStreamMatchesResponseData(
+  stream: StoredResponseStream | null | undefined,
+  data: unknown
+): boolean {
+  if (!stream?.chunks?.length) {
+    return false;
+  }
+  const chunkText = stream.chunks.map((chunk) => chunk.data ?? '').join('');
+  if (typeof data === 'string') {
+    return data === chunkText;
+  }
+  if (data === undefined) {
+    return false;
+  }
+  try {
+    return JSON.stringify(data) === chunkText;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Keep `response.stream` aligned with `response.data`.
+ *
+ * Fetch replay emits a non-empty chunk timeline ahead of `response.data`, so a
+ * save that updates only the body keeps serving the previous events. An
+ * unchanged body keeps its pacing. A different non-empty string replaces the
+ * timeline with one chunk of that text. Any other body drops the timeline.
+ */
+export function syncStoredResponseStream(response: {
+  data?: unknown;
+  stream?: StoredResponseStream;
+}): void {
+  const stream = response.stream;
+  if (!stream?.chunks?.length) {
+    return;
+  }
+  if (storedStreamMatchesResponseData(stream, response.data)) {
+    return;
+  }
+  if (typeof response.data === 'string' && response.data.length > 0) {
+    response.stream = {
+      kind: stream.kind,
+      chunks: [{ offsetMs: 0, data: response.data }],
+    };
+    return;
+  }
+  delete response.stream;
+}
+
+/**
  * Compact summary of a stored stream for MCP / AI context (avoids dumping huge bodies).
  */
 export function summarizeStoredStream(stream: StoredResponseStream): {
