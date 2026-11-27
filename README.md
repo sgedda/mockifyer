@@ -35,7 +35,7 @@ This repository is a **monorepo**. Prefer the scoped packages below; the root `p
 
 **Example Projects:**
 
-- **[Wanderweird Travel](./example-projects/wanderweird-travel)** — Full-stack Expo + multi-service demo (7 Node services, Umbraco CMS, scenarios, hops, Atlas). See the [comprehensive walkthrough guide](./docs/guides/wanderweird-demo.md).
+- **[Wanderweird Travel](./example-projects/wanderweird-travel)** — Full-stack Expo + multi-service demo (7 Node services, Umbraco CMS, scenarios, hops, Atlas). See the [comprehensive walkthrough guide](./docs/guides/wanderweird-demo.md) and the live [Atlas architecture](https://mockifyer.dev/atlas/wanderweird).
 
 **Initializing Mockifyer (all entrypoints):** **[MOCKIFYER_INITIALIZATION.md](./MOCKIFYER_INITIALIZATION.md)**.
 
@@ -150,6 +150,7 @@ The `e2e/` directory contains a Playwright test suite that validates Mockifyer e
 - **Run locally:** `cd e2e && npm install && npm test` (headless), `npm run test:gui` (GUI tests), `npm run artifacts` (compose videos)
 - **Presentation mode:** `E2E_PRESENTATION=1 npm run test:gui` slows GUI tests for readable screen recordings
 - **CI:** `.github/workflows/e2e.yml` runs nightly at 03:00 UTC, on workflow_dispatch (with `record_video` and `presentation` inputs), and on PRs touching relevant paths
+- **Atlas:** Live architecture page at [mockifyer.dev/atlas/wanderweird](https://mockifyer.dev/atlas/wanderweird), auto-generated from the CI integration tests running on GitHub's free Linux runners (`ubuntu-latest`)
 
 See [e2e/README.md](./e2e/README.md) for full documentation, test descriptions, and artifact details.
 
