@@ -11,11 +11,14 @@ interface StubElement {
 interface LivePageHarness {
   emitHop(hop: Record<string, unknown>): void;
   pressKey(key: string): void;
+  setSearch(query: string): void;
   hopsHtml(): string;
+  statusHtml(): string;
 }
 
 /** Element stub: known fields are real, anything else is a no-op method. */
 function stubElement(): StubElement {
+  const listeners: Record<string, Listener[]> = {};
   const target: StubElement = {
     innerHTML: '',
     textContent: '',
@@ -24,6 +27,12 @@ function stubElement(): StubElement {
     style: {},
     dataset: {},
     classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
+    addEventListener(type: string, fn: Listener) {
+      (listeners[type] ??= []).push(fn);
+    },
+    trigger(type: string) {
+      for (const fn of listeners[type] ?? []) fn({});
+    },
   };
   return new Proxy(target, {
     get(obj, prop) {
@@ -82,7 +91,14 @@ function loadLivePage(): LivePageHarness {
         fn({ key, target: { tagName: 'BODY' }, preventDefault() {} });
       }
     },
+    setSearch(query) {
+      const el = elements.get('search');
+      if (!el) return;
+      el.value = query;
+      (el as StubElement & { trigger: (type: string) => void }).trigger('input');
+    },
     hopsHtml: () => elements.get('hops')?.innerHTML ?? '',
+    statusHtml: () => elements.get('status')?.innerHTML ?? '',
   };
 }
 
@@ -190,5 +206,109 @@ describe('Atlas live page with a reused hop requestId', () => {
       { id: 'gql-a', depth: 0 },
       { id: 'acct-proxy', depth: 1 },
     ]);
+  });
+});
+
+describe('Atlas live page with missing parentRequestId', () => {
+  it('lists hops whose parent is not in the buffer as top-level rows', () => {
+    const page = loadLivePage();
+    page.emitHop(
+      hop('svc-1', '2026-09-28T15:35:32.991Z', {
+        requestId: 'svc-1',
+        parentRequestId: 'missing-app-root',
+        path: '/api/discover',
+        responseBodyPreview: '{"title":"Atlantis Boardwalk","price":99}',
+      })
+    );
+
+    const html = page.hopsHtml();
+    expect(renderedTree(html)).toEqual([{ id: 'svc-1', depth: 0 }]);
+    expect(html).toContain('parent not captured');
+    expect(html).not.toContain('Waiting for hops');
+    expect(page.statusHtml()).toContain('roots=1');
+    expect(page.statusHtml()).toContain('hops=1');
+  });
+
+  it('keeps children nested when the parent is already present', () => {
+    const page = loadLivePage();
+    page.emitHop(
+      hop('app-root', '2026-09-28T15:35:32.990Z', {
+        requestId: 'app-root',
+        path: '/discover',
+      })
+    );
+    page.emitHop(
+      hop('svc-1', '2026-09-28T15:35:32.991Z', {
+        requestId: 'svc-1',
+        parentRequestId: 'app-root',
+        path: '/api/discover',
+      })
+    );
+    page.pressKey('e');
+
+    const html = page.hopsHtml();
+    expect(renderedTree(html)).toEqual([
+      { id: 'app-root', depth: 0 },
+      { id: 'svc-1', depth: 1 },
+    ]);
+    expect(html).not.toContain('parent not captured');
+  });
+
+  it('re-nests a promoted orphan when its parent arrives later (no duplicate row)', () => {
+    const page = loadLivePage();
+    page.emitHop(
+      hop('svc-1', '2026-09-28T15:35:32.991Z', {
+        requestId: 'svc-1',
+        parentRequestId: 'app-root',
+        path: '/api/discover',
+      })
+    );
+    expect(renderedTree(page.hopsHtml())).toEqual([{ id: 'svc-1', depth: 0 }]);
+    expect(page.hopsHtml()).toContain('parent not captured');
+
+    page.emitHop(
+      hop('app-root', '2026-09-28T15:35:32.990Z', {
+        requestId: 'app-root',
+        path: '/discover',
+      })
+    );
+    page.pressKey('e');
+
+    const html = page.hopsHtml();
+    expect(renderedTree(html)).toEqual([
+      { id: 'app-root', depth: 0 },
+      { id: 'svc-1', depth: 1 },
+    ]);
+    expect(html).not.toContain('parent not captured');
+    expect(page.statusHtml()).toContain('roots=1');
+  });
+
+  it('search matches promoted missing-parent hops by path, body, and requestId', () => {
+    const page = loadLivePage();
+    page.emitHop(
+      hop('svc-1', '2026-09-28T15:35:32.991Z', {
+        requestId: 'svc-1',
+        parentRequestId: 'missing-app-root',
+        path: '/api/discover',
+        responseBodyPreview: '{"title":"Atlantis Boardwalk","price":99}',
+      })
+    );
+    page.emitHop(
+      hop('other', '2026-09-28T15:35:33.000Z', {
+        requestId: 'other',
+        parentRequestId: 'also-missing',
+        path: '/api/other',
+        responseBodyPreview: '{"ok":true}',
+      })
+    );
+
+    page.setSearch('Atlantis Boardwalk');
+    expect(renderedTree(page.hopsHtml())).toEqual([{ id: 'svc-1', depth: 0 }]);
+
+    page.setSearch('99');
+    expect(renderedTree(page.hopsHtml())).toEqual([{ id: 'svc-1', depth: 0 }]);
+
+    page.setSearch('svc-1');
+    expect(renderedTree(page.hopsHtml())).toEqual([{ id: 'svc-1', depth: 0 }]);
   });
 });

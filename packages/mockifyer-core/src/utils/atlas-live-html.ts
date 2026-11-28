@@ -4,7 +4,10 @@
  * Served at `GET /mockifyer-atlas-live` (same origin as
  * `/mockifyer-network-events/stream`) so EventSource needs no CORS.
  * Root hops are newest-first (Metro buffer order); nested children stay
- * chronological under their parent. Saved Atlas HTML is unchanged (chrono).
+ * chronological under their parent. Hops whose parentRequestId is missing
+ * from the live buffer are listed as top-level rows (with a subtle hint)
+ * until the parent arrives, then re-nested. Saved Atlas HTML is unchanged
+ * (chrono).
  */
 
 import {
@@ -503,6 +506,12 @@ button:disabled {
   background: hsl(var(--primary));
   border-color: hsl(var(--primary));
 }
+.badge.orphan {
+  color: hsl(var(--muted-foreground));
+  background: transparent;
+  border-color: hsl(var(--border));
+  font-weight: 500;
+}
 .tree { color: hsl(var(--muted-foreground)); }
 .links a {
   color: hsl(var(--primary));
@@ -636,6 +645,8 @@ kbd {
   var isFetchProxyTwin = ${isFetchProxyTwin.toString()};
   var pickHopOccurrenceIndex = ${pickHopOccurrenceIndex.toString()};
   var NODE_KEY = "__atlasNodeKey";
+  /** Mark hops shown as top-level while their parentRequestId is not in the buffer. */
+  var MISSING_PARENT_KEY = "__atlasMissingParent";
   var graphqlOperationNameFromBodyText = ${graphqlOperationNameFromBodyText.toString()};
 
   var hopsEl = document.getElementById("hops");
@@ -718,6 +729,50 @@ kbd {
     });
     var at = pickHopOccurrenceIndex(starts, childStartMs);
     return at >= 0 ? occ[at].key : parentId;
+  }
+
+  /** True when at least one call with this requestId is in the live buffer. */
+  function isParentCaptured(parentId) {
+    var occ = occurrencesByRid.get(parentId);
+    return !!(occ && occ.length > 0);
+  }
+
+  function removeRootKey(key) {
+    for (var i = rootOrder.length - 1; i >= 0; i--) {
+      if (rootOrder[i] === key) rootOrder.splice(i, 1);
+    }
+  }
+
+  /**
+   * Show a hop whose parent is not in the buffer as a top-level row until the
+   * parent arrives (Expo web / service-only streams often miss app roots).
+   */
+  function promoteMissingParentRoot(ev, key) {
+    ev[MISSING_PARENT_KEY] = true;
+    removeRootKey(key);
+    rootOrder.unshift(key);
+    if (rootOrder.length > MAX_ROOTS) {
+      rootOrder.length = MAX_ROOTS;
+    }
+  }
+
+  /** Drop orphan-root promotion once children are nested under a real parent call. */
+  function demoteMissingParentRootsUnder(parentKey) {
+    var kids = childrenByParent.get(parentKey) || [];
+    for (var i = 0; i < kids.length; i++) {
+      var child = kids[i];
+      if (!child[MISSING_PARENT_KEY]) continue;
+      delete child[MISSING_PARENT_KEY];
+      removeRootKey(nodeKeyOf(child));
+    }
+  }
+
+  /** After a requestId gains a call, re-nest any hops that were promoted as orphans. */
+  function demoteOrphansWaitingFor(rid) {
+    var occ = occurrencesByRid.get(rid) || [];
+    for (var i = 0; i < occ.length; i++) {
+      demoteMissingParentRootsUnder(occ[i].key);
+    }
   }
 
   /** Re-file children of every call sharing this requestId after a new call joined. */
@@ -1336,6 +1391,10 @@ kbd {
     }
     if (err) badges += '<span class="badge err">ERR</span>';
     if (slow) badges += '<span class="badge warn">SLOW</span>';
+    if (ev[MISSING_PARENT_KEY]) {
+      badges +=
+        '<span class="badge orphan" title="parentRequestId not in this live buffer">parent not captured</span>';
+    }
     var screen = firstScreen(ev.usage);
     if (screen) badges += '<span class="badge">' + esc(screen) + "</span>";
     if (repeatSuffix) {
@@ -1634,6 +1693,7 @@ kbd {
       var prev = childTwin ? childrenByParent.get(childTwin.parentKey)[childTwin.index] : rootTwin;
       var kept = ev.transport === "proxy" ? ev : prev;
       kept[TWINNED_KEY] = true;
+      if (prev[MISSING_PARENT_KEY]) kept[MISSING_PARENT_KEY] = true;
       if (kept === ev) {
         if (childTwin) {
           childrenByParent.get(childTwin.parentKey)[childTwin.index] = ev;
@@ -1644,12 +1704,17 @@ kbd {
       return;
     }
     var key = addOccurrence(rid, ev);
-    if (parentKey) {
+    // Parent call just arrived — drop orphan-root promotion for hops waiting on it.
+    demoteOrphansWaitingFor(rid);
+    if (parentId) {
       // addOccurrence may have re-filed this parent's children; pick the list again.
       parentKey = parentKeyFor(parentId, startMsOf(ev));
       var siblings = childrenByParent.get(parentKey) || [];
       siblings.push(ev);
       childrenByParent.set(parentKey, siblings);
+      if (!isParentCaptured(parentId)) {
+        promoteMissingParentRoot(ev, key);
+      }
     } else {
       // Newest roots at the top (SSE backlog is oldest→newest; live hops append).
       // A call reusing a stored requestId is its own root with its own children.
