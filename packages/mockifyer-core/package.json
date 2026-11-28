@@ -8,7 +8,6 @@
   "browser": {
     "./dist/index.js": "./dist/index.browser.js",
     "./index.js": "./index.browser.js",
-    "./dist/utils/crypto-digest.js": "./dist/utils/crypto-digest.browser.js",
     "./dist/utils/scenario.js": "./dist/utils/scenario.browser.js",
     "./dist/utils/network-body-spill.js": "./dist/utils/network-body-spill.browser.js",
     "./dist/utils/mirror-proxy-recording-to-client.js": "./dist/utils/mirror-proxy-recording-to-client.browser.js",

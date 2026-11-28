@@ -1,22 +1,17 @@
 /**
- * Browser stub for crypto-digest.
- * Uses Web Crypto API instead of Node crypto.
+ * Optional browser entry for crypto-digest.
+ *
+ * The real `./crypto-digest` module is already cross-platform (pure SHA-256 +
+ * Web Crypto, no top-level Node `crypto` import). It is **not** remapped via
+ * the package.json `"browser"` field — Metro/RN must load the real module so
+ * `sha256Hex` / `randomEventId` stay defined.
+ *
+ * This file re-exports the real helpers for tooling that imports the `.browser`
+ * path explicitly.
  */
-
-export async function digest(input: string): Promise<string> {
-  if (typeof crypto !== 'undefined' && crypto.subtle) {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(input);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-  }
-  // Fallback: simple hash for browsers without Web Crypto
-  let hash = 0;
-  for (let i = 0; i < input.length; i++) {
-    const char = input.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash;
-  }
-  return Math.abs(hash).toString(36);
-}
+export {
+  sha256Hex,
+  randomEventId,
+  utf8ByteLength,
+  truncateUtf8,
+} from './crypto-digest';
